@@ -26,6 +26,7 @@ const defaultSettings = () => ({
   members: { a: null, b: null }, // Nutzer-IDs im gemeinsamen Modus
   googleClientId: '',
   googlePlacesKey: '',
+  ticketmasterKey: '',
   nextTurn: null, // wer als Nächstes plant ('a' | 'b')
   prefs: {}, // Vorlieben je Person { a: { moods, place, diet, budget } }
   onboarded: {}, // Einstieg erledigt { a: true, b: true }

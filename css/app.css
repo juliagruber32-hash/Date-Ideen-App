@@ -853,3 +853,6 @@ body.auth-screen .view { padding-bottom: 40px; }
 .wp-bar { height: 8px; border-radius: 99px; background: #ebe4dc; overflow: hidden; }
 .wp-bar span { display: block; height: 100%; background: var(--accent-p, var(--accent)); border-radius: inherit; }
 .wp-row strong { text-align: right; font-variant-numeric: tabular-nums; }
+
+.gen-meta { font-size: 0.85rem; color: var(--ink); }
+.feed-card .links { margin-top: 0; }

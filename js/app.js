@@ -4,6 +4,8 @@ import { geocode, getWeather, manualWeather } from './weather.js';
 import { allIdeas, buildPlan, combineWishes, setPreferences, defaultStart, ideaDuration, loadIdeas, MOODS, moodLabel, REACH, recommend, rhythmStatus, setExtraIdeas, suggest, toICS } from './engine.js';
 import { appleMapsLink, CATEGORIES, CUISINES, catForStep, isXmasSeason, categoryById, directionsLink, distanceKm, fmtKm, fmtMin, formatHours, hoursOn, isOpenAt, locate, mapLink, placeName, reservationLinks, searchByName, searchMixed, searchNearby, travelEstimates } from './places.js';
 import { googleDetails } from './gplaces.js';
+import { generateLocalDates, travelLine } from './generate.js';
+import { eventWhen, fetchEvents, ideaFromEvent } from './events.js';
 import * as photos from './photos.js';
 import { SUPABASE } from './config.js';
 import * as gcal from './gcal.js';
@@ -723,7 +725,8 @@ async function planIdeaNow(idea, el) {
   tempIdeas.set(idea.id, idea);
   const ls = L().lastSearch;
   await withBusy(el, async () => {
-    await prepareSession({ date: resolveDate(ls), daytime: idea.times?.includes(ls.daytime) ? ls.daytime : idea.times?.[0] ?? 'abend', budget: Math.max(ls.budget, idea.cost ?? 0), reach: 2 }, null);
+    await prepareSession({ date: idea.fixedDate ?? (idea.generated && idea.date) ?? resolveDate(ls), daytime: idea.times?.includes(ls.daytime) ? ls.daytime : idea.times?.[0] ?? 'abend', budget: Math.max(ls.budget, idea.cost ?? 0), reach: 2, radiusKm: feedFilter.radiusKm || 15 }, null);
+    if (idea.fixedStart) drafts[idea.id] = { start: idea.fixedStart, surprise: true, hint: '', picks: {}, near: null, openAlt: null };
     session.backTo = [current.name, current.param ?? '', current.name === 'ort' ? 'Ort' : 'Entdecken'];
     go('plan', idea.id);
   });
@@ -757,7 +760,9 @@ RENDER.entdecken = () => {
   if (d.tab === 'gemerkt') return renderSaved(head + tabs);
 
   const center = discoverCenter();
-  const cats = CATEGORIES.filter((c) => !c.hidden && (!c.seasonal || isXmasSeason(isoDate(today()))) && (!d.mood || c.moods.includes(d.mood)));
+  const m = today().getMonth() + 1;
+  const seasonOk = (c) => !c.seasonal || (c.seasonal === 'summer' ? m >= 6 && m <= 8 : isXmasSeason(isoDate(today())));
+  const cats = CATEGORIES.filter((c) => !c.hidden && seasonOk(c) && (!d.mood || c.moods.includes(d.mood)));
   if (!cats.some((c) => c.id === d.cat)) d.cat = cats[0]?.id ?? 'restaurant';
   const cat = categoryById(d.cat);
   let results = d.results ?? [];
@@ -884,32 +889,51 @@ function renderSearch(head) {
   const center = discoverCenter();
   if (center && !d.search && !d.searchLoading && !store.inArtifact()) {
     d.searchLoading = true;
-    searchByName(d.query, center, Math.max(d.radius, 30000))
-      .then((r) => (d.search = r))
+    (async () => {
+      const radiusKm = feedFilter.radiusKm || Math.round(d.radius / 1000) || 15;
+      const cuisine = CUISINES.find((c) => norm(c.label).includes(norm(d.query)) || norm(d.query).includes(norm(c.label)));
+      const catId = catForStep({ q: d.query, t: d.query }, isoDate(today())) ?? CATEGORIES.find((c) => !c.hidden && norm(c.label).includes(norm(d.query)))?.id ?? null;
+      const base = { center, radiusKm, daytime: feedFilter.daytime, date: feedDate(), moods: preferredMoods(), weather: d.feedWeather };
+      let gen = [];
+      if (cuisine) {
+        const list = await searchNearby('restaurant', center, radiusKm * 1000, cuisine.id);
+        gen = await generateLocalDates({ ...base, mainList: list });
+      } else if (catId) {
+        gen = await generateLocalDates({ ...base, onlyCategory: catId });
+      }
+      if (gen.length < 3) {
+        const byName = await searchByName(d.query, center, radiusKm * 1000);
+        gen = [...gen, ...(byName.length ? await generateLocalDates({ ...base, mainList: byName }) : [])];
+      }
+      const seen = new Set();
+      d.search = gen.filter((i) => !seen.has(i.id) && seen.add(i.id));
+      d.search.forEach((i) => tempIdeas.set(i.id, i));
+    })()
       .catch(() => (d.search = []))
       .finally(() => {
         d.searchLoading = false;
         if (current.name === 'entdecken' && d.query) render();
       });
   }
+  const evMatch = (d.events ?? []).filter(match);
   if (community.api && !d.community && !d.cLoading) loadCommunity();
-  const places = d.search ?? [];
-  places.forEach((p) => placeIndex.set(p.id, p));
+  const gens = d.search ?? [];
 
   root.innerHTML = `
     ${head}
     <p class="muted small">Ergebnisse für „${esc(d.query)}“</p>
+    ${center && !store.inArtifact() ? `
+    <section class="stack">
+      <h2 class="section-title">Dates in eurer Nähe</h2>
+      ${d.searchLoading && !d.search ? '<div class="loading"><span class="spinner"></span>Stelle Dates zusammen …</div>'
+        : gens.length ? gens.map(feedCard).join('') : '<p class="muted">Im Umkreis nichts Passendes gefunden. Vergrößert den Umkreis unter „Für euch → Filter“.</p>'}
+    </section>` : ''}
+    ${evMatch.length ? `<section class="stack"><h2 class="section-title">Veranstaltungen</h2>${evMatch.map(feedCard).join('')}</section>` : ''}
     <section class="stack">
       <h2 class="section-title">Date-Ideen</h2>
       ${ideas.length ? ideas.map(feedCard).join('') : '<p class="muted">Keine passende Idee. Versuch einen anderen Begriff oder leg eine eigene Idee an.</p>'}
     </section>
-    ${com.length ? `<section class="stack"><h2 class="section-title">Aus der Community</h2>${com.map(feedCard).join('')}</section>` : ''}
-    ${center && !store.inArtifact() ? `
-    <section class="stack">
-      <h2 class="section-title">Orte in eurer Nähe</h2>
-      ${d.searchLoading && !d.search ? '<div class="loading"><span class="spinner"></span>Suche Orte …</div>'
-        : places.length ? `<div class="places">${places.map((p) => placeCard(p)).join('')}</div>` : '<p class="muted">Kein Ort mit diesem Namen im Umkreis gefunden.</p>'}
-    </section>` : ''}`;
+    ${com.length ? `<section class="stack"><h2 class="section-title">Aus der Community</h2>${com.map(feedCard).join('')}</section>` : ''}`;
 
   bindSearchBar();
   on('[data-feed-plan]', 'click', (_, el) => {
@@ -1560,9 +1584,87 @@ function feedCard(i) {
         <div class="row between top"><h3>${esc(i.title)}</h3>${favBtn(i)}</div>
         <p class="muted small">${fmtEuro(i.cost ?? 0)} · ${fmtDuration(ideaDuration(i))} · ${i.place === 'drinnen' ? 'Drinnen' : 'Draußen'}${i.rating?.count ? ` · ★ ${String(i.rating.avg).replace('.', ',')}` : ''}</p>
         <p class="teaser">${esc(i.teaser ?? '')}</p>
+        ${genExtras(i)}
         <button class="btn sm primary" data-feed-plan="${esc(i.id)}">${icon('sparkle')}Planen</button>
       </div>
     </article>`;
+}
+
+/** Bewertung anderer Paare für ein Date mit demselben Hauptort (aus der Community). */
+function communityRatingFor(i) {
+  const names = new Set((i.steps ?? []).map((s) => s.place?.name).filter(Boolean).map(norm));
+  if (!names.size || !discover.community) return null;
+  let sum = 0;
+  let n = 0;
+  for (const r of discover.community) {
+    if (!r.rating_count) continue;
+    if ((r.idea.steps ?? []).some((s) => s.place?.name && names.has(norm(s.place.name)))) {
+      sum += Number(r.avg_stars) * r.rating_count;
+      n += r.rating_count;
+    }
+  }
+  return n ? { avg: (sum / n).toFixed(1).replace('.', ','), count: n } : null;
+}
+
+/** Zusatzangaben für selbst erstellte Dates: Weg, Preis, Bewertungen, Links. */
+function genExtras(i) {
+  if (!i.generated) return '';
+  const r = communityRatingFor(i);
+  const mp = i.mainPlace ?? i.steps?.find((s) => s.place?.lat != null)?.place;
+  const g = mp ? encodeURIComponent(`${mp.name} ${mp.street ?? ''} ${mp.city ?? ''}`.trim()) : '';
+  const facts = [i.eventWhenText, i.km != null ? travelLine(i) : '', i.priceText, r ? `★ ${r.avg} von ${r.count} ${r.count === 1 ? 'Bewertung' : 'Bewertungen'} anderer Paare` : ''].filter(Boolean);
+  return `
+    ${facts.length ? `<p class="gen-meta">${facts.map(esc).join(' · ')}</p>` : ''}
+    <div class="links">
+      ${mp?.lat != null ? `<a class="link" href="https://www.google.com/maps/dir/?api=1&destination=${mp.lat},${mp.lon}" target="_blank" rel="noopener">Route${icon('external')}</a>
+      <a class="link" href="https://www.google.com/maps/search/?api=1&query=${g}" target="_blank" rel="noopener">Google-Bewertungen${icon('external')}</a>` : ''}
+      ${i.ticketUrl ? `<a class="link" href="${esc(i.ticketUrl)}" target="_blank" rel="noopener">Tickets${icon('external')}</a>` : ''}
+    </div>`;
+}
+
+/** Vorlieben beider Personen + gewählte Stimmung. */
+function preferredMoods() {
+  const prefs = S().settings.prefs ?? {};
+  const moods = [...(prefs.a?.moods ?? []), ...(prefs.b?.moods ?? [])];
+  if (feedFilter.mood) moods.push(feedFilter.mood, feedFilter.mood);
+  return moods;
+}
+
+async function loadGenerated() {
+  const d = discover;
+  const center = discoverCenter();
+  if (!center) return;
+  d.genLoading = true;
+  try {
+    if (!d.feedWeather) d.feedWeather = await getWeather(center, feedDate(), feedFilter.daytime).catch(() => ({ known: false }));
+    const prefPlace = feedFilter.place || null;
+    d.gen = await generateLocalDates({ center, radiusKm: feedFilter.radiusKm || 15, daytime: feedFilter.daytime, date: feedDate(), moods: preferredMoods(), weather: d.feedWeather, place: prefPlace, count: 4 });
+    d.gen = d.gen.filter((i) => i.cost <= (feedFilter.budget ?? L().lastSearch.budget ?? 200) * 1.2);
+    d.gen.forEach((i) => tempIdeas.set(i.id, i));
+  } catch {
+    d.gen = [];
+  }
+  d.genLoading = false;
+  if (current.name === 'entdecken') render();
+}
+
+async function loadEvents() {
+  const d = discover;
+  const center = discoverCenter();
+  d.eventsLoading = true;
+  d.eventsError = null;
+  try {
+    const from = isoDate(today());
+    const to = isoDate(addDays(today(), 14));
+    const evs = await fetchEvents({ key: S().settings.ticketmasterKey, center, radiusKm: Math.max(feedFilter.radiusKm || 15, 10), from, to });
+    d.events = evs.map((ev) => ({ ...ideaFromEvent(ev), eventWhenText: eventWhen(ev) }));
+    d.events.forEach((i) => tempIdeas.set(i.id, i));
+  } catch (e) {
+    d.events = [];
+    d.eventsError = e.message;
+  }
+  d.eventsLoading = false;
+  if (current.name === 'entdecken') render();
 }
 
 function renderForYou(head) {
@@ -1577,6 +1679,8 @@ function renderForYou(head) {
     }).catch(() => {});
   }
   if (!d.feed && !d.feedLoading) loadFeed();
+  if (center && !d.gen && !d.genLoading && !store.inArtifact() && feedFilter.radiusKm !== 0) loadGenerated();
+  if (center && S().settings.ticketmasterKey && !d.events && !d.eventsLoading && !store.inArtifact()) loadEvents();
   if (center && !d.near && !d.nearLoading && !d.nearError) loadNear();
   const recos = recommend(S().dates.map(fullPlanOrMeta), 3);
   const topCommunity = (d.community ?? []).filter((r) => r.rating_count).sort((a, b) => b.avg_stars - a.avg_stars).slice(0, 3);
@@ -1614,8 +1718,25 @@ function renderForYou(head) {
 
     ${w?.known ? `<p class="weather-line">${icon(weatherGlyph(w))} ${relDay(feedDate()) ?? fmtShort(feedDate())} ${daytimeLabel(f.daytime)}: ${esc(w.label)}${w.temp != null ? `, ${w.temp}°` : ''}${w.wet ? ' – Ideen für drinnen' : ''}</p>` : ''}
 
+    ${center && f.radiusKm !== 0 && !store.inArtifact() ? `
     <section class="stack">
-      <h2 class="section-title">Passt zu euch</h2>
+      <h2 class="section-title">Neu für euch in der Nähe</h2>
+      <p class="muted small">Von Dately zusammengestellt – aus echten Orten im Umkreis von ${f.radiusKm} km, passend zu euren Vorlieben${isXmasSeason(feedDate()) ? ' und zur Adventszeit' : ''}.</p>
+      ${d.genLoading && !d.gen ? '<div class="loading"><span class="spinner"></span>Stelle Dates zusammen …</div>'
+        : d.gen?.length ? d.gen.map(feedCard).join('') : '<p class="muted">Gerade nichts Passendes im Umkreis gefunden – vergrößert den Umkreis im Filter.</p>'}
+      ${d.gen?.length ? `<button class="btn soft" id="gen-more">${icon('dice')}Neue Kombinationen</button>` : ''}
+    </section>` : ''}
+
+    ${S().settings.ticketmasterKey ? `
+    <section class="stack">
+      <h2 class="section-title">Veranstaltungen in den nächsten 2 Wochen</h2>
+      ${d.eventsLoading && !d.events ? '<div class="loading"><span class="spinner"></span>Suche Veranstaltungen …</div>'
+        : d.eventsError ? `<p class="muted">${esc(d.eventsError)}</p>`
+          : d.events?.length ? d.events.slice(0, 6).map(feedCard).join('') : '<p class="muted">Keine Veranstaltungen im Umkreis gefunden.</p>'}
+    </section>` : ''}
+
+    <section class="stack">
+      <h2 class="section-title">Ideen, die zu euch passen</h2>
       ${d.feedLoading && !d.feed ? '<div class="loading"><span class="spinner"></span>Suche Ideen …</div>'
         : d.feed?.length ? d.feed.map(feedCard).join('') : '<p class="muted">Keine Idee passt zu diesen Filtern. Erhöht das Budget oder ändert die Stimmung.</p>'}
       ${d.feed?.length ? `<button class="btn soft" id="feed-more">${icon('dice')}Andere Ideen</button>` : ''}
@@ -1643,8 +1764,14 @@ function renderForYou(head) {
     </section>` : ''}`;
 
   bindDiscoverTabs();
+  $('#gen-more')?.addEventListener('click', () => {
+    d.gen = null;
+    render();
+  });
   const refresh = () => {
     d.feed = null;
+    d.gen = null;
+    d.events = null;
     d.near = null;
     d.nearError = null;
     render();
@@ -3931,8 +4058,10 @@ RENDER.mehr = () => {
     </section>
 
     <section class="panel form">
-      <div class="panel-head">${icon('star')}<h2>Google-Bewertungen & Fotos</h2></div>
-      <p>Optional: Mit einem eigenen Google-Places-Schlüssel zeigt die App bei Orten die Google-Sterne und ein Foto. Ohne Schlüssel gibt es Bilder aus Wikimedia und einen Link zu den Google-Bewertungen.</p>
+      <div class="panel-head">${icon('star')}<h2>Weitere Datenquellen</h2></div>
+      <p><strong>Veranstaltungen</strong> (Konzerte, Shows, Theater, Festivals): Mit einem kostenlosen Ticketmaster-Schlüssel zeigt Dately Veranstaltungen in eurem Umkreis und macht daraus Date-Ideen.</p>
+      <div class="field"><label class="label" for="tm-key">Ticketmaster API Key</label><input class="input" id="tm-key" data-set="ticketmasterKey" value="${esc(S().settings.ticketmasterKey ?? '')}" placeholder="Consumer Key" autocomplete="off"><small class="muted">Kostenlos unter developer.ticketmaster.com → „Get your API Key“ (Anleitung im README).</small></div>
+      <p><strong>Google-Bewertungen & Fotos:</strong> Mit einem eigenen Google-Places-Schlüssel zeigt die App bei Orten die Google-Sterne und ein Foto. Ohne Schlüssel gibt es Bilder aus Wikimedia und einen Link zu den Google-Bewertungen.</p>
       <div class="field"><label class="label" for="g-places">Places API Key</label><input class="input" id="g-places" data-set="googlePlacesKey" value="${esc(S().settings.googlePlacesKey ?? '')}" placeholder="AIza…" autocomplete="off"></div>
     </section>
 

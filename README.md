@@ -101,6 +101,16 @@ Ort die Google-Bewertungen. Für Google-Sterne und Fotos direkt in der App:
 
 Die App fragt Google nur, wenn ihr einen Ort öffnet, und merkt sich das Ergebnis 7 Tage.
 
+### 5. Veranstaltungen in der Nähe (optional, ca. 3 Minuten)
+
+Konzerte, Shows, Theater und Festivals kommen von Ticketmaster (kostenlos):
+
+1. Auf **developer.ticketmaster.com** ein Konto anlegen.
+2. Unter **My Apps** steht der **Consumer Key** – kopieren.
+3. In Dately: **Mehr → Einstellungen → Weitere Datenquellen → Ticketmaster API Key** einfügen.
+
+Weihnachtsmärkte, Eislaufen, Open-Air-Kinos und Badeseen findet Dately auch ohne Schlüssel über die Kartendaten (OpenStreetMap) – passend zur Jahreszeit.
+
 ### Community: Gut zu wissen
 
 Wenn andere Paare eure Webseite nutzen und Ideen teilen, betreibst du eine Plattform mit Inhalten von Nutzern.
