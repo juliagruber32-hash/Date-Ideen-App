@@ -65,6 +65,17 @@ export const CATEGORIES = [
   { id: 'chocolate', hidden: true, moods: [], label: 'Schokolade', emoji: '🍫', filters: ['["shop"="chocolate"]', '["shop"="confectionery"]'], place: 'drinnen', times: ['tag'], cost: 20, plan: [['Schokolade', 30]] },
   { id: 'openair', seasonal: 'summer', moods: ['romantisch', 'kultur'], label: 'Open-Air-Kino', emoji: '🎬', filters: ['["amenity"="cinema"]["open_air"="yes"]', '["cinema:type"="open_air"]', '["amenity"="cinema"]["name"~"(Open.?Air|Freiluft|Sommerkino)",i]'], place: 'draußen', times: ['abend'], cost: 25, plan: [['Open-Air-Kino', 150]] },
   { id: 'lake', seasonal: 'summer', moods: ['entspannt', 'romantisch'], label: 'Badeseen', emoji: '🏖️', filters: ['["leisure"="swimming_area"]["name"]', '["leisure"="bathing_place"]["name"]', '["natural"="beach"]["name"]'], place: 'draußen', times: ['tag'], cost: 5, plan: [['Am See', 150]] },
+  // Genauere Ortsarten für bestimmte Stationen. fallback = weicher Wunsch (sonst ähnlicher Ort), ohne = harter Wunsch
+  { id: 'rooftop', hidden: true, moods: [], label: 'Rooftop-Bars', emoji: '🍸', filters: ['["amenity"~"^(bar|pub|restaurant|cafe)$"]["rooftop"="yes"]', '["amenity"~"^(bar|pub|restaurant|cafe|nightclub)$"]["name"~"Rooftop|Roof|Dachterrasse|Sky ?Bar|Skybar|Dachgarten",i]'], place: 'draußen', times: ['abend'], cost: 40, plan: [['Rooftop-Bar', 90]] },
+  { id: 'livemusic', hidden: true, moods: [], label: 'Live-Musik', emoji: '🎶', filters: ['["amenity"="music_venue"]', '["live_music"="yes"]["amenity"]', '["amenity"~"^(bar|pub|nightclub)$"]["name"~"Jazz|Blues|Live",i]'], place: 'drinnen', times: ['abend'], cost: 40, plan: [['Live-Musik', 120]] },
+  { id: 'botanic', hidden: true, moods: [], label: 'Botanische Gärten', emoji: '🌿', filters: ['["leisure"="garden"]["garden:type"="botanical"]', '["name"~"Botanischer Garten|Tropenhaus|Palmengarten|Palmenhaus",i]["leisure"~"garden|park"]', '["name"~"Botanischer Garten|Tropenhaus|Palmengarten",i]["tourism"]'], place: 'drinnen', times: ['tag'], cost: 15, plan: [['Botanischer Garten', 120]] },
+  { id: 'burger', hidden: true, fallback: 'restaurant', moods: [], label: 'Burger', emoji: '🍔', filters: ['["amenity"~"^(restaurant|fast_food)$"]["cuisine"~"burger"]', '["amenity"~"^(restaurant|fast_food)$"]["name"~"Burger",i]'], place: 'drinnen', times: ['tag', 'abend'], cost: 35, food: true, plan: [['Burger', 75]] },
+  { id: 'tapas', hidden: true, fallback: 'bar', moods: [], label: 'Tapas', emoji: '🫒', filters: ['["amenity"~"^(restaurant|bar)$"]["cuisine"~"tapas|spanish"]', '["amenity"~"^(restaurant|bar)$"]["name"~"Tapas|Bodega",i]'], place: 'drinnen', times: ['abend'], cost: 40, food: true, plan: [['Tapas', 75]] },
+  { id: 'cocktail', hidden: true, fallback: 'bar', moods: [], label: 'Cocktailbars', emoji: '🍹', filters: ['["amenity"="bar"]["cocktails"="yes"]', '["amenity"~"^(bar|pub)$"]["name"~"Cocktail|Lounge",i]'], place: 'drinnen', times: ['abend'], cost: 35, plan: [['Cocktailbar', 60]] },
+  { id: 'finedining', hidden: true, fallback: 'restaurant', moods: [], label: 'Gourmet-Restaurants', emoji: '🍽️', filters: ['["amenity"="restaurant"]["name"~"Gourmet|Fine Dining|Sterne",i]', '["amenity"="restaurant"]["stars"]'], place: 'drinnen', times: ['abend'], cost: 150, food: true, plan: [['Menü', 150]] },
+  { id: 'brunch', hidden: true, fallback: 'cafe', moods: [], label: 'Brunch', emoji: '🥐', filters: ['["amenity"~"^(cafe|restaurant)$"]["brunch"="yes"]', '["amenity"~"^(cafe|restaurant)$"]["name"~"Brunch|Frühstück",i]'], place: 'drinnen', times: ['tag'], cost: 40, food: true, plan: [['Brunch', 105]] },
+  { id: 'dessert', hidden: true, fallback: 'icecream', moods: [], label: 'Dessert & Patisserie', emoji: '🍰', filters: ['["shop"="pastry"]["name"]', '["amenity"="cafe"]["cuisine"~"cake|dessert"]'], place: 'drinnen', times: ['tag', 'abend'], cost: 15, food: true, plan: [['Dessert', 30]] },
+  { id: 'supermarket', hidden: true, moods: [], label: 'Supermärkte', emoji: '🛒', filters: ['["shop"="supermarket"]'], place: 'drinnen', times: ['tag', 'abend'], cost: 20, plan: [['Einkauf', 20]] },
   { id: 'blacklight', hidden: true, moods: [], label: 'Schwarzlicht-Minigolf', emoji: '⛳', filters: ['["name"~"Schwarzlicht|Blacklight|Glow.?Golf|3D.?Minigolf|Indoor.?Minigolf",i]'], place: 'drinnen', times: ['tag', 'abend'], cost: 30, plan: [['Schwarzlicht-Minigolf', 75]] },
   { id: 'cooking', hidden: true, moods: [], label: 'Kochkurse', emoji: '👩‍🍳', filters: ['["amenity"="cooking_school"]', '["shop"]["name"~"Kochschule|Kochstudio|Kochkurs",i]', '["amenity"]["name"~"Kochschule|Kochstudio",i]'], place: 'drinnen', times: ['tag', 'abend'], cost: 120, food: true, plan: [['Kochkurs', 180]] },
   { id: 'pottery', hidden: true, moods: [], label: 'Töpferkurse', emoji: '🏺', filters: ['["craft"="pottery"]', '["shop"="pottery"]', '["shop"]["name"~"Töpfer|Keramik",i]'], place: 'drinnen', times: ['tag', 'abend'], cost: 80, plan: [['Töpfern', 150]] },
@@ -209,7 +220,10 @@ export function radiusLadder(radius) {
 // Nominatim erlaubt höchstens eine Anfrage pro Sekunde – deshalb nacheinander mit Pause.
 const NOMI = {
   museum: ['[museum]'], gallery: ['Galerie'], cinema: ['[cinema]'], theatre: ['[theatre]'], restaurant: ['[restaurant]'],
-  cafe: ['[cafe]', 'Café'], bar: ['[bar]', '[pub]'], cooking: ['Kochschule', 'Kochkurs'], blacklight: ['3D Minigolf', 'Schwarzlicht', 'Indoor Minigolf'], pottery: ['Töpferei', 'Keramik'], icecream: ['[ice cream]'], wine: ['Weinbar'], bowling: ['Bowling'],
+  cafe: ['[cafe]', 'Café'], bar: ['[bar]', '[pub]'], cooking: ['Kochschule', 'Kochkurs'], blacklight: ['3D Minigolf', 'Schwarzlicht', 'Indoor Minigolf'],
+  rooftop: ['Rooftop', 'Dachterrasse', 'Skybar'], livemusic: ['Jazz', 'Live Music', 'Musikclub', 'Blues'], botanic: ['Botanischer Garten', 'Palmengarten'],
+  burger: ['Burger'], tapas: ['Tapas'], cocktail: ['Cocktailbar', 'Cocktail'], finedining: ['Gourmet Restaurant'], brunch: ['Brunch'],
+  dessert: ['Patisserie', '[pastry]'], supermarket: ['[supermarket]'], lake: ['Badesee', 'Badestelle'], pottery: ['Töpferei', 'Keramik'], icecream: ['[ice cream]'], wine: ['Weinbar'], bowling: ['Bowling'],
   escape: ['Escape Room'], climbing: ['Boulderhalle', 'Kletterhalle'], minigolf: ['[miniature golf]'], zoo: ['[zoo]', 'Wildpark'],
   park: ['[park]'], viewpoint: ['[viewpoint]'], spa: ['Therme', '[sauna]'], icerink: ['[ice rink]', 'Eishalle', 'Eisstadion'],
   xmas: ['Christkindlmarkt', 'Weihnachtsmarkt'], beergarden: ['[biergarten]'], lake: ['Badesee'], boat: ['Bootsverleih'],
@@ -218,6 +232,14 @@ const NOMI = {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const nomiWaiting = [];
 let nomiBusy = false;
+// Bei freier Textsuche nur passende Arten von Orten übernehmen (z. B. „Jazz“ → Bar, nicht Hochschule)
+const NOMI_TYPES = {
+  livemusic: ['bar', 'pub', 'nightclub', 'music_venue', 'arts_centre', 'theatre', 'events_venue'],
+  rooftop: ['bar', 'pub', 'restaurant', 'cafe', 'nightclub', 'biergarten'],
+  burger: ['restaurant', 'fast_food'], tapas: ['restaurant', 'bar'], cocktail: ['bar', 'pub', 'nightclub'],
+  brunch: ['cafe', 'restaurant'], finedining: ['restaurant'], botanic: ['garden', 'park', 'attraction', 'botanical_garden'],
+  cooking: ['cooking_school', 'restaurant', 'school', 'shop', 'yes', 'events_venue'], wine: ['bar', 'restaurant', 'pub', 'wine'],
+};
 
 /** Eine Nominatim-Anfrage; wichtige Anfragen (prio) kommen zuerst dran. */
 function nominatimOnce(q, center, radius, prio = 0) {
@@ -272,6 +294,9 @@ async function nominatimCategory(catId, center, radius, prio = 0) {
           tags: { ...(x.extratags ?? {}), name: x.name, [x.category]: x.type, 'addr:street': a.road, 'addr:housenumber': a.house_number, 'addr:city': a.city || a.town || a.village || '' },
         };
         if (['bus_stop', 'platform', 'station', 'stop_position', 'parking'].includes(x.type)) continue;
+        if (!['amenity', 'leisure', 'tourism', 'shop', 'craft', 'club', 'sport', 'natural'].includes(x.category)) continue;
+        if (catId === 'zoo' && x.extratags?.zoo === 'enclosure') continue; // nur ein Gehege, kein Tierpark
+        if (NOMI_TYPES[catId] && !q.startsWith('[') && !NOMI_TYPES[catId].includes(x.type)) continue;
         const p = toPlace(el, cat, center);
         if (!p || seen.has(p.name) || p.km * 1000 > radius) continue;
         seen.add(p.name);
@@ -337,6 +362,7 @@ function toPlace(el, cat, center) {
     ? { ...raw, name: raw['christmas:name'] || raw.name, opening_hours: raw['christmas:opening_hours'] || raw.opening_hours, website: raw['christmas:website'] || raw.website }
     : raw;
   if (!t.name) return null;
+  if (/^(mc ?donald'?s|burger king|kfc|subway|pizza hut|domino'?s|nordsee|kochlöffel)\b/i.test(t.name)) return null; // Fast-Food-Ketten sind kein Date-Ort
   const lat = el.lat ?? el.center?.lat;
   const lon = el.lon ?? el.center?.lon;
   if (lat == null) return null;
@@ -640,6 +666,17 @@ export async function searchByName(term, center, radius) {
 const STEP_RULES = [
   [/weihnachtsmarkt|christkindl/, 'xmas'],
   [/schwarzlicht|blacklight|3d.?minigolf/, 'blacklight'],
+  [/rooftop|dachterrasse|skybar/, 'rooftop'],
+  [/live.?musik|konzert|open stage|jazz/, 'livemusic'],
+  [/botanischer garten|gewächsh|tropenhaus|palmengarten/, 'botanic'],
+  [/burger/, 'burger'],
+  [/tapas/, 'tapas'],
+  [/cocktail/, 'cocktail'],
+  [/fine dining|mehrgangmenü|gourmet/, 'finedining'],
+  [/brunch/, 'brunch'],
+  [/dessert|patisserie/, 'dessert'],
+  [/supermarkt|picknick-einkauf/, 'supermarket'],
+  [/badestelle|badesee|pause am see/, 'lake'],
   [/kochkurs|kochschule/, 'cooking'],
   [/töpfer|keramik/, 'pottery'],
   [/bowling/, 'bowling'],
@@ -680,7 +717,7 @@ export function catForStep(step, iso) {
   if (step.place) return null;
   if (/^(anfahrt|rückfahrt|fahrt|zugfahrt)\b/i.test(step.t ?? '')) return null; // Weg dorthin, kein eigener Ort
   // In der Adventszeit: Punsch, Glühwein & Co. auf dem Weihnachtsmarkt
-  if (isXmasSeason(iso) && /punsch|glühwein|heiße schokolade|weihnacht|christkindl/i.test(`${step.t} ${step.q ?? ''}`)) return 'xmas';
+  if (isXmasSeason(iso) && /punsch|glühwein|weihnacht|christkindl/i.test(`${step.t} ${step.q ?? ''}`)) return 'xmas';
   if (!step.q) return null;
   const text = step.q.toLowerCase();
   return STEP_RULES.find(([re]) => re.test(text))?.[1] ?? null;

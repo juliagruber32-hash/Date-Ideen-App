@@ -3168,14 +3168,20 @@ async function loadStepPlaces(steps, draft, stepCats, center, ctx) {
     const radius = (ctx.radiusKm || reachToKm(ctx.reach) || 15) * 1000;
     const groups = { ...(await searchMixed(ids, center, radius, 2)) };
     // Hauptorte, die im Umkreis fehlen (z. B. Lasertag, Kochkurs), etwas weiter weg suchen
-    const far = ids.filter((id) => !groups[id]?.length && !['xmas', 'karaoke', 'bookshop', 'chocolate', 'boat'].includes(id));
+    const far = ids.filter((id) => !groups[id]?.length && !categoryById(id)?.fallback && !['xmas', 'karaoke', 'bookshop', 'chocolate', 'boat', 'supermarket'].includes(id));
     if (far.length && radius < 60000) {
       const wider = await searchMixed(far, center, Math.min(radius * 3, 60000), 2).catch(() => ({}));
       for (const id of far) if (wider[id]?.length) groups[id] = wider[id];
     }
+    // Weicher Wunsch ohne Treffer (z. B. Burger, Tapas): ähnlichen Ort nehmen (Restaurant, Bar …)
+    const soft = ids.filter((id) => !groups[id]?.length && categoryById(id)?.fallback);
+    if (soft.length) {
+      const fb = await searchMixed([...new Set(soft.map((id) => categoryById(id).fallback))], center, radius, 2).catch(() => ({}));
+      for (const id of soft) groups[id] = fb[categoryById(id).fallback] ?? [];
+    }
     // Immer noch nichts (z. B. Schwarzlicht-Minigolf, Weihnachtsmarkt)? Mit Google-Schlüssel bei Google suchen
     const gKey = S().settings.googlePlacesKey;
-    const G_TEXT = { blacklight: 'Schwarzlicht Minigolf', xmas: 'Weihnachtsmarkt Christkindlmarkt', karaoke: 'Karaoke Bar', escape: 'Escape Room', climbing: 'Boulderhalle', cooking: 'Kochkurs', pottery: 'Töpferkurs', arcade: 'Lasertag', bowling: 'Bowling', spa: 'Therme', icerink: 'Eishalle Eislaufen', boat: 'Bootsverleih', bookshop: 'Buchhandlung' };
+    const G_TEXT = { rooftop: 'Rooftop Bar', livemusic: 'Live Musik Bar', botanic: 'Botanischer Garten', blacklight: 'Schwarzlicht Minigolf', xmas: 'Weihnachtsmarkt Christkindlmarkt', karaoke: 'Karaoke Bar', escape: 'Escape Room', climbing: 'Boulderhalle', cooking: 'Kochkurs', pottery: 'Töpferkurs', arcade: 'Lasertag', bowling: 'Bowling', spa: 'Therme', icerink: 'Eishalle Eislaufen', boat: 'Bootsverleih', bookshop: 'Buchhandlung' };
     if (gKey) {
       for (const id of ids.filter((x) => !groups[x]?.length && G_TEXT[x])) {
         const found = await googleSearch(G_TEXT[id], center, Math.max(radius, 30000), gKey).catch(() => []);
@@ -3212,8 +3218,13 @@ async function loadStepPlaces(steps, draft, stepCats, center, ctx) {
         if (prev !== center && !s.place?.id) {
           const near = (groups[cat] ?? []).filter((p) => distanceKm(prev, p) <= 2);
           if (near.length < 2) {
-            const local = await searchMixed([realCat[i] ?? cat], prev, 5000, 2).catch(() => ({}));
-            const add = (local[realCat[i] ?? cat] ?? []).map((p) => ({ ...p, km: distanceKm(center, p) }));
+            const rc = realCat[i] ?? cat;
+            const fbc = categoryById(rc)?.fallback;
+            const local = await searchMixed([rc, fbc].filter(Boolean), prev, 5000, 2).catch(() => ({}));
+            // Genauer Wunsch (z. B. Burger) bekommt 1,5 km Vorsprung, sonst gewinnt der nähere ähnliche Ort
+            const score = (p, bonus) => distanceKm(prev, p) - bonus;
+            const add = [...(local[rc] ?? []).map((p) => [p, score(p, 1.5)]), ...(local[fbc] ?? []).map((p) => [p, score(p, 0)])]
+              .sort((a, b) => a[1] - b[1]).map(([p]) => ({ ...p, km: distanceKm(center, p) }));
             const have = new Set((groups[cat] ?? []).map((p) => p.name));
             groups[cat] = [...add.filter((p) => !have.has(p.name)), ...(groups[cat] ?? [])];
           }
