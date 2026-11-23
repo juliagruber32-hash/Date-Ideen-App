@@ -41,7 +41,11 @@ Damit ihr beide dieselben Dates, Listen und Abstimmungen seht und Überraschunge
 5. Oben auf **Connect** tippen (oder **Project Settings → API Keys**). Kopiere:
    - **Project URL** (sieht aus wie `https://abcd1234.supabase.co`)
    - **Publishable key** bzw. **anon public** key
-6. In der App: **Planen → Zahnrad oben rechts → Gemeinsam nutzen** – beide Werte einfügen → **Verbinden**.
+6. Entweder in der App: **Planen → Zahnrad oben rechts → Gemeinsam nutzen** – beide Werte einfügen → **Verbinden**.
+   **Oder (empfohlen, nötig für die Community):** beide Werte in [`js/config.js`](js/config.js) eintragen
+   (oder Claude schicken, dann trägt Claude sie ein). Dann verbindet sich die App für alle automatisch –
+   auch für andere Paare, die eure Webseite nutzen. Beide Werte sind öffentlich gedacht, geschützt wird
+   über die Zugriffsregeln aus `setup.sql`.
 7. Unter „Ich bin“ deinen Namen wählen.
 8. Den **Einladungslink** kopieren und deinem Partner schicken. Wer ihn öffnet, ist mit euch verbunden
    und wählt dann unter „Ich bin“ seinen Namen.
@@ -73,12 +77,37 @@ einträgt, braucht sie eine Client-ID von Google:
 Jeder verbindet seinen eigenen Google Kalender. Der Partner sieht von deinen Terminen nur „belegt“, keine Titel.
 Die Google-Verbindung hält etwa eine Stunde; danach im Kalender-Tab auf **Verbinden** tippen.
 
+### 4. Google-Bewertungen & Fotos (optional)
+
+Ohne Einrichtung zeigt die App Bilder aus Wikimedia (für bekannte Orte wie Museen) und verlinkt bei jedem
+Ort die Google-Bewertungen. Für Google-Sterne und Fotos direkt in der App:
+
+1. In der Google Cloud Console (gleiches Projekt wie Schritt 3) **Places API (New)** aktivieren.
+   Google verlangt dafür ein Abrechnungskonto; für ein Paar bleibt die Nutzung im kostenlosen Kontingent.
+2. **APIs & Dienste → Anmeldedaten → Anmeldedaten erstellen → API-Schlüssel**.
+3. Den Schlüssel einschränken: **Anwendungseinschränkung: Websites** → `https://juliagruber32-hash.github.io/*`,
+   **API-Einschränkung: Places API (New)**.
+4. In der App: **Zahnrad → Google-Bewertungen & Fotos** → Schlüssel einfügen.
+
+Die App fragt Google nur, wenn ihr einen Ort öffnet, und merkt sich das Ergebnis 7 Tage.
+
+### Community: Gut zu wissen
+
+Wenn andere Paare eure Webseite nutzen und Ideen teilen, betreibst du eine Plattform mit Inhalten von Nutzern.
+Ideen werden nach drei Meldungen automatisch ausgeblendet; löschen kannst du sie in Supabase unter
+**Table Editor → community_ideas**. Wenn die App öffentlich beworben wird, braucht sie in Deutschland und
+Österreich ein Impressum und eine Datenschutzerklärung.
+
 ## Funktionen
 
 | Bereich | Inhalt |
 | --- | --- |
 | **Planen** | „Wer plant?“: *Ich* (optional als Überraschung mit Hinweis), *Partner* (Anfrage senden) oder *Zusammen* (Abstimmung mit Match). Wann, Budget, Entfernung, Standort per GPS. Warnung, wenn an dem Tag schon Termine stehen. „Für dich“-Postfach mit Anfragen, Abstimmungen und Überraschungen. Date-Rhythmus und wer als Nächstes plant. |
-| **Entdecken** | Orte in der Nähe aus OpenStreetMap: Museen, Kinos, Theater, Restaurants, Cafés, Bars, Bowling, Bouldern, Escape Rooms, Minigolf, Zoo, Parks, Aussichtspunkte, Therme, Eislaufen – mit Entfernung, Öffnungszeiten („Jetzt geöffnet“) und Eintritt, wo bekannt. „Als Date planen“ oder „Merken“. Eigene Ideen anlegen. |
+| **Entdecken → Orte** | Restaurants (mit Küchen- und Vegan-Filter), Cafés, Bars, Weinbars, Eis, Museen, Kinos, Theater, Bowling, Bouldern, Escape Rooms, Minigolf, Zoo, Parks, Aussichtspunkte, Therme, Eislaufen – mit Bild, Entfernung, Öffnungszeiten und Eintritt, wo bekannt. Filter nach Stimmung. Tippen öffnet die Detailseite: Wochen-Öffnungszeiten, Google-Bewertungen, **Reservieren** (Webseite, OpenTable-Suche), **Anfahrt** zu Fuß/Rad/Bahn/Auto mit geschätzter Dauer und Google Maps bzw. Apple Karten. |
+| **Entdecken → Community** | Dates anderer Paare: übernehmen, merken, bewerten, melden. Sortiert nach Bewertung, Nähe oder neu. Eigene Dates teilt ihr nach dem Date mit „Mit der Community teilen“ (ohne Namen und private Daten). |
+| **Entdecken → Eure Ideen** | Eigene Ideen mit Stimmung, gemerkte Orte und Community-Ideen. |
+| **Kosten** (im Tab Dates) | Ausgaben pro Monat, wer wie viel bezahlt hat, Ausgleich („Alex schuldet dir 32 €“). Aufteilung halbe-halbe oder eingeladen. Ausgaben lassen sich vor dem Partner verstecken – z. B. für Überraschungen. |
+| **Empfehlungen** | Auf der Startseite: Ideen, die zu euren Bewertungen passen („Weil euch … gefallen hat“). Auch die normalen Vorschläge berücksichtigen eure Bewertungen und die Stimmung. |
 | **Kalender** | Monatsansicht mit Dates, Anfragen, Abstimmungen, festen Terminen, besonderen Tagen, eigenen Terminen, To-dos, Google-Terminen und den belegten Zeiten des Partners. |
 | **Listen** | To-do (mit Zuständigkeit und Fälligkeit) und Einkaufsliste. |
 | **Dates** | Geplante Dates und Erinnerungen mit Bewertung von beiden. |
@@ -110,6 +139,8 @@ js/store.js             Datenhaltung: lokal, Claude-DB oder Supabase; feldgenaue
 js/remote.js            Supabase-Anbindung (anonyme Anmeldung, Paar-Code, Live-Updates)
 js/places.js            GPS, Ortsname, Overpass-Ortssuche, Öffnungszeiten
 js/gcal.js              Google Kalender (lesen, eintragen, Vorlage-Link)
+js/gplaces.js           Google-Bewertungen und Fotos (optional, eigener Schlüssel)
+js/config.js            Fester Supabase-Zugang für alle Nutzer (für die Community)
 js/engine.js            Vorschläge, Plan mit Uhrzeiten, .ics, Rhythmus
 js/weather.js           Open-Meteo
 js/special.js           Jahrestag, Valentinstag, Geburtstage

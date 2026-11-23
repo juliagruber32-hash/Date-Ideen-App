@@ -115,3 +115,96 @@ alter table public.docs replica identity full;
 do $$ begin
   alter publication supabase_realtime add table public.docs;
 exception when duplicate_object then null; end $$;
+
+-- =====================================================================
+-- Community: Date-Ideen mit anderen teilen, übernehmen und bewerten
+-- =====================================================================
+
+create table if not exists public.community_ideas (
+  id uuid primary key default gen_random_uuid(),
+  author uuid not null default auth.uid(),
+  idea jsonb not null,
+  city text,
+  lat double precision,
+  lon double precision,
+  moods text[] not null default '{}',
+  cost int,
+  place text,
+  uses int not null default 0,
+  hidden boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.community_ratings (
+  idea_id uuid not null references public.community_ideas(id) on delete cascade,
+  user_id uuid not null default auth.uid(),
+  stars int not null check (stars between 1 and 5),
+  comment text check (comment is null or char_length(comment) <= 300),
+  created_at timestamptz not null default now(),
+  primary key (idea_id, user_id)
+);
+
+create table if not exists public.community_reports (
+  idea_id uuid not null references public.community_ideas(id) on delete cascade,
+  user_id uuid not null default auth.uid(),
+  reason text,
+  created_at timestamptz not null default now(),
+  primary key (idea_id, user_id)
+);
+
+alter table public.community_ideas enable row level security;
+alter table public.community_ratings enable row level security;
+alter table public.community_reports enable row level security;
+
+drop policy if exists "ideen lesen" on public.community_ideas;
+create policy "ideen lesen" on public.community_ideas for select using (not hidden or author = auth.uid());
+drop policy if exists "ideen teilen" on public.community_ideas;
+create policy "ideen teilen" on public.community_ideas for insert with check (author = auth.uid() and char_length(idea::text) < 20000);
+drop policy if exists "ideen ändern" on public.community_ideas;
+create policy "ideen ändern" on public.community_ideas for update using (author = auth.uid()) with check (author = auth.uid());
+drop policy if exists "ideen löschen" on public.community_ideas;
+create policy "ideen löschen" on public.community_ideas for delete using (author = auth.uid());
+
+drop policy if exists "bewertungen lesen" on public.community_ratings;
+create policy "bewertungen lesen" on public.community_ratings for select using (true);
+drop policy if exists "bewerten" on public.community_ratings;
+create policy "bewerten" on public.community_ratings for insert with check (user_id = auth.uid());
+drop policy if exists "bewertung ändern" on public.community_ratings;
+create policy "bewertung ändern" on public.community_ratings for update using (user_id = auth.uid()) with check (user_id = auth.uid());
+drop policy if exists "bewertung löschen" on public.community_ratings;
+create policy "bewertung löschen" on public.community_ratings for delete using (user_id = auth.uid());
+
+drop policy if exists "melden" on public.community_reports;
+create policy "melden" on public.community_reports for insert with check (user_id = auth.uid());
+
+-- Übersicht mit Durchschnittsbewertung
+create or replace view public.community_feed with (security_invoker = true) as
+  select i.id, i.idea, i.city, i.lat, i.lon, i.moods, i.cost, i.place, i.uses, i.created_at,
+         (i.author = auth.uid()) as mine,
+         coalesce(round(avg(r.stars)::numeric, 1), 0) as avg_stars,
+         count(r.stars)::int as rating_count
+    from public.community_ideas i
+    left join public.community_ratings r on r.idea_id = i.id
+   where not i.hidden
+   group by i.id;
+
+-- Wie oft wurde eine Idee übernommen?
+create or replace function public.use_idea(i uuid)
+returns void language sql security definer set search_path = public as $$
+  update community_ideas set uses = uses + 1 where id = i and not hidden;
+$$;
+
+-- Nach drei Meldungen automatisch ausblenden (du kannst sie im Table Editor prüfen)
+create or replace function public.hide_reported()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if (select count(*) from community_reports where idea_id = new.idea_id) >= 3 then
+    update community_ideas set hidden = true where id = new.idea_id;
+  end if;
+  return new;
+end $$;
+drop trigger if exists hide_reported on public.community_reports;
+create trigger hide_reported after insert on public.community_reports for each row execute function public.hide_reported();
+
+grant select on public.community_feed to authenticated;
+grant execute on function public.use_idea(uuid) to authenticated;

@@ -10,7 +10,7 @@
 
 const KEY = 'date-ideen.v1';
 const LOCAL_KEY = 'date-ideen.local.v1';
-export const COLLECTIONS = ['dates', 'events', 'todos', 'shopping', 'polls', 'requests', 'ideas', 'busy'];
+export const COLLECTIONS = ['dates', 'events', 'todos', 'shopping', 'polls', 'requests', 'ideas', 'busy', 'expenses'];
 
 const defaultSettings = () => ({
   nameA: '',
@@ -25,6 +25,7 @@ const defaultSettings = () => ({
   vegan: false,
   members: { a: null, b: null }, // Nutzer-IDs im gemeinsamen Modus
   googleClientId: '',
+  googlePlacesKey: '',
 });
 
 const defaults = () => ({
@@ -36,6 +37,7 @@ const defaults = () => ({
   polls: [],
   requests: [],
   ideas: [], // eigene Date-Ideen
+  expenses: [], // gemeinsame Ausgaben (geheime liegen in secrets)
   busy: [], // belegte Zeiten aus Google Kalender, ohne Titel: { id: 'a'|'b', items: [...] }
   secrets: {}, // dateId -> vollständiger Plan einer eigenen Überraschung (privat)
 });

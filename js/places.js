@@ -39,22 +39,24 @@ export const fmtKm = (km) => (km < 1 ? `${Math.round(km * 1000 / 50) * 50} m` : 
 
 // Jede Kategorie: OSM-Filter + Vorlage, um daraus ein Date zu machen.
 export const CATEGORIES = [
-  { id: 'museum', label: 'Museen', emoji: '🖼️', filters: ['["tourism"="museum"]'], place: 'drinnen', times: ['tag'], cost: 25, plan: [['Museum', 120], ['Kaffee & Kuchen', 60, 'Café']] },
-  { id: 'gallery', label: 'Galerien', emoji: '🎨', filters: ['["tourism"="gallery"]'], place: 'drinnen', times: ['tag'], cost: 10, plan: [['Galerie', 75], ['Café', 45, 'Café']] },
-  { id: 'cinema', label: 'Kino', emoji: '🎬', filters: ['["amenity"="cinema"]'], place: 'drinnen', times: ['abend', 'tag'], cost: 30, plan: [['Kino', 135], ['Drink danach', 60, 'Bar']] },
-  { id: 'theatre', label: 'Theater', emoji: '🎭', filters: ['["amenity"="theatre"]'], place: 'drinnen', times: ['abend'], cost: 60, plan: [['Vorstellung', 150], ['Drink danach', 45, 'Bar']] },
-  { id: 'restaurant', label: 'Restaurants', emoji: '🍽️', filters: ['["amenity"="restaurant"]'], place: 'drinnen', times: ['abend', 'tag'], cost: 60, food: true, plan: [['Essen', 105]] },
-  { id: 'cafe', label: 'Cafés', emoji: '☕', filters: ['["amenity"="cafe"]'], place: 'drinnen', times: ['tag'], cost: 20, food: true, plan: [['Café', 75], ['Spaziergang', 45]] },
-  { id: 'bar', label: 'Bars', emoji: '🍸', filters: ['["amenity"~"^(bar|pub)$"]'], place: 'drinnen', times: ['abend'], cost: 35, plan: [['Bar', 120]] },
-  { id: 'bowling', label: 'Bowling', emoji: '🎳', filters: ['["leisure"="bowling_alley"]'], place: 'drinnen', times: ['abend', 'tag'], cost: 35, plan: [['Bowling', 90], ['Snack', 30]] },
-  { id: 'climbing', label: 'Bouldern', emoji: '🧗', filters: ['["sport"~"climbing|bouldering"]["leisure"]'], place: 'drinnen', times: ['tag', 'abend'], cost: 35, plan: [['Bouldern', 120], ['Smoothie', 30, 'Café']] },
-  { id: 'escape', label: 'Escape Rooms', emoji: '🔐', filters: ['["leisure"="escape_game"]'], place: 'drinnen', times: ['abend', 'tag'], cost: 70, plan: [['Escape Room', 75], ['Essen & Auswertung', 75, 'Restaurant']] },
-  { id: 'minigolf', label: 'Minigolf', emoji: '⛳', filters: ['["leisure"="miniature_golf"]'], place: 'draußen', times: ['tag', 'abend'], cost: 20, plan: [['Minigolf', 75], ['Eis', 30, 'Eisdiele']] },
-  { id: 'zoo', label: 'Zoo & Tierpark', emoji: '🦒', filters: ['["tourism"="zoo"]'], place: 'draußen', times: ['tag'], cost: 40, plan: [['Zoo', 180]] },
-  { id: 'park', label: 'Parks & Gärten', emoji: '🌳', filters: ['["leisure"="park"]["name"]', '["leisure"="garden"]["garden:type"="botanical"]'], place: 'draußen', times: ['tag', 'abend'], cost: 0, plan: [['Spaziergang', 90]] },
-  { id: 'viewpoint', label: 'Aussichtspunkte', emoji: '🌅', filters: ['["tourism"="viewpoint"]'], place: 'draußen', times: ['abend', 'tag'], cost: 0, plan: [['Aussicht genießen', 60]] },
-  { id: 'spa', label: 'Therme & Sauna', emoji: '♨️', filters: ['["leisure"~"^(water_park|sauna)$"]', '["amenity"="public_bath"]'], place: 'drinnen', times: ['tag', 'abend'], cost: 70, plan: [['Therme & Sauna', 240]] },
-  { id: 'icerink', label: 'Eislaufen', emoji: '⛸️', filters: ['["leisure"="ice_rink"]'], place: 'drinnen', times: ['tag', 'abend'], cost: 25, plan: [['Eislaufen', 90], ['Punsch', 30]] },
+  { id: 'museum', moods: ['kultur','entspannt'], label: 'Museen', emoji: '🖼️', filters: ['["tourism"="museum"]'], place: 'drinnen', times: ['tag'], cost: 25, plan: [['Museum', 120], ['Kaffee & Kuchen', 60, 'Café']] },
+  { id: 'gallery', moods: ['kultur','kreativ'], label: 'Galerien', emoji: '🎨', filters: ['["tourism"="gallery"]'], place: 'drinnen', times: ['tag'], cost: 10, plan: [['Galerie', 75], ['Café', 45, 'Café']] },
+  { id: 'cinema', moods: ['gemütlich','kultur'], label: 'Kino', emoji: '🎬', filters: ['["amenity"="cinema"]'], place: 'drinnen', times: ['abend', 'tag'], cost: 30, plan: [['Kino', 135], ['Drink danach', 60, 'Bar']] },
+  { id: 'theatre', moods: ['kultur','romantisch'], label: 'Theater', emoji: '🎭', filters: ['["amenity"="theatre"]'], place: 'drinnen', times: ['abend'], cost: 60, plan: [['Vorstellung', 150], ['Drink danach', 45, 'Bar']] },
+  { id: 'restaurant', moods: ['kulinarisch','romantisch'], label: 'Restaurants', emoji: '🍽️', filters: ['["amenity"="restaurant"]'], place: 'drinnen', times: ['abend', 'tag'], cost: 60, food: true, plan: [['Essen', 105]] },
+  { id: 'cafe', moods: ['gemütlich','kulinarisch'], label: 'Cafés', emoji: '☕', filters: ['["amenity"="cafe"]'], place: 'drinnen', times: ['tag'], cost: 20, food: true, plan: [['Café', 75], ['Spaziergang', 45]] },
+  { id: 'bar', moods: ['romantisch','lustig'], label: 'Bars', emoji: '🍸', filters: ['["amenity"~"^(bar|pub)$"]'], place: 'drinnen', times: ['abend'], cost: 35, plan: [['Bar', 120]] },
+  { id: 'icecream', moods: ['lustig','entspannt'], label: 'Eis & Dessert', emoji: '🍨', filters: ['["amenity"="ice_cream"]', '["shop"="pastry"]["name"]'], place: 'drinnen', times: ['tag', 'abend'], cost: 12, food: true, plan: [['Eis & Dessert', 45], ['Spaziergang', 45]] },
+  { id: 'wine', moods: ['romantisch','kulinarisch'], label: 'Weinbars', emoji: '🍷', filters: ['["amenity"="bar"]["drink:wine"="yes"]', '["amenity"="bar"]["bar"="wine"]', '["shop"="wine"]["amenity"]'], place: 'drinnen', times: ['abend'], cost: 45, food: true, plan: [['Weinbar', 120]] },
+  { id: 'bowling', moods: ['lustig','aktiv'], label: 'Bowling', emoji: '🎳', filters: ['["leisure"="bowling_alley"]'], place: 'drinnen', times: ['abend', 'tag'], cost: 35, plan: [['Bowling', 90], ['Snack', 30]] },
+  { id: 'climbing', moods: ['aktiv','abenteuerlich'], label: 'Bouldern', emoji: '🧗', filters: ['["sport"~"climbing|bouldering"]["leisure"]'], place: 'drinnen', times: ['tag', 'abend'], cost: 35, plan: [['Bouldern', 120], ['Smoothie', 30, 'Café']] },
+  { id: 'escape', moods: ['abenteuerlich','lustig'], label: 'Escape Rooms', emoji: '🔐', filters: ['["leisure"="escape_game"]'], place: 'drinnen', times: ['abend', 'tag'], cost: 70, plan: [['Escape Room', 75], ['Essen & Auswertung', 75, 'Restaurant']] },
+  { id: 'minigolf', moods: ['lustig'], label: 'Minigolf', emoji: '⛳', filters: ['["leisure"="miniature_golf"]'], place: 'draußen', times: ['tag', 'abend'], cost: 20, plan: [['Minigolf', 75], ['Eis', 30, 'Eisdiele']] },
+  { id: 'zoo', moods: ['entspannt','lustig'], label: 'Zoo & Tierpark', emoji: '🦒', filters: ['["tourism"="zoo"]'], place: 'draußen', times: ['tag'], cost: 40, plan: [['Zoo', 180]] },
+  { id: 'park', moods: ['entspannt','romantisch'], label: 'Parks & Gärten', emoji: '🌳', filters: ['["leisure"="park"]["name"]', '["leisure"="garden"]["garden:type"="botanical"]'], place: 'draußen', times: ['tag', 'abend'], cost: 0, plan: [['Spaziergang', 90]] },
+  { id: 'viewpoint', moods: ['romantisch','abenteuerlich'], label: 'Aussichtspunkte', emoji: '🌅', filters: ['["tourism"="viewpoint"]'], place: 'draußen', times: ['abend', 'tag'], cost: 0, plan: [['Aussicht genießen', 60]] },
+  { id: 'spa', moods: ['entspannt','romantisch'], label: 'Therme & Sauna', emoji: '♨️', filters: ['["leisure"~"^(water_park|sauna)$"]', '["amenity"="public_bath"]'], place: 'drinnen', times: ['tag', 'abend'], cost: 70, plan: [['Therme & Sauna', 240]] },
+  { id: 'icerink', moods: ['aktiv','romantisch'], label: 'Eislaufen', emoji: '⛸️', filters: ['["leisure"="ice_rink"]'], place: 'drinnen', times: ['tag', 'abend'], cost: 25, plan: [['Eislaufen', 90], ['Punsch', 30]] },
 ];
 export const categoryById = (id) => CATEGORIES.find((c) => c.id === id);
 
@@ -80,6 +82,7 @@ export async function searchNearby(categoryId, center, radius) {
     .filter((p) => p && !seen.has(p.name + p.street) && seen.add(p.name + p.street))
     .sort((a, b) => a.km - b.km)
     .slice(0, 30);
+  await addWikidataImages(places);
   memo.set(key, places);
   return places;
 }
@@ -108,6 +111,10 @@ function toPlace(el, cat, center) {
     vegan: /^(yes|only)$/.test(t['diet:vegan'] ?? ''),
     vegetarian: /^(yes|only)$/.test(t['diet:vegetarian'] ?? ''),
     wheelchair: t.wheelchair === 'yes',
+    reservation: t.reservation ?? '',
+    reservationUrl: t['reservation:url'] || t['contact:opentable'] || '',
+    image: imageFromTags(t),
+    wikidata: t.wikidata ?? '',
   };
 }
 
@@ -219,3 +226,66 @@ export function hoursOn(oh, date) {
 
 export const routeLink = (p) => `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lon}`;
 export const mapLink = (p) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${p.name} ${p.street} ${p.city}`.trim())}`;
+
+/* ------------------------------------------------------------ Bilder */
+
+const commonsFile = (name, width = 640) =>
+  `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(name.replace(/^File:/i, '').replace(/ /g, '_'))}?width=${width}`;
+
+function imageFromTags(t) {
+  if (t.image && /^https:\/\//.test(t.image)) {
+    if (/commons\.wikimedia\.org\/wiki\/File:/.test(t.image)) return commonsFile(decodeURIComponent(t.image.split('File:')[1]));
+    if (/\.(jpe?g|png|webp)(\?|$)/i.test(t.image)) return t.image;
+  }
+  if (t.wikimedia_commons && /^File:/i.test(t.wikimedia_commons)) return commonsFile(t.wikimedia_commons);
+  return '';
+}
+
+/** Bilder aus Wikidata (Eigenschaft P18) für Orte mit Wikidata-Verweis nachladen. */
+async function addWikidataImages(places) {
+  const need = places.filter((p) => !p.image && /^Q\d+$/.test(p.wikidata));
+  if (!need.length) return;
+  try {
+    const ids = [...new Set(need.map((p) => p.wikidata))].slice(0, 50).join('|');
+    const res = await fetch(`https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${ids}&props=claims&format=json&origin=*`);
+    if (!res.ok) return;
+    const json = await res.json();
+    for (const p of need) {
+      const file = json.entities?.[p.wikidata]?.claims?.P18?.[0]?.mainsnak?.datavalue?.value;
+      if (file) p.image = commonsFile(file);
+    }
+  } catch {
+    /* Bilder sind optional */
+  }
+}
+
+/* ------------------------------------------------------------ Reservieren */
+
+/** Reservierungs-Links: eigene Webseite, OpenTable-Suche, Google. */
+export function reservationLinks(p, { date, time, city = '' } = {}) {
+  const links = [];
+  if (p.reservationUrl) links.push({ label: 'Tisch reservieren', href: p.reservationUrl, primary: true });
+  else if (p.website) links.push({ label: 'Webseite', href: p.website, primary: !p.reservationUrl });
+  const dt = date && time ? `&dateTime=${encodeURIComponent(`${date}T${time}`)}` : '';
+  links.push({ label: 'Bei OpenTable suchen', href: `https://www.opentable.de/s?covers=2${dt}&term=${encodeURIComponent(`${p.name} ${p.city || city}`.trim())}` });
+  links.push({ label: 'Google-Bewertungen', href: mapLink(p) });
+  return links;
+}
+
+/* ------------------------------------------------------------ Anfahrt */
+
+/** Geschätzte Fahrzeiten aus der Entfernung (Luftlinie × Umweg-Faktor). Grobe Richtwerte. */
+export function travelEstimates(km) {
+  const road = km * 1.3;
+  const out = [];
+  if (road <= 6) out.push({ mode: 'walking', label: 'Zu Fuß', icon: 'walk', min: Math.round((road / 4.8) * 60) });
+  if (road <= 25) out.push({ mode: 'bicycling', label: 'Rad', icon: 'bike', min: Math.round((road / 15) * 60) });
+  out.push({ mode: 'transit', label: 'Bahn & Bus', icon: 'train', min: Math.round((road / 22) * 60 + 8) });
+  out.push({ mode: 'driving', label: 'Auto', icon: 'car', min: Math.round((road / (road > 15 ? 55 : 24)) * 60 + 4) });
+  return out;
+}
+
+export const fmtMin = (m) => (m < 60 ? `${Math.max(1, m)} Min.` : `${Math.floor(m / 60)} Std. ${m % 60 ? `${m % 60} Min.` : ''}`.trim());
+
+export const directionsLink = (p, mode) => `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lon}&travelmode=${mode}`;
+export const appleMapsLink = (p, mode = 'd') => `https://maps.apple.com/?daddr=${p.lat},${p.lon}&dirflg=${mode}&q=${encodeURIComponent(p.name)}`;

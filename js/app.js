@@ -1,8 +1,10 @@
 import * as store from './store.js';
 import { isHiddenFromMe, myRole, nameOf, other } from './store.js';
 import { geocode, getWeather, manualWeather } from './weather.js';
-import { allIdeas, buildPlan, defaultStart, ideaDuration, loadIdeas, REACH, rhythmStatus, setExtraIdeas, suggest, toICS } from './engine.js';
-import { CATEGORIES, categoryById, fmtKm, formatHours, hoursOn, isOpenAt, locate, mapLink, placeName, routeLink, searchNearby } from './places.js';
+import { allIdeas, buildPlan, defaultStart, ideaDuration, loadIdeas, MOODS, moodLabel, REACH, recommend, rhythmStatus, setExtraIdeas, suggest, toICS } from './engine.js';
+import { appleMapsLink, CATEGORIES, categoryById, directionsLink, distanceKm, fmtKm, fmtMin, formatHours, hoursOn, isOpenAt, locate, mapLink, placeName, reservationLinks, searchNearby, travelEstimates } from './places.js';
+import { googleDetails } from './gplaces.js';
+import { SUPABASE } from './config.js';
 import * as gcal from './gcal.js';
 import { connectSupabase, getConfig, inviteLink, readInvite, saveConfig } from './remote.js';
 import { nearSpecial, specialsOn, upcomingSpecials } from './special.js';
@@ -25,7 +27,7 @@ const drafts = {}; // ungespeicherte Eingaben auf dem Plan-Bildschirm, pro Idee
 
 /* ================================================================ Navigation */
 
-const TAB_OF = { start: 'start', suggest: 'start', plan: 'start', poll: 'start', entdecken: 'entdecken', idee: 'entdecken', kalender: 'kalender', listen: 'listen', dates: 'dates', date: 'dates', mehr: 'mehr' };
+const TAB_OF = { start: 'start', suggest: 'start', plan: 'start', poll: 'start', entdecken: 'entdecken', idee: 'entdecken', ort: 'entdecken', teilen: 'entdecken', kosten: 'dates', kalender: 'kalender', listen: 'listen', dates: 'dates', date: 'dates', mehr: 'mehr' };
 const RENDER = {};
 let current = { name: 'start', param: null };
 
@@ -35,6 +37,8 @@ function go(name, param = null) {
 }
 
 function render(scrollTop = false) {
+  formDirty = false;
+  pendingRender = false;
   setExtraIdeas(S().ideas);
   $$('.tabbar button').forEach((b) => b.toggleAttribute('aria-current', b.dataset.tab === TAB_OF[current.name]));
   (RENDER[current.name] ?? RENDER.start)(current.param);
@@ -45,6 +49,10 @@ $$('.tabbar button').forEach((b) => b.addEventListener('click', () => go(b.datas
 
 // Änderungen vom Partner live übernehmen, aber nicht mitten im Tippen neu zeichnen.
 let pendingRender = false;
+let formDirty = false; // ungespeicherte Eingaben im aktuellen Formular
+root.addEventListener('input', (e) => e.target.closest('form') && (formDirty = true));
+root.addEventListener('change', (e) => e.target.closest('form') && (formDirty = true));
+root.addEventListener('click', (e) => e.target.closest('form .chip') && (formDirty = true));
 const isTyping = () => {
   const a = document.activeElement;
   if (!a || !root.contains(a)) return false;
@@ -55,13 +63,13 @@ store.onChange((source) => {
   if (source === 'error' && store.syncInfo().writeError) toast(store.syncInfo().writeError);
   if (source === 'local') return;
   autoReveal();
-  if (isTyping()) pendingRender = true;
+  if (isTyping() || formDirty) pendingRender = true;
   else render();
 });
 root.addEventListener('focusout', () => {
   if (!pendingRender) return;
   setTimeout(() => {
-    if (!isTyping() && pendingRender) {
+    if (!isTyping() && !formDirty && pendingRender) {
       pendingRender = false;
       render();
     }
@@ -378,8 +386,9 @@ async function syncGcal() {
 async function connectRemote(cfg, announce = false) {
   remoteError = null;
   try {
-    const { db, uid } = await connectSupabase(cfg);
+    const { db, uid, community: api } = await connectSupabase(cfg);
     store.attach(db, uid, { backend: 'supabase' });
+    community.api = api;
     if (announce) toast('Verbunden! Wähle jetzt, wer du bist.');
   } catch (e) {
     remoteError = e.message;
@@ -482,7 +491,8 @@ function bindGoogleSettings() {
 
 /* ================================================================ Entdecken */
 
-const discover = { cat: 'museum', radius: 5000, results: null, error: null, loading: false, center: null };
+const discover = { tab: 'orte', cat: 'restaurant', radius: 5000, results: null, error: null, loading: false, cuisine: '', mood: '', sort: 'beste', community: null, cError: null, cLoading: false, myRatings: {} };
+const placeIndex = new Map(); // id -> Ort (für die Detailansicht)
 
 function discoverCenter() {
   const g = L().geo;
@@ -505,36 +515,26 @@ function placeLine(p, dateIso, time) {
     ${open === false ? `<p class="warn-text small">${icon('clock')} Um ${time} laut Öffnungszeiten geschlossen</p>` : ''}`;
 }
 
+const thumb = (src, emoji, cls = '') =>
+  src ? `<span class="thumb ${cls}"><img src="${esc(src)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentNode.classList.add('noimg');this.remove()"><span class="thumb-emoji" aria-hidden="true">${emoji}</span></span>`
+    : `<span class="thumb noimg ${cls}"><span class="thumb-emoji" aria-hidden="true">${emoji}</span></span>`;
+
 function placeCard(p) {
   const cat = categoryById(p.category);
   const now = new Date();
   const open = isOpenAt(p.hours, now);
   const todayHours = hoursOn(p.hours, now);
   return `
-    <article class="place">
-      <div class="place-top">
-        <span class="idea-emoji" aria-hidden="true">${cat.emoji}</span>
-        <div class="grow">
-          <h3>${esc(p.name)}</h3>
-          <p class="muted small">${fmtKm(p.km)}${p.street ? ` · ${esc(p.street)}` : ''}${p.cuisine ? ` · ${esc(p.cuisine)}` : ''}</p>
-        </div>
-      </div>
-      <dl class="place-facts">
-        <div><dt>${icon('clock')}</dt><dd>
-          ${open === true ? '<span class="tag ok">Jetzt geöffnet</span> ' : open === false ? '<span class="tag">Jetzt geschlossen</span> ' : ''}
-          ${todayHours ? `Heute ${esc(todayHours)}` : p.hours ? esc(formatHours(p.hours)) : '<span class="muted">Öffnungszeiten unbekannt</span>'}
-          ${todayHours && p.hours ? `<details class="hours"><summary>Alle Zeiten</summary>${esc(formatHours(p.hours))}</details>` : ''}
-        </dd></div>
-        <div><dt>${icon('euro')}</dt><dd>${p.price ? esc(p.price.text) : '<span class="muted">Preis auf der Webseite</span>'}</dd></div>
-        ${p.vegan || p.vegetarian ? `<div><dt>${icon('sparkle')}</dt><dd>${p.vegan ? 'Vegane Gerichte' : 'Vegetarische Gerichte'}</dd></div>` : ''}
-      </dl>
-      <div class="links">
-        ${p.website ? `<a class="link" href="${esc(p.website)}" target="_blank" rel="noopener">Webseite${icon('external')}</a>` : `<a class="link" href="${esc(mapLink(p))}" target="_blank" rel="noopener">Auf der Karte${icon('external')}</a>`}
-        <a class="link" href="${esc(routeLink(p))}" target="_blank" rel="noopener">Route${icon('external')}</a>
-      </div>
-      <div class="row gap">
-        <button class="btn primary grow" data-place-plan="${p.id}">${icon('sparkle')}Als Date planen</button>
-        <button class="btn" data-place-save="${p.id}" aria-label="Als eigene Idee merken">${icon('bookmark')}Merken</button>
+    <article class="place" data-open-place="${p.id}" tabindex="0" role="button" aria-label="${esc(p.name)} öffnen">
+      ${thumb(p.image, cat.emoji, 'wide')}
+      <div class="place-body">
+        <div class="row between top"><h3>${esc(p.name)}</h3><span class="muted small nowrap">${fmtKm(p.km)}</span></div>
+        <p class="muted small">${[p.cuisine, p.street].filter(Boolean).map(esc).join(' · ') || cat.label}</p>
+        <p class="small">
+          ${open === true ? '<span class="tag ok">Geöffnet</span>' : open === false ? '<span class="tag">Geschlossen</span>' : ''}
+          ${todayHours ? `Heute ${esc(todayHours)}` : p.hours ? '' : '<span class="muted">Öffnungszeiten unbekannt</span>'}
+          ${p.price ? ` · ${esc(p.price.text)}` : ''}${p.vegan ? ' · <span class="tag ok">vegan</span>' : ''}
+        </p>
       </div>
     </article>`;
 }
@@ -543,17 +543,19 @@ function placeCard(p) {
 function ideaFromPlace(p) {
   const cat = categoryById(p.category);
   const [first, ...rest] = cat.plan;
-  const placeRef = { name: p.name, street: p.street, lat: p.lat, lon: p.lon, website: p.website, hours: p.hours, price: p.price };
+  const placeRef = { name: p.name, street: p.street, city: p.city, lat: p.lat, lon: p.lon, website: p.website, hours: p.hours, price: p.price, image: p.image, category: p.category };
   const cost = p.price?.amount != null ? Math.round(p.price.amount * 2 + (rest.length ? 15 : 0)) : cat.cost;
   return {
     id: `ort-${p.id}`,
     title: p.name,
     emoji: cat.emoji,
-    teaser: `${cat.label.replace(/e?n$/, '')} · ${fmtKm(p.km)} entfernt${p.street ? ` · ${p.street}` : ''}`,
+    teaser: `${cat.label} · ${fmtKm(p.km)} entfernt${p.street ? ` · ${p.street}` : ''}`,
     place: cat.place,
+    moods: cat.moods,
     cost,
     reach: p.km > 15 ? 2 : 1,
     times: cat.times,
+    image: p.image,
     steps: [
       { t: `${first[0]}: ${p.name}`, min: first[1], place: placeRef, food: !!cat.food },
       ...rest.map(([t, min, q]) => ({ t, min, q, food: !!q && /Café|Restaurant|Eisdiele/.test(q) })),
@@ -563,13 +565,45 @@ function ideaFromPlace(p) {
   };
 }
 
+async function planIdeaNow(idea, el) {
+  if (!myRole()) return toast('Wähle zuerst auf „Planen“, wer du bist');
+  tempIdeas.set(idea.id, idea);
+  const ls = L().lastSearch;
+  await withBusy(el, async () => {
+    await prepareSession({ date: resolveDate(ls), daytime: idea.times?.includes(ls.daytime) ? ls.daytime : idea.times?.[0] ?? 'abend', budget: Math.max(ls.budget, idea.cost ?? 0), reach: 2 }, null);
+    session.backTo = [current.name, current.param ?? '', current.name === 'ort' ? 'Ort' : 'Entdecken'];
+    go('plan', idea.id);
+  });
+}
+
+function moodChips(group, value) {
+  return chips(group, [['', 'Alle'], ...MOODS.map(([v, l, e]) => [v, `${e} ${l}`])], value);
+}
+
 RENDER.entdecken = () => {
-  const center = discoverCenter();
   const d = discover;
-  const custom = S().ideas;
+  const tabs = `
+    <nav class="seg-tabs three" role="tablist">
+      <button role="tab" data-dtab="orte" aria-selected="${d.tab === 'orte'}">${icon('pin')}Orte</button>
+      <button role="tab" data-dtab="community" aria-selected="${d.tab === 'community'}">${icon('users')}Community</button>
+      <button role="tab" data-dtab="eigene" aria-selected="${d.tab === 'eigene'}">${icon('bookmark')}Eure Ideen</button>
+    </nav>`;
+  const head = topbar({ title: 'Entdecken', sub: d.tab === 'orte' ? 'Restaurants, Bars, Museen & mehr in eurer Nähe.' : d.tab === 'community' ? 'Dates, die andere Paare geplant und bewertet haben.' : 'Eure gespeicherten und eigenen Ideen.' });
+
+  if (d.tab === 'community') return renderCommunity(head + tabs);
+  if (d.tab === 'eigene') return renderOwnIdeas(head + tabs);
+
+  const center = discoverCenter();
+  const cats = CATEGORIES.filter((c) => !d.mood || c.moods.includes(d.mood));
+  if (!cats.some((c) => c.id === d.cat)) d.cat = cats[0]?.id ?? 'restaurant';
+  const cat = categoryById(d.cat);
+  let results = d.results ?? [];
+  const cuisines = cat.id === 'restaurant' ? [...new Set(results.flatMap((p) => p.cuisine ? p.cuisine.split(', ') : []))].slice(0, 10) : [];
+  if (d.cuisine === 'vegan') results = results.filter((p) => p.vegan || p.vegetarian);
+  else if (d.cuisine) results = results.filter((p) => p.cuisine.includes(d.cuisine));
 
   root.innerHTML = `
-    ${topbar({ title: 'Entdecken', sub: 'Orte für Dates in eurer Nähe – mit Öffnungszeiten und, wo bekannt, Eintritt.' })}
+    ${head}${tabs}
     <section class="panel locbar">
       <div class="row gap">
         ${icon('pin')}
@@ -578,25 +612,16 @@ RENDER.entdecken = () => {
       </div>
       ${chips('radius', [[2000, '2 km'], [5000, '5 km'], [15000, '15 km'], [40000, '40 km']], d.radius)}
     </section>
-    <div class="cat-scroll">${chips('cat', CATEGORIES.map((c) => [c.id, `${c.emoji} ${c.label}`]), d.cat)}</div>
+    <div class="cat-scroll">${moodChips('mood', d.mood)}</div>
+    <div class="cat-scroll">${chips('cat', cats.map((c) => [c.id, `${c.emoji} ${c.label}`]), d.cat, 'cats')}</div>
+    ${cuisines.length || cat.food ? `<div class="cat-scroll">${chips('cuisine', [['', 'Alle Küchen'], ['vegan', '🌱 Vegan/Vegetarisch'], ...cuisines.map((c) => [c, c])], d.cuisine, 'small-chips')}</div>` : ''}
     <section class="stack" id="results">
       ${d.loading ? '<div class="loading"><span class="spinner"></span>Suche Orte …</div>'
         : d.error ? `<div class="empty"><p>${esc(d.error)}</p></div>`
           : !center ? '<div class="empty"><p>Tippe auf „Standort“, damit die App Orte in deiner Nähe findet.</p></div>'
-            : d.results ? (d.results.length ? d.results.map(placeCard).join('') : '<div class="empty"><p>Nichts im Umkreis gefunden. Vergrößere den Umkreis.</p></div>')
+            : d.results ? (results.length ? `<div class="places">${results.map(placeCard).join('')}</div>` : '<div class="empty"><p>Nichts gefunden. Vergrößere den Umkreis oder ändere den Filter.</p></div>')
               : ''}
-      ${d.results?.length ? '<p class="muted small center">Daten von OpenStreetMap. Preise und Zeiten vor dem Besuch auf der Webseite prüfen.</p>' : ''}
-    </section>
-
-    <section class="stack">
-      <div class="row between"><h2 class="section-title">Eure eigenen Ideen</h2><button class="btn sm soft" data-go="idee">${icon('plus')}Neue Idee</button></div>
-      ${custom.length ? `<div class="list-card">${custom.map((i) => `
-        <div class="date-item static">
-          <span class="idea-emoji" aria-hidden="true">${esc(i.emoji)}</span>
-          <span class="grow"><strong>${esc(i.title)}</strong><small class="muted">${i.place === 'drinnen' ? 'Drinnen' : 'Draußen'} · ${fmtEuro(i.cost)} · ${fmtDuration(ideaDuration(i))}</small></span>
-          <button class="icon-btn small" data-plan-custom="${i.id}" aria-label="Planen">${icon('sparkle')}</button>
-          <button class="icon-btn small" data-del-idea="${i.id}" aria-label="Löschen">${icon('trash')}</button>
-        </div>`).join('')}</div>` : '<p class="muted">Eigene Ideen erscheinen auch bei den Vorschlägen, wenn sie zu Budget und Wetter passen.</p>'}
+      ${d.results?.length ? '<p class="muted small center">Orte und Bilder: OpenStreetMap & Wikimedia. Tippe auf einen Ort für Anfahrt, Reservierung und Bewertungen.</p>' : ''}
     </section>`;
 
   const load = async () => {
@@ -604,9 +629,11 @@ RENDER.entdecken = () => {
     if (!c) return;
     d.loading = true;
     d.error = null;
+    d.cuisine = '';
     render();
     try {
       d.results = await searchNearby(d.cat, c, d.radius);
+      d.results.forEach((p) => placeIndex.set(p.id, p));
     } catch (e) {
       d.results = null;
       d.error = store.inArtifact() ? 'Die Ortssuche funktioniert nur in der Webseiten-Version der App.' : e.message === 'Failed to fetch' ? 'Keine Verbindung zur Ortssuche.' : e.message;
@@ -615,14 +642,27 @@ RENDER.entdecken = () => {
     if (current.name === 'entdecken') render();
   };
 
-  on('[data-go]', 'click', (_, el) => go(el.dataset.go));
+  bindDiscoverTabs();
   bindChips(root, 'radius', (v) => {
     d.radius = Number(v);
     load();
   });
+  bindChips(root, 'mood', (v) => {
+    d.mood = v;
+    const ok = CATEGORIES.filter((c) => !v || c.moods.includes(v));
+    if (!ok.some((c) => c.id === d.cat)) {
+      d.cat = ok[0]?.id ?? d.cat;
+      return load();
+    }
+    render();
+  });
   bindChips(root, 'cat', (v) => {
     d.cat = v;
     load();
+  });
+  bindChips(root, 'cuisine', (v) => {
+    d.cuisine = v;
+    render();
   });
   $('#d-gps').addEventListener('click', async (e) => {
     await withBusy(e.currentTarget, async () => {
@@ -635,43 +675,345 @@ RENDER.entdecken = () => {
       }
     });
   });
-  const findPlace = (id) => d.results?.find((p) => p.id === id);
-  on('[data-place-plan]', 'click', async (_, el) => {
-    const p = findPlace(el.dataset.placePlan);
-    if (!p || !myRole()) return toast(myRole() ? 'Ort nicht gefunden' : 'Wähle zuerst auf „Planen“, wer du bist');
-    const idea = ideaFromPlace(p);
-    tempIdeas.set(idea.id, idea);
-    const ls = L().lastSearch;
-    await withBusy(el, async () => {
-      await prepareSession({ date: resolveDate(ls), daytime: idea.times.includes(ls.daytime) ? ls.daytime : idea.times[0], budget: Math.max(ls.budget, idea.cost), reach: 2 }, null);
-      session.backTo = ['entdecken', '', 'Entdecken'];
-      go('plan', idea.id);
-    });
-  });
-  on('[data-place-save]', 'click', (_, el) => {
-    const p = findPlace(el.dataset.placeSave);
-    if (!p) return;
-    const idea = { ...ideaFromPlace(p), id: `eigen-${uid()}`, createdBy: myRole(), createdAt: Date.now() };
-    store.update((s) => s.ideas.push(idea));
-    toast(`„${p.name}“ bei euren Ideen gespeichert`);
+  on('[data-open-place]', 'click', (_, el) => go('ort', el.dataset.openPlace));
+  on('[data-open-place]', 'keydown', (e, el) => e.key === 'Enter' && go('ort', el.dataset.openPlace));
+  if (center && !d.results && !d.loading && !d.error) load();
+};
+
+function bindDiscoverTabs() {
+  on('[data-dtab]', 'click', (_, el) => {
+    discover.tab = el.dataset.dtab;
     render();
   });
+}
+
+/* --- Ort im Detail: Bilder, Bewertungen, Reservierung, Anfahrt -------------- */
+
+const gInfo = new Map(); // Google-Details je Ort
+
+RENDER.ort = (id) => {
+  const p = placeIndex.get(id);
+  if (!p) return go('entdecken');
+  const cat = categoryById(p.category);
+  const g = gInfo.get(id);
+  const ls = L().lastSearch;
+  const date = resolveDate(ls);
+  const week = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map((label, i) => {
+    const day = addDays(today(), ((i + 1) - today().getDay() + 7) % 7);
+    return [label, hoursOn(p.hours, day)];
+  });
+  const hasWeek = week.some(([, h]) => h);
+  const img = g?.photo || p.image;
+  const est = travelEstimates(p.km);
+  const apple = /iPhone|iPad|Mac/.test(navigator.userAgent);
+
+  root.innerHTML = `
+    ${topbar({ title: '', back: ['entdecken', '', 'Entdecken'] })}
+    <div class="hero-img ${img ? '' : 'noimg'}">
+      ${img ? `<img src="${esc(img)}" alt="${esc(p.name)}" referrerpolicy="no-referrer" onerror="this.parentNode.classList.add('noimg');this.remove()">` : ''}
+      <span class="thumb-emoji" aria-hidden="true">${cat.emoji}</span>
+    </div>
+    <header class="topbar">
+      <p class="eyebrow">${esc(cat.label)} · ${fmtKm(p.km)}</p>
+      <h1>${esc(p.name)}</h1>
+      <p class="sub">${[p.cuisine, p.street, p.city].filter(Boolean).map(esc).join(' · ')}</p>
+    </header>
+
+    <section class="panel rating-box">
+      ${g?.rating ? `<div class="g-rating"><strong>${String(g.rating).replace('.', ',')}</strong>${stars(g.rating)}<span class="muted small">${g.count} Google-Bewertungen${g.price ? ` · ${g.price}` : ''}</span></div>` : `<p class="muted small">${S().settings.googlePlacesKey ? 'Keine Google-Bewertung gefunden.' : 'Bewertungen und Fotos von Google siehst du direkt bei Google Maps.'}</p>`}
+      <a class="link" href="${esc(g?.mapsUri || mapLink(p))}" target="_blank" rel="noopener">Google-Bewertungen ansehen${icon('external')}</a>
+    </section>
+
+    <section class="panel stack">
+      <div class="panel-head">${icon('clock')}<h2>Öffnungszeiten</h2></div>
+      ${hasWeek ? `<table class="hours-table">${week.map(([l, h]) => `<tr${l === ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'][today().getDay()] ? ' class="today"' : ''}><th>${l}</th><td>${esc(h ?? '–')}</td></tr>`).join('')}</table>`
+        : p.hours ? `<p>${esc(formatHours(p.hours))}</p>` : '<p class="muted">Nicht bekannt – bitte auf der Webseite prüfen.</p>'}
+      ${p.price ? `<p>${icon('euro')} ${esc(p.price.text)}</p>` : ''}
+      ${p.phone ? `<p>Telefon: <a href="tel:${esc(p.phone.replace(/\s/g, ''))}">${esc(p.phone)}</a></p>` : ''}
+    </section>
+
+    ${cat.food || p.reservation ? `
+    <section class="panel stack">
+      <div class="panel-head">${icon('calendar')}<h2>Reservieren</h2></div>
+      ${p.reservation === 'required' ? '<p class="warn-text small">Reservierung erforderlich.</p>' : ''}
+      <div class="link-grid">${reservationLinks(p, { date, time: ls.daytime === 'tag' ? '12:30' : '19:00', city: currentPlaceName() }).map((l) => `<a class="btn ${l.primary ? 'primary' : ''}" href="${esc(l.href)}" target="_blank" rel="noopener">${esc(l.label)}${icon('external')}</a>`).join('')}</div>
+      <p class="muted small">OpenTable zeigt das Restaurant, wenn es dort gelistet ist. Sonst über die Webseite oder telefonisch reservieren.</p>
+    </section>` : p.website ? `<a class="btn" href="${esc(p.website)}" target="_blank" rel="noopener">Webseite${icon('external')}</a>` : ''}
+
+    <section class="panel stack">
+      <div class="panel-head">${icon('route')}<h2>So kommt ihr hin</h2></div>
+      <div class="travel">
+        ${est.map((t) => `<a class="travel-opt" href="${esc(directionsLink(p, t.mode))}" target="_blank" rel="noopener">${icon(t.icon)}<strong>ca. ${fmtMin(t.min)}</strong><span>${t.label}</span></a>`).join('')}
+      </div>
+      <p class="muted small">Geschätzt aus der Entfernung. Tippe für die genaue Route in Google Maps.</p>
+      ${apple ? `<a class="btn" href="${esc(appleMapsLink(p, 'd'))}" target="_blank" rel="noopener">In Apple Karten öffnen${icon('external')}</a>` : ''}
+    </section>
+
+    <div class="actions">
+      <button class="btn primary big" id="o-plan">${icon('sparkle')}Als Date planen</button>
+      <button class="btn" id="o-save">${icon('bookmark')}Bei euren Ideen merken</button>
+    </div>`;
+
+  bindBack();
+  $('#o-plan').addEventListener('click', (e) => planIdeaNow(ideaFromPlace(p), e.currentTarget));
+  $('#o-save').addEventListener('click', () => {
+    store.update((s) => s.ideas.push({ ...ideaFromPlace(p), id: `eigen-${uid()}`, createdBy: myRole(), createdAt: Date.now() }));
+    toast(`„${p.name}“ gemerkt`);
+  });
+  const key = S().settings.googlePlacesKey;
+  if (key && !gInfo.has(id)) {
+    googleDetails(p, key)
+      .then((info) => {
+        gInfo.set(id, info);
+        if (current.name === 'ort' && current.param === id) render();
+      })
+      .catch((e) => {
+        gInfo.set(id, null);
+        toast(e.message);
+      });
+  }
+};
+
+function stars(v) {
+  return `<span class="stars-ro" aria-label="${v} von 5">${[1, 2, 3, 4, 5].map((n) => `<i class="${v >= n - 0.25 ? 'on' : v >= n - 0.75 ? 'half' : ''}"></i>`).join('')}</span>`;
+}
+
+/* --- Community ---------------------------------------------------------------- */
+
+const community = { api: null };
+
+async function loadCommunity() {
+  const d = discover;
+  if (!community.api) return;
+  d.cLoading = true;
+  d.cError = null;
+  try {
+    const [list, mine] = await Promise.all([community.api.list(), community.api.myRatings()]);
+    d.community = list;
+    d.myRatings = mine;
+  } catch (e) {
+    d.cError = e.message;
+  }
+  d.cLoading = false;
+  if (current.name === 'entdecken' && discover.tab === 'community') render();
+}
+
+function communityIdea(row) {
+  return { ...row.idea, id: `com-${row.id}`, communityId: row.id, custom: true, rating: { avg: Number(row.avg_stars), count: row.rating_count } };
+}
+
+function renderCommunity(head) {
+  const d = discover;
+  const center = discoverCenter();
+  let list = (d.community ?? []).map((r) => ({ ...r, km: center && r.lat != null ? distanceKm(center, { lat: r.lat, lon: r.lon }) : null }));
+  if (d.mood) list = list.filter((r) => (r.moods ?? []).includes(d.mood));
+  list.sort((a, b) => d.sort === 'neu' ? b.created_at.localeCompare(a.created_at)
+    : d.sort === 'nah' ? (a.km ?? 1e9) - (b.km ?? 1e9)
+      : (b.avg_stars - a.avg_stars) || (b.rating_count - a.rating_count) || (b.uses - a.uses));
+
+  const card = (r) => {
+    const i = r.idea;
+    const img = i.image || i.steps?.find((s) => s.place?.image)?.place.image;
+    const mine = d.myRatings[r.id];
+    return `
+      <article class="community-card">
+        ${thumb(img, i.emoji ?? '💡', 'wide')}
+        <div class="place-body">
+          <div class="row between top"><h3>${esc(i.title)}</h3>${r.rating_count ? `<span class="score">${icon('star')}${String(r.avg_stars).replace('.', ',')}<small class="muted"> (${r.rating_count})</small></span>` : '<small class="muted">neu</small>'}</div>
+          <p class="muted small">${[r.city, r.km != null ? fmtKm(r.km) : '', fmtEuro(i.cost ?? 0), `${r.uses}× übernommen`].filter(Boolean).map(esc).join(' · ')}</p>
+          <p class="teaser">${esc(i.teaser ?? '')}</p>
+          <p class="flow">${(i.steps ?? []).map((s) => esc(s.t)).join('<span aria-hidden="true"> → </span>')}</p>
+          ${(r.moods ?? []).length ? `<div class="mood-tags">${r.moods.map((m) => `<span class="tag">${esc(moodLabel(m))}</span>`).join('')}</div>` : ''}
+          <div class="row gap wrap">
+            <button class="btn primary sm" data-adopt="${r.id}">${icon('sparkle')}Übernehmen</button>
+            <button class="btn sm" data-csave="${r.id}">${icon('bookmark')}Merken</button>
+            <button class="btn sm ghost" data-creviews="${r.id}">Bewertungen</button>
+            ${r.mine ? `<button class="btn sm ghost danger" data-cdel="${r.id}">Zurückziehen</button>` : `<button class="btn sm ghost" data-creport="${r.id}">Melden</button>`}
+          </div>
+          ${mine ? `<p class="muted small">Eure Bewertung: ${'★'.repeat(mine.stars)}</p>` : ''}
+          <div class="reviews" id="rev-${r.id}" hidden></div>
+        </div>
+      </article>`;
+  };
+
+  root.innerHTML = `
+    ${head}
+    ${!community.api ? `
+      <div class="empty">
+        <p><strong>Die Community braucht die Webseiten-Version mit Supabase.</strong><br>Sobald die App verbunden ist, seht ihr hier Dates von anderen Paaren und könnt eigene teilen.</p>
+        <button class="btn" data-go="mehr">Zu den Einstellungen</button>
+      </div>` : `
+      <div class="cat-scroll">${moodChips('mood', d.mood)}</div>
+      ${chips('csort', [['beste', 'Beste'], ['nah', 'In der Nähe'], ['neu', 'Neu']], d.sort, 'seg')}
+      ${d.cLoading ? '<div class="loading"><span class="spinner"></span>Lade Ideen …</div>'
+        : d.cError ? `<div class="empty"><p>${esc(d.cError)}</p></div>`
+          : list.length ? `<div class="places">${list.map(card).join('')}</div>`
+            : '<div class="empty"><p>Noch keine geteilten Ideen. Teilt euer nächstes Date über „Mit der Community teilen“ – ihr seid die Ersten!</p></div>'}`}`;
+
+  bindDiscoverTabs();
+  on('[data-go]', 'click', (_, el) => go(el.dataset.go));
+  bindChips(root, 'mood', (v) => {
+    d.mood = v;
+    render();
+  });
+  bindChips(root, 'csort', (v) => {
+    d.sort = v;
+    render();
+  });
+  const row = (id) => d.community.find((r) => r.id === id);
+  on('[data-adopt]', 'click', (_, el) => {
+    const r = row(el.dataset.adopt);
+    community.api.use(r.id).catch(() => {});
+    planIdeaNow(communityIdea(r), el);
+  });
+  on('[data-csave]', 'click', (_, el) => {
+    const r = row(el.dataset.csave);
+    store.update((s) => s.ideas.push({ ...communityIdea(r), id: `eigen-${uid()}`, createdBy: myRole(), createdAt: Date.now() }));
+    community.api.use(r.id).catch(() => {});
+    toast('Bei euren Ideen gemerkt');
+  });
+  on('[data-creviews]', 'click', async (_, el) => {
+    const box = $(`#rev-${el.dataset.creviews}`);
+    if (!box.hidden) return (box.hidden = true);
+    box.hidden = false;
+    box.innerHTML = '<span class="spinner"></span>';
+    try {
+      const reviews = await community.api.reviews(el.dataset.creviews);
+      box.innerHTML = reviews.length ? reviews.map((v) => `<p><span class="gold">${'★'.repeat(v.stars)}</span> ${esc(v.comment ?? '')} <small class="muted">${fmtShort(v.created_at.slice(0, 10))}</small></p>`).join('') : '<p class="muted small">Noch keine Bewertungen.</p>';
+    } catch (e) {
+      box.textContent = e.message;
+    }
+  });
+  on('[data-creport]', 'click', async (_, el) => {
+    try {
+      await community.api.report(el.dataset.creport, 'unpassend');
+      toast('Danke, gemeldet');
+    } catch (e) {
+      toast(e.message);
+    }
+  });
+  on('[data-cdel]', 'click', async (_, el) => {
+    try {
+      await community.api.remove(el.dataset.cdel);
+      toast('Idee zurückgezogen');
+      loadCommunity();
+    } catch (e) {
+      toast(e.message);
+    }
+  });
+  if (community.api && !d.community && !d.cLoading && !d.cError) loadCommunity();
+}
+
+/* --- Eigene Ideen ------------------------------------------------------------- */
+
+function renderOwnIdeas(head) {
+  const custom = S().ideas;
+  root.innerHTML = `
+    ${head}
+    <button class="btn soft big" data-go="idee">${icon('plus')}Eigene Idee anlegen</button>
+    ${custom.length ? `<div class="list-card">${custom.map((i) => `
+      <div class="date-item static">
+        ${thumb(i.image || i.steps?.find((s) => s.place?.image)?.place.image, esc(i.emoji ?? '💡'), 'sq')}
+        <span class="grow"><strong>${esc(i.title)}</strong><small class="muted">${i.place === 'drinnen' ? 'Drinnen' : 'Draußen'} · ${fmtEuro(i.cost)} · ${fmtDuration(ideaDuration(i))}${(i.moods ?? []).length ? ` · ${i.moods.map(moodLabel).join(', ')}` : ''}</small></span>
+        <button class="icon-btn small" data-plan-custom="${i.id}" aria-label="Planen">${icon('sparkle')}</button>
+        ${community.api && !i.communityId ? `<button class="icon-btn small" data-share-idea="${i.id}" aria-label="Mit der Community teilen">${icon('share')}</button>` : ''}
+        <button class="icon-btn small" data-del-idea="${i.id}" aria-label="Löschen">${icon('trash')}</button>
+      </div>`).join('')}</div>` : '<p class="muted">Gemerkte Orte, übernommene Community-Ideen und eigene Ideen landen hier. Sie erscheinen auch bei den Vorschlägen, wenn sie zu Budget, Wetter und Stimmung passen.</p>'}`;
+
+  bindDiscoverTabs();
+  on('[data-go]', 'click', (_, el) => go(el.dataset.go));
   on('[data-del-idea]', 'click', (_, el) => {
     store.update((s) => (s.ideas = s.ideas.filter((i) => i.id !== el.dataset.delIdea)));
     render();
   });
-  on('[data-plan-custom]', 'click', async (_, el) => {
+  on('[data-plan-custom]', 'click', (_, el) => {
     const idea = ideaById(el.dataset.planCustom);
-    if (!idea || !myRole()) return toast('Wähle zuerst auf „Planen“, wer du bist');
-    const ls = L().lastSearch;
-    await withBusy(el, async () => {
-      await prepareSession({ date: resolveDate(ls), daytime: idea.times.includes(ls.daytime) ? ls.daytime : idea.times[0], budget: Math.max(ls.budget, idea.cost), reach: 2 }, null);
-      session.backTo = ['entdecken', '', 'Entdecken'];
-      go('plan', idea.id);
+    if (idea) planIdeaNow(idea, el);
+  });
+  on('[data-share-idea]', 'click', (_, el) => {
+    const idea = ideaById(el.dataset.shareIdea);
+    if (idea) go('teilen', `idea:${idea.id}`);
+  });
+}
+
+/* --- Mit der Community teilen ------------------------------------------------- */
+
+/** Nur Inhalte der Idee teilen – keine Namen, Hinweise, Kosten-Einträge oder privaten Daten. */
+function publicIdea(src) {
+  const steps = (src.steps ?? []).map((s) => {
+    const out = { t: s.t ?? s.title, min: s.min ?? 60 };
+    if (s.q) out.q = s.q;
+    if (s.url) out.url = s.url;
+    if (s.food) out.food = true;
+    const pl = s.place;
+    if (pl?.lat != null) out.place = { name: pl.name, street: pl.street ?? '', city: pl.city ?? '', lat: pl.lat, lon: pl.lon, website: pl.website ?? '', hours: pl.hours ?? '', image: pl.image ?? '', category: pl.category ?? '' };
+    return out;
+  });
+  return {
+    title: src.title, emoji: src.emoji ?? '💡', teaser: src.teaser ?? '', place: src.place ?? 'drinnen', cost: src.cost ?? 0,
+    reach: src.reach ?? 1, times: src.times ?? [src.daytime ?? 'abend'], moods: src.moods ?? [], steps,
+    image: src.image ?? steps.find((s) => s.place?.image)?.place.image ?? '',
+  };
+}
+
+RENDER.teilen = (param) => {
+  const [kind, id] = param.split(':');
+  const src = kind === 'idea' ? ideaById(id) : (() => {
+    const d = S().dates.find((x) => x.id === id);
+    if (!d) return null;
+    const plan = fullPlan(d);
+    if (!plan) return null;
+    const idea = allIdeas().find((i) => i.id === plan.ideaId);
+    return { ...plan, steps: idea?.steps?.map((st) => ({ ...st })) ?? plan.steps.map((s) => ({ t: s.title, min: s.min, place: s.place })), times: idea?.times, reach: idea?.reach };
+  })();
+  if (!src || !community.api) return go('entdecken');
+  const pub = publicIdea(src);
+  const center = discoverCenter();
+  const draft = { moods: new Set(pub.moods) };
+
+  root.innerHTML = `
+    ${topbar({ title: 'Mit der Community teilen', sub: 'Andere Paare sehen Titel, Ablauf, Orte und Kosten – keine Namen und keine privaten Daten.', back: kind === 'idea' ? ['entdecken', '', 'Entdecken'] : ['date', id, 'Date'] })}
+    <form class="panel form" id="share-form" novalidate>
+      <div class="field"><label class="label" for="sh-title">Titel</label><input class="input" id="sh-title" maxlength="60" value="${esc(pub.title)}"></div>
+      <div class="field"><label class="label" for="sh-teaser">Was macht das Date besonders?</label><input class="input" id="sh-teaser" maxlength="140" value="${esc(pub.teaser)}" placeholder="z. B. Perfekt für Regentage, das Café hat die beste Torte"></div>
+      <div class="field"><span class="label">Stimmung</span><div class="chips" id="sh-moods">${MOODS.map(([v, l, e]) => `<button type="button" class="chip" data-m="${v}" aria-pressed="${draft.moods.has(v)}">${e} ${l}</button>`).join('')}</div></div>
+      <div class="field"><label class="label" for="sh-city">Stadt</label><input class="input" id="sh-city" maxlength="60" value="${esc(currentPlaceName())}"></div>
+      <div class="panel inset"><strong>Ablauf</strong><p class="flow">${pub.steps.map((s) => esc(s.t)).join(' → ')}</p><p class="muted small">${fmtEuro(pub.cost)} für zwei</p></div>
+      <button class="btn primary big" type="submit">${icon('share')}Teilen</button>
+    </form>`;
+
+  bindBack();
+  $('#sh-moods').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-m]');
+    if (!b) return;
+    draft.moods.has(b.dataset.m) ? draft.moods.delete(b.dataset.m) : draft.moods.add(b.dataset.m);
+    b.setAttribute('aria-pressed', String(draft.moods.has(b.dataset.m)));
+  });
+  $('#share-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const idea = { ...pub, title: $('#sh-title').value.trim() || pub.title, teaser: $('#sh-teaser').value.trim(), moods: [...draft.moods] };
+    const firstPlace = idea.steps.find((s) => s.place)?.place;
+    const loc = firstPlace ?? center;
+    await withBusy(e.submitter ?? $('#share-form button[type=submit]'), async () => {
+      try {
+        const cid = await community.api.publish(idea, { city: $('#sh-city').value.trim(), lat: loc?.lat ?? null, lon: loc?.lon ?? null });
+        store.update((s) => {
+          if (kind === 'idea') {
+            const i = s.ideas.find((x) => x.id === id);
+            if (i) i.communityId = cid;
+          } else {
+            const d = s.dates.find((x) => x.id === id);
+            if (d) d.sharedId = cid;
+          }
+        });
+        discover.community = null;
+        toast('Geteilt – danke!');
+        go(kind === 'idea' ? 'entdecken' : 'date', kind === 'idea' ? null : id);
+      } catch (err) {
+        toast(err.message);
+      }
     });
   });
-
-  if (center && !d.results && !d.loading && !d.error) load();
 };
 
 /* ================================================================ Eigene Idee */
@@ -681,7 +1023,7 @@ const EMOJIS = ['💡', '🍷', '🎶', '🌲', '🏖️', '🎡', '🧁', '🛶
 RENDER.idee = () => {
   const draft = { emoji: '💡', place: 'drinnen', times: 'beides', reach: 1 };
   root.innerHTML = `
-    ${topbar({ title: 'Eigene Idee', sub: 'Erscheint bei euren Vorschlägen, wenn Budget, Wetter und Tageszeit passen.', back: ['entdecken', '', 'Entdecken'] })}
+    ${topbar({ title: 'Eigene Idee', sub: 'Erscheint bei euren Vorschlägen, wenn Budget, Wetter und Stimmung passen.', back: ['entdecken', '', 'Entdecken'] })}
     <form class="panel form" id="idea-form" novalidate>
       <div class="field"><label class="label" for="i-title">Titel</label><input class="input" id="i-title" required maxlength="60" placeholder="z. B. Picknick am Lieblingssee"></div>
       <div class="field"><span class="label">Symbol</span>${chips('emoji', EMOJIS.map((e) => [e, e]), draft.emoji, 'emoji-chips')}</div>
@@ -689,6 +1031,7 @@ RENDER.idee = () => {
       <div class="field"><span class="label">Wo?</span>${chips('place', [['drinnen', 'Drinnen', 'home'], ['draußen', 'Draußen', 'sun']], draft.place, 'seg')}</div>
       <div class="field"><span class="label">Tageszeit</span>${chips('times', [['tag', 'Tagsüber'], ['abend', 'Abends'], ['beides', 'Beides']], draft.times, 'seg')}</div>
       <div class="field"><span class="label">Wie weit?</span>${chips('reach', [[0, 'Zuhause'], [1, 'In der Stadt'], [2, 'Ausflug']], draft.reach, 'seg')}</div>
+      <div class="field"><span class="label">Stimmung (mehrere möglich)</span><div class="chips" id="i-moods">${MOODS.map(([v, l, e]) => `<button type="button" class="chip" data-m="${v}" aria-pressed="false">${e} ${l}</button>`).join('')}</div></div>
       <div class="row gap">
         <div class="field grow"><label class="label" for="i-cost">Kosten für beide (€)</label><input class="input" id="i-cost" type="number" min="0" max="999" inputmode="numeric" value="20"></div>
         <div class="field grow"><label class="label" for="i-start">Startzeit (optional)</label><input class="input" id="i-start" type="time"></div>
@@ -708,6 +1051,13 @@ RENDER.idee = () => {
   bindChips(form, 'place', (v) => (draft.place = v));
   bindChips(form, 'times', (v) => (draft.times = v));
   bindChips(form, 'reach', (v) => (draft.reach = Number(v)));
+  const moods = new Set();
+  $('#i-moods').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-m]');
+    if (!b) return;
+    moods.has(b.dataset.m) ? moods.delete(b.dataset.m) : moods.add(b.dataset.m);
+    b.setAttribute('aria-pressed', String(moods.has(b.dataset.m)));
+  });
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     const title = $('#i-title').value.trim();
@@ -734,6 +1084,7 @@ RENDER.idee = () => {
       cost: Math.max(0, Math.round(Number($('#i-cost').value) || 0)),
       reach: draft.reach,
       times,
+      moods: [...moods],
       steps,
       ...(start ? { start: Object.fromEntries(times.map((t) => [t, start])) } : {}),
       custom: true,
@@ -742,9 +1093,32 @@ RENDER.idee = () => {
     };
     store.update((s) => s.ideas.push(idea));
     toast('Idee gespeichert');
+    discover.tab = 'eigene';
     go('entdecken');
   });
 };
+
+/** Für das Geschmacksprofil: voller Plan, wenn sichtbar, sonst nur Metadaten. */
+function fullPlanOrMeta(d) {
+  return fullPlan(d) ?? d;
+}
+
+function recommendationsHTML() {
+  const recos = recommend(S().dates.map(fullPlanOrMeta), 3);
+  if (!recos.length) return '';
+  return `
+    <section class="stack">
+      <h2 class="section-title">Für euch empfohlen</h2>
+      <div class="reco-row">
+        ${recos.map(({ idea, reason }) => `
+          <button class="reco" data-reco="${idea.id}">
+            <span class="idea-emoji" aria-hidden="true">${idea.emoji}</span>
+            <strong>${esc(idea.title)}</strong>
+            <small class="muted">${esc(reason)}</small>
+          </button>`).join('')}
+      </div>
+    </section>`;
+}
 
 /* ================================================================ 1. Start */
 
@@ -849,6 +1223,8 @@ RENDER.start = () => {
 
     ${inbox.length ? `<section class="stack"><h2 class="section-title">Für dich</h2>${inbox.join('')}</section>` : ''}
 
+    ${recommendationsHTML()}
+
     <section class="rhythm ${r.due ? 'due' : ''}">
       <div class="rhythm-top">
         <div>
@@ -893,6 +1269,10 @@ RENDER.start = () => {
       <div class="field">
         <span class="label">Wie weit?</span>
         ${chips('reach', [[0, 'Zuhause', 'home'], [1, 'In der Stadt', 'city'], [2, 'Ausflug', 'car']], f.reach)}
+      </div>
+      <div class="field">
+        <span class="label">Stimmung</span>
+        ${chips('fmood', [['', 'Egal'], ...MOODS.map(([v, l, e]) => [v, `${e} ${l}`])], f.mood ?? '')}
       </div>
       <div class="field" id="city-field">
         <label class="label" for="f-city">Stadt</label>
@@ -956,6 +1336,7 @@ RENDER.start = () => {
   });
   bindChips(form, 'daytime', (v) => (f.daytime = v));
   bindChips(form, 'reach', (v) => (f.reach = Number(v)));
+  bindChips(form, 'fmood', (v) => (f.mood = v));
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -968,7 +1349,7 @@ RENDER.start = () => {
     if (f.when === 'tonight') f.daytime = 'abend';
     L().lastSearch = { ...f };
     store.saveLocal();
-    const ctx = { date: resolveDate(f), daytime: f.daytime, budget: f.budget, reach: f.reach };
+    const ctx = { date: resolveDate(f), daytime: f.daytime, budget: f.budget, reach: f.reach, mood: f.mood || '' };
     const city = $('#f-city').value.trim();
 
     if (f.planner === 'partner') {
@@ -991,6 +1372,10 @@ RENDER.start = () => {
 
   bindWhoAmI();
   on('[data-go]', 'click', (_, el) => go(el.dataset.go));
+  on('[data-reco]', 'click', (_, el) => {
+    const idea = ideaById(el.dataset.reco);
+    if (idea) planIdeaNow(idea, el);
+  });
   on('[data-plan-request]', 'click', async (_, el) => {
     const req = S().requests.find((x) => x.id === el.dataset.planRequest);
     if (!req) return;
@@ -1068,7 +1453,8 @@ async function prepareSession(ctx, city) {
 
 async function reroll(count = 3) {
   const recentIds = S().dates.slice(-8).map((d) => d.ideaId).filter(Boolean);
-  const res = await suggest(session.ctx, session.weather, { exclude: session.shown, recentIds, count });
+  const res = await suggest(session.ctx, session.weather, { exclude: session.shown, recentIds, count, dates: S().dates.map(fullPlanOrMeta) });
+  session.moodRelaxed = res.moodRelaxed;
   if (res.exhausted) session.shown = new Set();
   res.ideas.forEach((i) => session.shown.add(i.id));
   session.current = res.ideas;
@@ -1139,6 +1525,7 @@ RENDER.suggest = () => {
         </div>`}
     </div>
     ${ideas.length ? `<button class="btn soft big" id="reroll">${icon('dice')}Andere Ideen</button>` : ''}
+    ${session.moodRelaxed && ideas.length ? `<p class="hint">Keine Idee passt zu „${esc(moodLabel(ctx.mood))}“ und den übrigen Wünschen – hier die besten anderen.</p>` : ''}
     ${session.exhausted ? '<p class="hint center">Das waren alle passenden Ideen. Es geht von vorne los.</p>' : ''}`;
 
   bindBack();
@@ -1315,7 +1702,9 @@ RENDER.date = (id) => {
               ${[1, 2, 3, 4, 5].map((n) => `<button class="star ${n <= (ratings[r] ?? 0) ? 'on' : ''}" ${r === role ? `data-rate="${n}"` : 'disabled'} aria-label="${n} von 5">${icon('heart')}</button>`).join('')}
             </div>
           </div>`).join('')}
-      </section>` : ''}
+      </section>
+      ${plan.communityId && community.api ? communityRateHTML(plan.communityId) : ''}` : ''}
+    ${costSummaryHTML(d)}
     ${timeline(plan)}
     ${mySurprise && (plan.todos.length || plan.recipe) ? `
       <section class="panel">
@@ -1329,7 +1718,9 @@ RENDER.date = (id) => {
       ${calendarButtons()}
       ${!d.surprise && plan.recipe ? `<button class="btn" id="shop">${icon('cart')}Zutaten auf Einkaufsliste</button>` : ''}
       ${!d.surprise && plan.todos.length ? `<button class="btn" id="todos">${icon('check')}To-dos übernehmen</button>` : ''}
+      <button class="btn" data-go-cost="${d.id}">${icon('wallet')}Ausgabe eintragen</button>
       ${mySurprise ? `<button class="btn" id="reveal">${icon('eye')}Überraschung jetzt auflösen</button>` : ''}
+      ${community.api && !d.surprise && !plan.communityId ? (d.sharedId ? `<p class="muted small center">${icon('check')} Mit der Community geteilt</p>` : `<button class="btn" data-share-date="${d.id}">${icon('share')}Mit der Community teilen</button>`) : ''}
       <button class="btn ghost danger" id="del">${icon('trash')}Date löschen</button>
     </div>
     ${plan.recipe && !d.surprise ? `
@@ -1383,6 +1774,9 @@ RENDER.date = (id) => {
     });
     toast(added ? `${added} To-do${added > 1 ? 's' : ''} hinzugefügt` : 'Schon auf der Liste');
   });
+  on('[data-go-cost]', 'click', (_, el) => go('kosten', `neu:${el.dataset.goCost}`));
+  on('[data-share-date]', 'click', (_, el) => go('teilen', `date:${el.dataset.shareDate}`));
+  bindCommunityRate();
   $('#reveal')?.addEventListener('click', () => {
     reveal(id);
     render();
@@ -1746,6 +2140,210 @@ RENDER.listen = () => {
   });
 };
 
+/* ================================================================ Community-Bewertung im Date */
+
+function communityRateHTML(cid) {
+  const mine = discover.myRatings[cid];
+  return `
+    <section class="panel stack" id="crate">
+      <span class="label">Bewertet die Idee für andere Paare</span>
+      <div class="stars big" role="group" aria-label="Community-Bewertung">
+        ${[1, 2, 3, 4, 5].map((n) => `<button class="star ${n <= (mine?.stars ?? 0) ? 'on' : ''}" data-cstar="${n}" aria-label="${n} von 5">${icon('star')}</button>`).join('')}
+      </div>
+      <input class="input" id="c-comment" maxlength="300" placeholder="Kurzer Tipp für andere (optional)" value="${esc(mine?.comment ?? '')}">
+      <button class="btn" id="c-send" data-cid="${cid}">${mine ? 'Bewertung ändern' : 'Bewertung senden'}</button>
+    </section>`;
+}
+
+function bindCommunityRate() {
+  const box = $('#crate');
+  if (!box) return;
+  let stars = discover.myRatings[$('#c-send').dataset.cid]?.stars ?? 0;
+  on('[data-cstar]', 'click', (_, el) => {
+    stars = Number(el.dataset.cstar);
+    $$('[data-cstar]', box).forEach((b) => b.classList.toggle('on', Number(b.dataset.cstar) <= stars));
+  });
+  $('#c-send').addEventListener('click', async (e) => {
+    if (!stars) return toast('Bitte Sterne wählen');
+    const cid = e.currentTarget.dataset.cid;
+    await withBusy(e.currentTarget, async () => {
+      try {
+        await community.api.rate(cid, stars, $('#c-comment').value.trim());
+        discover.myRatings[cid] = { stars, comment: $('#c-comment').value.trim() };
+        discover.community = null;
+        toast('Danke für eure Bewertung!');
+      } catch (err) {
+        toast(err.message);
+      }
+    });
+  });
+  if (community.api && !Object.keys(discover.myRatings).length) {
+    community.api.myRatings().then((r) => {
+      discover.myRatings = r;
+      if (r[$('#c-send')?.dataset.cid]) render();
+    }).catch(() => {});
+  }
+}
+
+/* ================================================================ Kosten */
+
+const euro = (n) => n.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+
+/** Alle Ausgaben, die ich sehen darf: gemeinsame + meine geheimen. */
+function visibleExpenses() {
+  const priv = Object.entries(S().secrets).filter(([, v]) => v?.kind === 'expense').map(([id, v]) => ({ ...v, id, private: true }));
+  return [...S().expenses, ...priv].sort((a, b) => (b.date + b.createdAt).localeCompare(a.date + a.createdAt));
+}
+
+/** Saldo aus gemeinsamen Ausgaben: positiv = die Person bekommt Geld. */
+function balances() {
+  const bal = { a: 0, b: 0 };
+  for (const e of S().expenses) {
+    if (e.kind === 'settle') {
+      bal[e.paidBy] += e.amount;
+      bal[other(e.paidBy)] -= e.amount;
+    } else if (e.split === 'half') {
+      bal[e.paidBy] += e.amount / 2;
+      bal[other(e.paidBy)] -= e.amount / 2;
+    }
+  }
+  return bal;
+}
+
+function costSummaryHTML(d) {
+  const list = visibleExpenses().filter((e) => e.dateId === d.id && e.kind !== 'settle');
+  if (!list.length) return '';
+  const total = list.reduce((a, e) => a + e.amount, 0);
+  const secret = list.filter((e) => e.private).reduce((a, e) => a + e.amount, 0);
+  return `<div class="banner neutral-row">${icon('wallet')}<span class="grow"><strong>Ausgaben: ${euro(total)}</strong>${secret ? `<br><small class="muted">davon ${euro(secret)} geheim – nur du siehst das</small>` : ''}</span></div>`;
+}
+
+const datesTabs = (active) => `
+  <nav class="seg-tabs" role="tablist">
+    <button role="tab" data-dseg="dates" aria-selected="${active === 'dates'}">${icon('bookmark')}Dates</button>
+    <button role="tab" data-dseg="kosten" aria-selected="${active === 'kosten'}">${icon('wallet')}Kosten</button>
+  </nav>`;
+function bindDatesTabs() {
+  on('[data-dseg]', 'click', (_, el) => go(el.dataset.dseg));
+}
+
+RENDER.kosten = (param) => {
+  const role = myRole();
+  const partner = other(role);
+  const forDate = param?.startsWith('neu:') ? S().dates.find((d) => d.id === param.slice(4)) : null;
+  const list = visibleExpenses();
+  const now = today();
+  const ym = isoDate(now).slice(0, 7);
+  const month = list.filter((e) => e.date.startsWith(ym) && e.kind !== 'settle');
+  const total = month.reduce((a, e) => a + e.amount, 0);
+  const paid = (r) => month.filter((e) => e.paidBy === r).reduce((a, e) => a + e.amount, 0);
+  const secretMonth = month.filter((e) => e.private).reduce((a, e) => a + e.amount, 0);
+  const bal = balances();
+  const mine = role ? Math.round(bal[role] * 100) / 100 : 0;
+  const upcomingDates = S().dates.filter((d) => !isHiddenFromMe(d)).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 20);
+  const defaultPrivate = !!(forDate?.surprise && forDate.plannedBy === role);
+  const draft = { paidBy: role ?? 'a', split: forDate?.surprise ? 'gift' : 'half' };
+
+  const groups = {};
+  for (const e of list) (groups[e.date.slice(0, 7)] ??= []).push(e);
+
+  root.innerHTML = `
+    ${topbar({ title: 'Unsere Dates' })}
+    ${datesTabs('kosten')}
+    ${!role ? whoAmICard() : `
+    <section class="cost-summary">
+      <div>
+        <span class="kicker">${MONTHS[now.getMonth()]}</span>
+        <strong class="big-num">${euro(total)}</strong>
+        <span class="muted small">für Dates ausgegeben</span>
+      </div>
+      <div class="split-bars">
+        ${['a', 'b'].map((r) => `<div class="split-row"><span>${r === role ? 'Du' : esc(nameOf(r))}</span><span class="bar"><span style="width:${total ? Math.round((paid(r) / total) * 100) : 0}%"></span></span><strong>${euro(paid(r))}</strong></div>`).join('')}
+      </div>
+      ${secretMonth ? `<p class="muted small">${icon('lock')} Davon ${euro(secretMonth)} geheim – ${esc(nameOf(partner))} sieht diese Ausgaben nicht.</p>` : ''}
+    </section>
+    <section class="panel balance">
+      <div class="grow">
+        <span class="kicker">Ausgleich</span>
+        <strong>${Math.abs(mine) < 0.01 ? 'Ihr seid quitt' : mine > 0 ? `${esc(nameOf(partner))} schuldet dir ${euro(mine)}` : `Du schuldest ${esc(nameOf(partner))} ${euro(-mine)}`}</strong>
+        <small class="muted">Nur geteilte Ausgaben („Halbe-halbe“). Einladungen und Geheimes zählen nicht.</small>
+      </div>
+      ${Math.abs(mine) >= 0.01 ? `<button class="btn sm" id="settle">Ausgeglichen</button>` : ''}
+    </section>
+
+    <form class="panel form" id="exp-form" novalidate>
+      <div class="panel-head">${icon('plus')}<h2>Ausgabe eintragen</h2></div>
+      <div class="row gap">
+        <div class="field grow"><label class="label" for="e-title">Wofür?</label><input class="input" id="e-title" maxlength="60" placeholder="z. B. Abendessen" value="${esc(forDate ? dateTitle(forDate).replace(/^Überraschung von .*/, 'Überraschung') : '')}"></div>
+        <div class="field narrow-field"><label class="label" for="e-amount">Betrag €</label><input class="input" id="e-amount" inputmode="decimal" placeholder="0,00"></div>
+      </div>
+      <div class="field"><span class="label">Bezahlt von</span>${chips('payer', [['a', role === 'a' ? 'Mir' : esc(nameOf('a'))], ['b', role === 'b' ? 'Mir' : esc(nameOf('b'))]], draft.paidBy, 'seg')}</div>
+      <div class="field"><span class="label">Aufteilung</span>${chips('split', [['half', 'Halbe-halbe'], ['gift', 'Eingeladen']], draft.split, 'seg')}</div>
+      <div class="field"><label class="label" for="e-date">Zum Date</label>
+        <select class="input" id="e-date"><option value="">Ohne Date</option>${upcomingDates.map((d) => `<option value="${d.id}" ${forDate?.id === d.id ? 'selected' : ''}>${esc(fmtShort(d.date))} · ${esc(dateTitle(d))}</option>`).join('')}</select>
+      </div>
+      <label class="switch"><input type="checkbox" id="e-private" ${defaultPrivate ? 'checked' : ''}><span><strong>Vor ${esc(nameOf(partner))} verstecken</strong><br><small class="muted">Für Überraschungen und Geschenke. Nur du siehst diese Ausgabe.</small></span></label>
+      <button class="btn primary big" type="submit">${icon('check')}Speichern</button>
+    </form>
+
+    ${Object.keys(groups).length ? Object.entries(groups).map(([m, items]) => `
+      <section class="stack">
+        <h2 class="section-title">${MONTHS[Number(m.slice(5)) - 1]} ${m.slice(0, 4)}</h2>
+        <div class="list-card">
+          ${items.map((e) => `
+            <div class="date-item static">
+              <span class="exp-ico ${e.private ? 'secret' : ''}">${icon(e.kind === 'settle' ? 'repeat' : e.private ? 'lock' : 'wallet')}</span>
+              <span class="grow">
+                <strong>${esc(e.kind === 'settle' ? `Ausgleich an ${e.paidBy === role ? esc(nameOf(other(e.paidBy))) : 'dich'}` : e.title)}</strong>
+                <small class="muted">${fmtShort(e.date)} · ${e.paidBy === role ? 'du' : esc(nameOf(e.paidBy))} · ${e.kind === 'settle' ? 'Ausgleich' : e.split === 'half' ? 'halbe-halbe' : 'eingeladen'}${e.private ? ' · geheim' : ''}</small>
+              </span>
+              <strong class="amount">${euro(e.amount)}</strong>
+              <button class="icon-btn small" data-del-exp="${e.id}" data-priv="${e.private ? 1 : ''}" aria-label="Löschen">${icon('x')}</button>
+            </div>`).join('')}
+        </div>
+      </section>`).join('') : '<p class="muted center">Noch keine Ausgaben eingetragen.</p>'}`}`;
+
+  bindDatesTabs();
+  bindWhoAmI();
+  if (!role) return;
+  const form = $('#exp-form');
+  bindChips(form, 'payer', (v) => (draft.paidBy = v));
+  bindChips(form, 'split', (v) => (draft.split = v));
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const amount = Math.round(Number($('#e-amount').value.replace(/\./g, '').replace(',', '.')) * 100) / 100;
+    const title = $('#e-title').value.trim() || 'Date';
+    if (!(amount > 0)) {
+      toast('Bitte einen Betrag eintragen');
+      return $('#e-amount').focus();
+    }
+    const dateId = $('#e-date').value;
+    const date = S().dates.find((d) => d.id === dateId)?.date ?? isoDate(today());
+    const item = { id: `exp-${uid()}`, kind: 'expense', title, amount, paidBy: draft.paidBy, split: draft.split, date, dateId: dateId || null, createdAt: Date.now() };
+    const priv = $('#e-private').checked;
+    store.update((s) => {
+      if (priv) s.secrets[item.id] = item;
+      else s.expenses.push(item);
+    });
+    toast(priv ? 'Geheim gespeichert' : 'Ausgabe gespeichert');
+    go('kosten');
+  });
+  $('#settle')?.addEventListener('click', () => {
+    const debtor = mine > 0 ? partner : role;
+    store.update((s) => s.expenses.push({ id: `exp-${uid()}`, kind: 'settle', title: 'Ausgleich', amount: Math.abs(mine), paidBy: debtor, split: 'settle', date: isoDate(today()), createdAt: Date.now() }));
+    toast('Als ausgeglichen eingetragen');
+    render();
+  });
+  on('[data-del-exp]', 'click', (_, el) => {
+    const id = el.dataset.delExp;
+    store.update((s) => {
+      if (el.dataset.priv) delete s.secrets[id];
+      else s.expenses = s.expenses.filter((x) => x.id !== id);
+    });
+    render();
+  });
+};
+
 /* ================================================================ 6. Unsere Dates */
 
 RENDER.dates = () => {
@@ -1771,6 +2369,7 @@ RENDER.dates = () => {
 
   root.innerHTML = `
     ${topbar({ title: 'Unsere Dates' })}
+    ${datesTabs('dates')}
     <section class="stack">
       <h2 class="section-title">Geplant</h2>
       ${upcoming.length ? `<div class="list-card">${upcoming.map((d) => item(d, false)).join('')}</div>` : `
@@ -1781,6 +2380,7 @@ RENDER.dates = () => {
       ${past.length ? `<div class="list-card">${past.map((d) => item(d, true)).join('')}</div>` : '<p class="muted">Hier sammeln sich eure vergangenen Dates mit euren Bewertungen.</p>'}
     </section>`;
   bindBack();
+  bindDatesTabs();
   on('[data-open-date]', 'click', (_, el) => go('date', el.dataset.openDate));
 };
 
@@ -1866,6 +2466,12 @@ RENDER.mehr = () => {
     <section class="panel form">
       <div class="panel-head">${icon('calendar')}<h2>Google Kalender</h2></div>
       ${googleSettingsHTML()}
+    </section>
+
+    <section class="panel form">
+      <div class="panel-head">${icon('star')}<h2>Google-Bewertungen & Fotos</h2></div>
+      <p>Optional: Mit einem eigenen Google-Places-Schlüssel zeigt die App bei Orten die Google-Sterne und ein Foto. Ohne Schlüssel gibt es Bilder aus Wikimedia und einen Link zu den Google-Bewertungen.</p>
+      <div class="field"><label class="label" for="g-places">Places API Key</label><input class="input" id="g-places" data-set="googlePlacesKey" value="${esc(S().settings.googlePlacesKey ?? '')}" placeholder="AIza…" autocomplete="off"></div>
     </section>
 
     <section class="panel form">
@@ -1979,7 +2585,8 @@ RENDER.mehr = () => {
   render();
   autoReveal();
   if (await store.connect()) return render();
-  const cfg = getConfig();
+  let cfg = getConfig();
+  if (!cfg?.url && SUPABASE.url && SUPABASE.key) cfg = { url: SUPABASE.url, key: SUPABASE.key, coupleId: null, code: null };
   if (cfg?.url && cfg?.key) await connectRemote(cfg, !!invite);
   refreshGpsSilently();
 })();

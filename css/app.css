@@ -557,3 +557,76 @@ button.banner { cursor: pointer; font: inherit; color: inherit; }
 .copy-row { display: flex; gap: 8px; }
 .copy-row .input { flex: 1; min-width: 0; font-size: 0.85rem; }
 textarea.input { resize: vertical; min-height: 96px; line-height: 1.45; }
+
+/* ---------- Bilder ---------- */
+.thumb { position: relative; display: grid; place-items: center; overflow: hidden; background: linear-gradient(135deg, var(--accent-soft), var(--surface-2)); flex: none; }
+.thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.thumb .thumb-emoji { font-size: 1.8rem; }
+.thumb:not(.noimg) .thumb-emoji { visibility: hidden; }
+.thumb.wide { width: 100%; aspect-ratio: 16 / 9; max-width: 100%; }
+.thumb.sq { width: 44px; height: 44px; border-radius: 13px; }
+.thumb.sq .thumb-emoji { font-size: 1.3rem; }
+.hero-img { position: relative; aspect-ratio: 16 / 10; max-width: 100%; border-radius: var(--r-lg); overflow: hidden; display: grid; place-items: center; background: linear-gradient(135deg, var(--accent-soft), var(--surface-2)); }
+.hero-img img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.hero-img .thumb-emoji { font-size: 3.4rem; }
+.hero-img:not(.noimg) .thumb-emoji { visibility: hidden; }
+
+/* ---------- Orte & Community ---------- */
+.places { display: grid; gap: 14px; }
+.place, .community-card { padding: 0; overflow: hidden; gap: 0; cursor: pointer; transition: transform .1s; }
+.community-card { display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); cursor: default; }
+.place:active { transform: scale(.99); }
+.place-body { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px 16px; min-width: 0; }
+.place-body h3 { font-size: 1.05rem; }
+.row.top { align-items: flex-start; }
+.nowrap { white-space: nowrap; }
+.small-chips .chip { padding: 6px 11px; font-size: 0.84rem; }
+.seg-tabs.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.seg-tabs.three button { padding: 10px 4px; font-size: 0.88rem; }
+.seg-tabs.three button .ico { width: 17px; height: 17px; }
+.mood-tags { display: flex; flex-wrap: wrap; gap: 5px; }
+.reviews { display: flex; flex-direction: column; gap: 6px; padding-top: 6px; border-top: 1px dashed var(--line); font-size: 0.88rem; }
+.gold { color: var(--gold); letter-spacing: 1px; }
+.score .ico { width: 15px; height: 15px; fill: currentColor; }
+
+.rating-box { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.g-rating { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.g-rating strong { font-family: var(--font-display); font-size: 1.6rem; }
+.stars-ro { display: inline-flex; gap: 2px; }
+.stars-ro i { width: 16px; height: 16px; background: var(--line); clip-path: polygon(50% 0, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%); }
+.stars-ro i.on { background: var(--gold); }
+.stars-ro i.half { background: linear-gradient(90deg, var(--gold) 50%, var(--line) 50%); }
+.hours-table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+.hours-table th { text-align: left; font-weight: 600; width: 44px; padding: 5px 0; color: var(--muted); }
+.hours-table td { padding: 5px 0; }
+.hours-table tr.today th, .hours-table tr.today td { color: var(--accent); font-weight: 600; }
+.link-grid { display: grid; gap: 8px; }
+.travel { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+.travel-opt { display: flex; flex-direction: column; gap: 4px; padding: 12px; border-radius: var(--r-md); background: var(--bg); border: 1px solid var(--line); text-decoration: none; }
+.travel-opt .ico { color: var(--accent); }
+.travel-opt span { color: var(--muted); font-size: 0.84rem; }
+.panel.inset { background: var(--bg); padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
+
+/* ---------- Empfehlungen ---------- */
+.reco-row { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(150px, 1fr); gap: 10px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+.reco { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; text-align: left; padding: 14px; border-radius: var(--r-lg); border: 1px solid var(--line); background: var(--surface); min-width: 0; }
+.reco .idea-emoji { width: 42px; height: 42px; font-size: 1.3rem; border-radius: 12px; }
+.reco strong { font-size: 0.95rem; line-height: 1.25; }
+.reco small { line-height: 1.3; }
+
+/* ---------- Kosten ---------- */
+.cost-summary { display: flex; flex-direction: column; gap: 14px; padding: 18px; border-radius: var(--r-lg); background: var(--surface-2); }
+.big-num { display: block; font-family: var(--font-display); font-weight: 750; font-size: 2.1rem; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.split-bars { display: flex; flex-direction: column; gap: 8px; }
+.split-row { display: grid; grid-template-columns: minmax(60px, auto) 1fr auto; gap: 10px; align-items: center; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+.split-row .bar { height: 8px; border-radius: 99px; background: color-mix(in srgb, var(--ink) 9%, transparent); overflow: hidden; }
+.split-row .bar span { display: block; height: 100%; background: var(--accent); border-radius: inherit; }
+.balance { display: flex; align-items: center; gap: 12px; }
+.balance strong { display: block; font-size: 1.05rem; margin: 2px 0; }
+.balance small { display: block; }
+.narrow-field { width: 110px; flex: none; }
+.exp-ico { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--surface-2); color: var(--muted); flex: none; }
+.exp-ico.secret { background: var(--accent-soft); color: var(--accent); }
+.amount { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stars.big .star .ico { width: 30px; height: 30px; }
+.stars.big .star.on { color: var(--gold); }

@@ -7,16 +7,43 @@
     "place": "draußen",
     "cost": 20,
     "reach": 1,
-    "times": ["tag"],
+    "times": [
+      "tag"
+    ],
     "steps": [
-      { "t": "Picknick-Einkauf", "min": 30, "q": "Supermarkt", "note": "Alles von der Einkaufsliste besorgen" },
-      { "t": "Picknick im Park", "min": 120, "q": "Park", "note": "Decke nicht vergessen" }
+      {
+        "t": "Picknick-Einkauf",
+        "min": 30,
+        "q": "Supermarkt",
+        "note": "Alles von der Einkaufsliste besorgen"
+      },
+      {
+        "t": "Picknick im Park",
+        "min": 120,
+        "q": "Park",
+        "note": "Decke nicht vergessen"
+      }
     ],
     "recipe": {
       "name": "Picknick-Korb",
       "url": "https://www.chefkoch.de/rs/s0/picknick/Rezepte.html",
-      "ingredients": ["Baguette", { "std": "Käse", "vegan": "Hummus" }, "Tomaten", "Trauben", "Erdbeeren", "Sprudel oder Sekt", "Servietten"]
-    }
+      "ingredients": [
+        "Baguette",
+        {
+          "std": "Käse",
+          "vegan": "Hummus"
+        },
+        "Tomaten",
+        "Trauben",
+        "Erdbeeren",
+        "Sprudel oder Sekt",
+        "Servietten"
+      ]
+    },
+    "moods": [
+      "romantisch",
+      "entspannt"
+    ]
   },
   {
     "id": "sonnenuntergang",
@@ -26,11 +53,28 @@
     "place": "draußen",
     "cost": 0,
     "reach": 1,
-    "times": ["abend"],
+    "times": [
+      "abend"
+    ],
     "steps": [
-      { "t": "Tee oder Kakao kochen", "min": 15, "note": "In die Thermoskanne damit" },
-      { "t": "Spaziergang zum Aussichtspunkt", "min": 45, "q": "Aussichtspunkt" },
-      { "t": "Sonnenuntergang anschauen", "min": 45 }
+      {
+        "t": "Tee oder Kakao kochen",
+        "min": 15,
+        "note": "In die Thermoskanne damit"
+      },
+      {
+        "t": "Spaziergang zum Aussichtspunkt",
+        "min": 45,
+        "q": "Aussichtspunkt"
+      },
+      {
+        "t": "Sonnenuntergang anschauen",
+        "min": 45
+      }
+    ],
+    "moods": [
+      "romantisch",
+      "entspannt"
     ]
   },
   {
@@ -41,10 +85,30 @@
     "place": "drinnen",
     "cost": 65,
     "reach": 1,
-    "times": ["abend", "tag"],
+    "times": [
+      "abend",
+      "tag"
+    ],
     "steps": [
-      { "t": "Schwarzlicht-Minigolf", "min": 75, "q": "Schwarzlicht Minigolf", "book": true, "todo": "Minigolf-Bahn reservieren" },
-      { "t": "Abendessen", "min": 90, "q": "Restaurant", "food": true, "book": true, "todo": "Tisch reservieren" }
+      {
+        "t": "Schwarzlicht-Minigolf",
+        "min": 75,
+        "q": "Schwarzlicht Minigolf",
+        "book": true,
+        "todo": "Minigolf-Bahn reservieren"
+      },
+      {
+        "t": "Abendessen",
+        "min": 90,
+        "q": "Restaurant",
+        "food": true,
+        "book": true,
+        "todo": "Tisch reservieren"
+      }
+    ],
+    "moods": [
+      "lustig",
+      "aktiv"
     ]
   },
   {
@@ -55,10 +119,24 @@
     "place": "draußen",
     "cost": 25,
     "reach": 1,
-    "times": ["tag"],
+    "times": [
+      "tag"
+    ],
     "steps": [
-      { "t": "Minigolf", "min": 75, "q": "Minigolf" },
-      { "t": "Eisdiele", "min": 30, "q": "Eisdiele", "food": true }
+      {
+        "t": "Minigolf",
+        "min": 75,
+        "q": "Minigolf"
+      },
+      {
+        "t": "Eisdiele",
+        "min": 30,
+        "q": "Eisdiele",
+        "food": true
+      }
+    ],
+    "moods": [
+      "lustig"
     ]
   },
   {
@@ -69,17 +147,49 @@
     "place": "drinnen",
     "cost": 15,
     "reach": 0,
-    "times": ["abend"],
+    "times": [
+      "abend"
+    ],
     "steps": [
-      { "t": "Nudelteig zubereiten", "min": 45, "recipe": true },
-      { "t": "Sauce kochen & Tisch decken", "min": 30 },
-      { "t": "Candle-Light-Dinner zuhause", "min": 75, "note": "Playlist an, Handys weg" }
+      {
+        "t": "Nudelteig zubereiten",
+        "min": 45,
+        "recipe": true
+      },
+      {
+        "t": "Sauce kochen & Tisch decken",
+        "min": 30
+      },
+      {
+        "t": "Candle-Light-Dinner zuhause",
+        "min": 75,
+        "note": "Playlist an, Handys weg"
+      }
     ],
     "recipe": {
       "name": "Frische Pasta mit Tomatensauce",
       "url": "https://www.chefkoch.de/rs/s0/pasta+selbstgemacht/Rezepte.html",
-      "ingredients": ["Hartweizengrieß", { "std": "Eier", "vegan": "Olivenöl & Wasser" }, "Dosentomaten", "Knoblauch", "Basilikum", { "std": "Parmesan", "vegan": "Hefeflocken" }, "Rotwein (optional)"]
-    }
+      "ingredients": [
+        "Hartweizengrieß",
+        {
+          "std": "Eier",
+          "vegan": "Olivenöl & Wasser"
+        },
+        "Dosentomaten",
+        "Knoblauch",
+        "Basilikum",
+        {
+          "std": "Parmesan",
+          "vegan": "Hefeflocken"
+        },
+        "Rotwein (optional)"
+      ]
+    },
+    "moods": [
+      "gemütlich",
+      "kulinarisch",
+      "romantisch"
+    ]
   },
   {
     "id": "spieleabend",
@@ -89,16 +199,37 @@
     "place": "drinnen",
     "cost": 8,
     "reach": 0,
-    "times": ["abend", "tag"],
+    "times": [
+      "abend",
+      "tag"
+    ],
     "steps": [
-      { "t": "Snacks vorbereiten", "min": 20 },
-      { "t": "Spielerunde", "min": 120, "note": "Wer verliert, macht das Frühstück" }
+      {
+        "t": "Snacks vorbereiten",
+        "min": 20
+      },
+      {
+        "t": "Spielerunde",
+        "min": 120,
+        "note": "Wer verliert, macht das Frühstück"
+      }
     ],
     "recipe": {
       "name": "Snack-Platte",
       "url": "https://www.chefkoch.de/rs/s0/snacks+spieleabend/Rezepte.html",
-      "ingredients": ["Chips", "Nachos", "Salsa", "Gemüsesticks", "Dip", "Schokolade"]
-    }
+      "ingredients": [
+        "Chips",
+        "Nachos",
+        "Salsa",
+        "Gemüsesticks",
+        "Dip",
+        "Schokolade"
+      ]
+    },
+    "moods": [
+      "gemütlich",
+      "lustig"
+    ]
   },
   {
     "id": "kino-drink",
@@ -108,11 +239,29 @@
     "place": "drinnen",
     "cost": 45,
     "reach": 1,
-    "times": ["abend"],
-    "start": { "abend": "19:30" },
+    "times": [
+      "abend"
+    ],
+    "start": {
+      "abend": "19:30"
+    },
     "steps": [
-      { "t": "Kino", "min": 135, "q": "Kino", "book": true, "todo": "Kinotickets kaufen" },
-      { "t": "Drink in einer Bar", "min": 60, "q": "Bar" }
+      {
+        "t": "Kino",
+        "min": 135,
+        "q": "Kino",
+        "book": true,
+        "todo": "Kinotickets kaufen"
+      },
+      {
+        "t": "Drink in einer Bar",
+        "min": 60,
+        "q": "Bar"
+      }
+    ],
+    "moods": [
+      "gemütlich",
+      "kultur"
     ]
   },
   {
@@ -123,10 +272,25 @@
     "place": "drinnen",
     "cost": 35,
     "reach": 1,
-    "times": ["tag"],
+    "times": [
+      "tag"
+    ],
     "steps": [
-      { "t": "Museum", "min": 120, "q": "Museum" },
-      { "t": "Kaffee & Kuchen", "min": 60, "q": "Café", "food": true }
+      {
+        "t": "Museum",
+        "min": 120,
+        "q": "Museum"
+      },
+      {
+        "t": "Kaffee & Kuchen",
+        "min": 60,
+        "q": "Café",
+        "food": true
+      }
+    ],
+    "moods": [
+      "kultur",
+      "entspannt"
     ]
   },
   {
@@ -137,10 +301,29 @@
     "place": "drinnen",
     "cost": 75,
     "reach": 1,
-    "times": ["abend", "tag"],
+    "times": [
+      "abend",
+      "tag"
+    ],
     "steps": [
-      { "t": "Escape Room", "min": 75, "q": "Escape Room", "book": true, "todo": "Escape Room buchen" },
-      { "t": "Burger & Auswertung", "min": 75, "q": "Burger Restaurant", "food": true }
+      {
+        "t": "Escape Room",
+        "min": 75,
+        "q": "Escape Room",
+        "book": true,
+        "todo": "Escape Room buchen"
+      },
+      {
+        "t": "Burger & Auswertung",
+        "min": 75,
+        "q": "Burger Restaurant",
+        "food": true
+      }
+    ],
+    "moods": [
+      "abenteuerlich",
+      "lustig",
+      "aktiv"
     ]
   },
   {
@@ -151,10 +334,26 @@
     "place": "drinnen",
     "cost": 35,
     "reach": 1,
-    "times": ["abend", "tag"],
+    "times": [
+      "abend",
+      "tag"
+    ],
     "steps": [
-      { "t": "Bowling", "min": 90, "q": "Bowling", "book": true, "todo": "Bowlingbahn reservieren" },
-      { "t": "Snack an der Bar", "min": 30 }
+      {
+        "t": "Bowling",
+        "min": 90,
+        "q": "Bowling",
+        "book": true,
+        "todo": "Bowlingbahn reservieren"
+      },
+      {
+        "t": "Snack an der Bar",
+        "min": 30
+      }
+    ],
+    "moods": [
+      "lustig",
+      "aktiv"
     ]
   },
   {
@@ -165,10 +364,27 @@
     "place": "drinnen",
     "cost": 40,
     "reach": 1,
-    "times": ["tag", "abend"],
+    "times": [
+      "tag",
+      "abend"
+    ],
     "steps": [
-      { "t": "Boulderhalle", "min": 120, "q": "Boulderhalle", "note": "Schuhe können geliehen werden" },
-      { "t": "Smoothie oder Bowl", "min": 40, "q": "Café", "food": true }
+      {
+        "t": "Boulderhalle",
+        "min": 120,
+        "q": "Boulderhalle",
+        "note": "Schuhe können geliehen werden"
+      },
+      {
+        "t": "Smoothie oder Bowl",
+        "min": 40,
+        "q": "Café",
+        "food": true
+      }
+    ],
+    "moods": [
+      "aktiv",
+      "abenteuerlich"
     ]
   },
   {
@@ -179,12 +395,33 @@
     "place": "draußen",
     "cost": 35,
     "reach": 2,
-    "times": ["tag"],
-    "start": { "tag": "10:00" },
+    "times": [
+      "tag"
+    ],
+    "start": {
+      "tag": "10:00"
+    },
     "steps": [
-      { "t": "Anfahrt zum Startpunkt", "min": 45, "q": "Wanderparkplatz" },
-      { "t": "Wanderung", "min": 150, "url": "https://www.komoot.com/de-de/discover" },
-      { "t": "Einkehr in Hütte oder Biergarten", "min": 75, "q": "Biergarten", "food": true }
+      {
+        "t": "Anfahrt zum Startpunkt",
+        "min": 45,
+        "q": "Wanderparkplatz"
+      },
+      {
+        "t": "Wanderung",
+        "min": 150,
+        "url": "https://www.komoot.com/de-de/discover"
+      },
+      {
+        "t": "Einkehr in Hütte oder Biergarten",
+        "min": 75,
+        "q": "Biergarten",
+        "food": true
+      }
+    ],
+    "moods": [
+      "aktiv",
+      "abenteuerlich"
     ]
   },
   {
@@ -195,18 +432,46 @@
     "place": "draußen",
     "cost": 10,
     "reach": 2,
-    "times": ["tag"],
-    "start": { "tag": "11:00" },
+    "times": [
+      "tag"
+    ],
+    "start": {
+      "tag": "11:00"
+    },
     "steps": [
-      { "t": "Radtour", "min": 75, "url": "https://www.komoot.com/de-de/discover" },
-      { "t": "Pause am See", "min": 120, "q": "See Badestelle" },
-      { "t": "Rückfahrt", "min": 75 }
+      {
+        "t": "Radtour",
+        "min": 75,
+        "url": "https://www.komoot.com/de-de/discover"
+      },
+      {
+        "t": "Pause am See",
+        "min": 120,
+        "q": "See Badestelle"
+      },
+      {
+        "t": "Rückfahrt",
+        "min": 75
+      }
     ],
     "recipe": {
       "name": "Brotzeit für unterwegs",
       "url": "https://www.chefkoch.de/rs/s0/brotzeit/Rezepte.html",
-      "ingredients": ["Brezen", { "std": "Wurst & Käse", "vegan": "Aufstriche" }, "Gurke", "Äpfel", "Wasserflaschen"]
-    }
+      "ingredients": [
+        "Brezen",
+        {
+          "std": "Wurst & Käse",
+          "vegan": "Aufstriche"
+        },
+        "Gurke",
+        "Äpfel",
+        "Wasserflaschen"
+      ]
+    },
+    "moods": [
+      "aktiv",
+      "entspannt"
+    ]
   },
   {
     "id": "sternegucken",
@@ -216,12 +481,29 @@
     "place": "draußen",
     "cost": 0,
     "reach": 2,
-    "times": ["abend"],
+    "times": [
+      "abend"
+    ],
     "needsClear": true,
-    "start": { "abend": "21:00" },
+    "start": {
+      "abend": "21:00"
+    },
     "steps": [
-      { "t": "Fahrt zu einem dunklen Ort", "min": 30, "url": "https://www.lightpollutionmap.info" },
-      { "t": "Sterne beobachten", "min": 90, "url": "https://stellarium-web.org", "note": "Warme Decke & Tee mitnehmen" }
+      {
+        "t": "Fahrt zu einem dunklen Ort",
+        "min": 30,
+        "url": "https://www.lightpollutionmap.info"
+      },
+      {
+        "t": "Sterne beobachten",
+        "min": 90,
+        "url": "https://stellarium-web.org",
+        "note": "Warme Decke & Tee mitnehmen"
+      }
+    ],
+    "moods": [
+      "romantisch",
+      "abenteuerlich"
     ]
   },
   {
@@ -232,16 +514,35 @@
     "place": "drinnen",
     "cost": 8,
     "reach": 0,
-    "times": ["abend"],
+    "times": [
+      "abend"
+    ],
     "steps": [
-      { "t": "Deckenburg bauen & Popcorn machen", "min": 30 },
-      { "t": "Film-Abend", "min": 130, "url": "https://www.werstreamt.es", "note": "Jede*r darf ein Veto einlegen" }
+      {
+        "t": "Deckenburg bauen & Popcorn machen",
+        "min": 30
+      },
+      {
+        "t": "Film-Abend",
+        "min": 130,
+        "url": "https://www.werstreamt.es",
+        "note": "Jede*r darf ein Veto einlegen"
+      }
     ],
     "recipe": {
       "name": "Popcorn",
       "url": "https://www.chefkoch.de/rs/s0/popcorn/Rezepte.html",
-      "ingredients": ["Popcorn-Mais", "Kokosöl", "Salz oder Zucker", "Limo oder Wein"]
-    }
+      "ingredients": [
+        "Popcorn-Mais",
+        "Kokosöl",
+        "Salz oder Zucker",
+        "Limo oder Wein"
+      ]
+    },
+    "moods": [
+      "gemütlich",
+      "romantisch"
+    ]
   },
   {
     "id": "pizza-backen",
@@ -251,17 +552,47 @@
     "place": "drinnen",
     "cost": 15,
     "reach": 0,
-    "times": ["abend"],
+    "times": [
+      "abend"
+    ],
     "steps": [
-      { "t": "Teig ansetzen", "min": 20, "recipe": true, "note": "Mindestens 1 Stunde gehen lassen" },
-      { "t": "Gehzeit: Musik & Aperitif", "min": 60 },
-      { "t": "Belegen, backen, bewerten", "min": 60 }
+      {
+        "t": "Teig ansetzen",
+        "min": 20,
+        "recipe": true,
+        "note": "Mindestens 1 Stunde gehen lassen"
+      },
+      {
+        "t": "Gehzeit: Musik & Aperitif",
+        "min": 60
+      },
+      {
+        "t": "Belegen, backen, bewerten",
+        "min": 60
+      }
     ],
     "recipe": {
       "name": "Pizza aus dem Ofen",
       "url": "https://www.chefkoch.de/rs/s0/pizzateig/Rezepte.html",
-      "ingredients": ["Mehl (Type 00)", "Hefe", "Passierte Tomaten", { "std": "Mozzarella", "vegan": "Veganer Reibekäse" }, "Pilze", "Paprika", "Rucola", "Oregano"]
-    }
+      "ingredients": [
+        "Mehl (Type 00)",
+        "Hefe",
+        "Passierte Tomaten",
+        {
+          "std": "Mozzarella",
+          "vegan": "Veganer Reibekäse"
+        },
+        "Pilze",
+        "Paprika",
+        "Rucola",
+        "Oregano"
+      ]
+    },
+    "moods": [
+      "gemütlich",
+      "kulinarisch",
+      "lustig"
+    ]
   },
   {
     "id": "schoko-tasting",
@@ -271,16 +602,36 @@
     "place": "drinnen",
     "cost": 20,
     "reach": 0,
-    "times": ["abend", "tag"],
+    "times": [
+      "abend",
+      "tag"
+    ],
     "steps": [
-      { "t": "Schokolade besorgen", "min": 30, "q": "Chocolaterie" },
-      { "t": "Blind-Verkostung", "min": 60, "note": "Augen verbinden, Punkte vergeben" }
+      {
+        "t": "Schokolade besorgen",
+        "min": 30,
+        "q": "Chocolaterie"
+      },
+      {
+        "t": "Blind-Verkostung",
+        "min": 60,
+        "note": "Augen verbinden, Punkte vergeben"
+      }
     ],
     "recipe": {
       "name": "Tasting-Set",
       "url": "https://www.chefkoch.de/rs/s0/schokolade/Rezepte.html",
-      "ingredients": ["5 verschiedene Tafeln Schokolade", "Wasser", "Weißbrot zum Neutralisieren"]
-    }
+      "ingredients": [
+        "5 verschiedene Tafeln Schokolade",
+        "Wasser",
+        "Weißbrot zum Neutralisieren"
+      ]
+    },
+    "moods": [
+      "kulinarisch",
+      "gemütlich",
+      "lustig"
+    ]
   },
   {
     "id": "kochkurs",
@@ -290,9 +641,22 @@
     "place": "drinnen",
     "cost": 130,
     "reach": 1,
-    "times": ["abend"],
+    "times": [
+      "abend"
+    ],
     "steps": [
-      { "t": "Kochkurs", "min": 210, "q": "Kochkurs", "food": true, "book": true, "todo": "Kochkurs buchen" }
+      {
+        "t": "Kochkurs",
+        "min": 210,
+        "q": "Kochkurs",
+        "food": true,
+        "book": true,
+        "todo": "Kochkurs buchen"
+      }
+    ],
+    "moods": [
+      "kulinarisch",
+      "aktiv"
     ]
   },
   {
@@ -303,11 +667,34 @@
     "place": "drinnen",
     "cost": 85,
     "reach": 1,
-    "times": ["abend"],
+    "times": [
+      "abend"
+    ],
     "steps": [
-      { "t": "Vorspeise", "min": 45, "q": "Tapas Bar", "food": true },
-      { "t": "Hauptgang", "min": 75, "q": "Restaurant", "food": true, "book": true, "todo": "Tisch für den Hauptgang reservieren" },
-      { "t": "Dessert", "min": 40, "q": "Dessert Café", "food": true }
+      {
+        "t": "Vorspeise",
+        "min": 45,
+        "q": "Tapas Bar",
+        "food": true
+      },
+      {
+        "t": "Hauptgang",
+        "min": 75,
+        "q": "Restaurant",
+        "food": true,
+        "book": true,
+        "todo": "Tisch für den Hauptgang reservieren"
+      },
+      {
+        "t": "Dessert",
+        "min": 40,
+        "q": "Dessert Café",
+        "food": true
+      }
+    ],
+    "moods": [
+      "kulinarisch",
+      "abenteuerlich"
     ]
   },
   {
@@ -318,11 +705,29 @@
     "place": "draußen",
     "cost": 40,
     "reach": 1,
-    "times": ["tag"],
-    "start": { "tag": "09:30" },
+    "times": [
+      "tag"
+    ],
+    "start": {
+      "tag": "09:30"
+    },
     "steps": [
-      { "t": "Frühstück", "min": 60, "q": "Frühstück Café", "food": true },
-      { "t": "Flohmarkt-Challenge", "min": 90, "url": "https://www.flohmarkt.de", "note": "Max. 10 € pro Person" }
+      {
+        "t": "Frühstück",
+        "min": 60,
+        "q": "Frühstück Café",
+        "food": true
+      },
+      {
+        "t": "Flohmarkt-Challenge",
+        "min": 90,
+        "url": "https://www.flohmarkt.de",
+        "note": "Max. 10 € pro Person"
+      }
+    ],
+    "moods": [
+      "lustig",
+      "entspannt"
     ]
   },
   {
@@ -333,11 +738,29 @@
     "place": "drinnen",
     "cost": 45,
     "reach": 1,
-    "times": ["tag"],
-    "start": { "tag": "10:30" },
+    "times": [
+      "tag"
+    ],
+    "start": {
+      "tag": "10:30"
+    },
     "steps": [
-      { "t": "Brunch", "min": 120, "q": "Brunch", "food": true, "book": true, "todo": "Brunch-Tisch reservieren" },
-      { "t": "Verdauungsspaziergang", "min": 45 }
+      {
+        "t": "Brunch",
+        "min": 120,
+        "q": "Brunch",
+        "food": true,
+        "book": true,
+        "todo": "Brunch-Tisch reservieren"
+      },
+      {
+        "t": "Verdauungsspaziergang",
+        "min": 45
+      }
+    ],
+    "moods": [
+      "kulinarisch",
+      "entspannt"
     ]
   },
   {
@@ -348,9 +771,22 @@
     "place": "drinnen",
     "cost": 100,
     "reach": 1,
-    "times": ["tag", "abend"],
+    "times": [
+      "tag",
+      "abend"
+    ],
     "steps": [
-      { "t": "Töpferkurs", "min": 150, "q": "Töpferkurs", "book": true, "todo": "Töpferkurs buchen" }
+      {
+        "t": "Töpferkurs",
+        "min": 150,
+        "q": "Töpferkurs",
+        "book": true,
+        "todo": "Töpferkurs buchen"
+      }
+    ],
+    "moods": [
+      "kreativ",
+      "entspannt"
     ]
   },
   {
@@ -361,16 +797,38 @@
     "place": "drinnen",
     "cost": 25,
     "reach": 0,
-    "times": ["abend", "tag"],
+    "times": [
+      "abend",
+      "tag"
+    ],
     "steps": [
-      { "t": "Material besorgen", "min": 30, "q": "Künstlerbedarf" },
-      { "t": "Malen & anstoßen", "min": 120, "note": "Thema: Porträt der anderen Person" }
+      {
+        "t": "Material besorgen",
+        "min": 30,
+        "q": "Künstlerbedarf"
+      },
+      {
+        "t": "Malen & anstoßen",
+        "min": 120,
+        "note": "Thema: Porträt der anderen Person"
+      }
     ],
     "recipe": {
       "name": "Mal-Set",
       "url": "https://www.youtube.com/results?search_query=acryl+malen+anf%C3%A4nger",
-      "ingredients": ["2 kleine Leinwände", "Acrylfarben", "Pinsel", "Wein oder Saft", "Knabberzeug"]
-    }
+      "ingredients": [
+        "2 kleine Leinwände",
+        "Acrylfarben",
+        "Pinsel",
+        "Wein oder Saft",
+        "Knabberzeug"
+      ]
+    },
+    "moods": [
+      "kreativ",
+      "gemütlich",
+      "romantisch"
+    ]
   },
   {
     "id": "therme",
@@ -380,10 +838,27 @@
     "place": "drinnen",
     "cost": 80,
     "reach": 2,
-    "times": ["tag", "abend"],
+    "times": [
+      "tag",
+      "abend"
+    ],
     "steps": [
-      { "t": "Anfahrt", "min": 45, "q": "Therme" },
-      { "t": "Therme & Sauna", "min": 240, "q": "Therme", "book": true, "todo": "Thermen-Tickets online kaufen" }
+      {
+        "t": "Anfahrt",
+        "min": 45,
+        "q": "Therme"
+      },
+      {
+        "t": "Therme & Sauna",
+        "min": 240,
+        "q": "Therme",
+        "book": true,
+        "todo": "Thermen-Tickets online kaufen"
+      }
+    ],
+    "moods": [
+      "entspannt",
+      "romantisch"
     ]
   },
   {
@@ -394,10 +869,26 @@
     "place": "draußen",
     "cost": 20,
     "reach": 1,
-    "times": ["tag"],
+    "times": [
+      "tag"
+    ],
     "steps": [
-      { "t": "Free Walking Tour", "min": 120, "url": "https://www.guruwalk.com/de", "note": "Trinkgeld am Ende" },
-      { "t": "Postkarte an euch selbst schreiben", "min": 30, "q": "Café", "food": true }
+      {
+        "t": "Free Walking Tour",
+        "min": 120,
+        "url": "https://www.guruwalk.com/de",
+        "note": "Trinkgeld am Ende"
+      },
+      {
+        "t": "Postkarte an euch selbst schreiben",
+        "min": 30,
+        "q": "Café",
+        "food": true
+      }
+    ],
+    "moods": [
+      "kultur",
+      "abenteuerlich"
     ]
   },
   {
@@ -408,10 +899,23 @@
     "place": "draußen",
     "cost": 0,
     "reach": 1,
-    "times": ["tag"],
+    "times": [
+      "tag"
+    ],
     "steps": [
-      { "t": "Foto-Spaziergang", "min": 90, "note": "Begriffe: rot, Spiegelung, Liebe, alt, Tier, Kreis …" },
-      { "t": "Fotos vergleichen & küren", "min": 30 }
+      {
+        "t": "Foto-Spaziergang",
+        "min": 90,
+        "note": "Begriffe: rot, Spiegelung, Liebe, alt, Tier, Kreis …"
+      },
+      {
+        "t": "Fotos vergleichen & küren",
+        "min": 30
+      }
+    ],
+    "moods": [
+      "kreativ",
+      "lustig"
     ]
   },
   {
@@ -422,10 +926,25 @@
     "place": "drinnen",
     "cost": 15,
     "reach": 1,
-    "times": ["tag"],
+    "times": [
+      "tag"
+    ],
     "steps": [
-      { "t": "Botanischer Garten & Gewächshäuser", "min": 120, "q": "Botanischer Garten" },
-      { "t": "Heiße Schokolade", "min": 40, "q": "Café", "food": true }
+      {
+        "t": "Botanischer Garten & Gewächshäuser",
+        "min": 120,
+        "q": "Botanischer Garten"
+      },
+      {
+        "t": "Heiße Schokolade",
+        "min": 40,
+        "q": "Café",
+        "food": true
+      }
+    ],
+    "moods": [
+      "entspannt",
+      "kultur"
     ]
   },
   {
@@ -436,10 +955,23 @@
     "place": "drinnen",
     "cost": 45,
     "reach": 1,
-    "times": ["abend"],
-    "start": { "abend": "20:00" },
+    "times": [
+      "abend"
+    ],
+    "start": {
+      "abend": "20:00"
+    },
     "steps": [
-      { "t": "Konzert oder Open Stage", "min": 150, "q": "Live Musik Bar", "url": "https://www.eventim.de" }
+      {
+        "t": "Konzert oder Open Stage",
+        "min": 150,
+        "q": "Live Musik Bar",
+        "url": "https://www.eventim.de"
+      }
+    ],
+    "moods": [
+      "kultur",
+      "romantisch"
     ]
   },
   {
@@ -450,11 +982,29 @@
     "place": "drinnen",
     "cost": 60,
     "reach": 1,
-    "times": ["abend"],
-    "start": { "abend": "19:00" },
+    "times": [
+      "abend"
+    ],
+    "start": {
+      "abend": "19:00"
+    },
     "steps": [
-      { "t": "Vorstellung", "min": 120, "q": "Comedy Theater", "book": true, "todo": "Tickets besorgen" },
-      { "t": "Drink danach", "min": 45, "q": "Bar" }
+      {
+        "t": "Vorstellung",
+        "min": 120,
+        "q": "Comedy Theater",
+        "book": true,
+        "todo": "Tickets besorgen"
+      },
+      {
+        "t": "Drink danach",
+        "min": 45,
+        "q": "Bar"
+      }
+    ],
+    "moods": [
+      "kultur",
+      "lustig"
     ]
   },
   {
@@ -465,10 +1015,23 @@
     "place": "drinnen",
     "cost": 45,
     "reach": 1,
-    "times": ["abend"],
-    "start": { "abend": "20:00" },
+    "times": [
+      "abend"
+    ],
+    "start": {
+      "abend": "20:00"
+    },
     "steps": [
-      { "t": "Karaoke", "min": 120, "q": "Karaoke", "book": true, "todo": "Karaoke-Kabine reservieren" }
+      {
+        "t": "Karaoke",
+        "min": 120,
+        "q": "Karaoke",
+        "book": true,
+        "todo": "Karaoke-Kabine reservieren"
+      }
+    ],
+    "moods": [
+      "lustig"
     ]
   },
   {
@@ -479,10 +1042,25 @@
     "place": "draußen",
     "cost": 30,
     "reach": 1,
-    "times": ["tag"],
+    "times": [
+      "tag"
+    ],
     "steps": [
-      { "t": "Bootsverleih", "min": 60, "q": "Bootsverleih" },
-      { "t": "Eis oder Getränk am Ufer", "min": 30, "q": "Eisdiele", "food": true }
+      {
+        "t": "Bootsverleih",
+        "min": 60,
+        "q": "Bootsverleih"
+      },
+      {
+        "t": "Eis oder Getränk am Ufer",
+        "min": 30,
+        "q": "Eisdiele",
+        "food": true
+      }
+    ],
+    "moods": [
+      "romantisch",
+      "aktiv"
     ]
   },
   {
@@ -493,10 +1071,23 @@
     "place": "draußen",
     "cost": 35,
     "reach": 1,
-    "times": ["abend"],
+    "times": [
+      "abend"
+    ],
     "steps": [
-      { "t": "Rooftop-Bar", "min": 90, "q": "Rooftop Bar" },
-      { "t": "Kleiner Abendspaziergang", "min": 30 }
+      {
+        "t": "Rooftop-Bar",
+        "min": 90,
+        "q": "Rooftop Bar"
+      },
+      {
+        "t": "Kleiner Abendspaziergang",
+        "min": 30
+      }
+    ],
+    "moods": [
+      "romantisch",
+      "entspannt"
     ]
   },
   {
@@ -507,10 +1098,25 @@
     "place": "drinnen",
     "cost": 25,
     "reach": 1,
-    "times": ["tag", "abend"],
+    "times": [
+      "tag",
+      "abend"
+    ],
     "steps": [
-      { "t": "Eisstadion", "min": 90, "q": "Eislaufen" },
-      { "t": "Heißer Punsch", "min": 30 }
+      {
+        "t": "Eisstadion",
+        "min": 90,
+        "q": "Eislaufen"
+      },
+      {
+        "t": "Heißer Punsch",
+        "min": 30
+      }
+    ],
+    "moods": [
+      "aktiv",
+      "lustig",
+      "romantisch"
     ]
   },
   {
@@ -521,11 +1127,28 @@
     "place": "draußen",
     "cost": 45,
     "reach": 1,
-    "times": ["tag"],
-    "start": { "tag": "11:00" },
+    "times": [
+      "tag"
+    ],
+    "start": {
+      "tag": "11:00"
+    },
     "steps": [
-      { "t": "Zoo / Tierpark", "min": 180, "q": "Zoo Tierpark" },
-      { "t": "Snack im Biergarten", "min": 45, "q": "Biergarten", "food": true }
+      {
+        "t": "Zoo / Tierpark",
+        "min": 180,
+        "q": "Zoo Tierpark"
+      },
+      {
+        "t": "Snack im Biergarten",
+        "min": 45,
+        "q": "Biergarten",
+        "food": true
+      }
+    ],
+    "moods": [
+      "entspannt",
+      "lustig"
     ]
   },
   {
@@ -536,10 +1159,24 @@
     "place": "drinnen",
     "cost": 0,
     "reach": 0,
-    "times": ["abend", "tag"],
+    "times": [
+      "abend",
+      "tag"
+    ],
     "steps": [
-      { "t": "Lieblingsfotos raussuchen", "min": 45 },
-      { "t": "Album gestalten & erzählen", "min": 90, "note": "Fragen: Was war unser lustigster Moment?" }
+      {
+        "t": "Lieblingsfotos raussuchen",
+        "min": 45
+      },
+      {
+        "t": "Album gestalten & erzählen",
+        "min": 90,
+        "note": "Fragen: Was war unser lustigster Moment?"
+      }
+    ],
+    "moods": [
+      "romantisch",
+      "gemütlich"
     ]
   },
   {
@@ -550,17 +1187,42 @@
     "place": "drinnen",
     "cost": 12,
     "reach": 0,
-    "times": ["tag"],
-    "start": { "tag": "09:00" },
+    "times": [
+      "tag"
+    ],
+    "start": {
+      "tag": "09:00"
+    },
     "steps": [
-      { "t": "Bäcker", "min": 15, "q": "Bäckerei" },
-      { "t": "Frühstück im Bett", "min": 90 }
+      {
+        "t": "Bäcker",
+        "min": 15,
+        "q": "Bäckerei"
+      },
+      {
+        "t": "Frühstück im Bett",
+        "min": 90
+      }
     ],
     "recipe": {
       "name": "Bett-Frühstück",
       "url": "https://www.chefkoch.de/rs/s0/fr%C3%BChst%C3%BCck/Rezepte.html",
-      "ingredients": ["Croissants", "Marmelade", "Beeren", "Orangen zum Pressen", "Kaffee", { "std": "Joghurt", "vegan": "Sojajoghurt" }]
-    }
+      "ingredients": [
+        "Croissants",
+        "Marmelade",
+        "Beeren",
+        "Orangen zum Pressen",
+        "Kaffee",
+        {
+          "std": "Joghurt",
+          "vegan": "Sojajoghurt"
+        }
+      ]
+    },
+    "moods": [
+      "romantisch",
+      "gemütlich"
+    ]
   },
   {
     "id": "fondue",
@@ -570,16 +1232,40 @@
     "place": "drinnen",
     "cost": 25,
     "reach": 0,
-    "times": ["abend"],
+    "times": [
+      "abend"
+    ],
     "steps": [
-      { "t": "Vorbereiten", "min": 40, "recipe": true },
-      { "t": "Fondue genießen", "min": 100 }
+      {
+        "t": "Vorbereiten",
+        "min": 40,
+        "recipe": true
+      },
+      {
+        "t": "Fondue genießen",
+        "min": 100
+      }
     ],
     "recipe": {
       "name": "Käse- oder Schokofondue",
       "url": "https://www.chefkoch.de/rs/s0/fondue/Rezepte.html",
-      "ingredients": [{ "std": "Bergkäse", "vegan": "Veganer Schmelzkäse" }, "Weißwein", "Knoblauch", "Baguette", "Obst", "Zartbitterschokolade"]
-    }
+      "ingredients": [
+        {
+          "std": "Bergkäse",
+          "vegan": "Veganer Schmelzkäse"
+        },
+        "Weißwein",
+        "Knoblauch",
+        "Baguette",
+        "Obst",
+        "Zartbitterschokolade"
+      ]
+    },
+    "moods": [
+      "gemütlich",
+      "kulinarisch",
+      "romantisch"
+    ]
   },
   {
     "id": "spa-zuhause",
@@ -589,17 +1275,39 @@
     "place": "drinnen",
     "cost": 15,
     "reach": 0,
-    "times": ["abend"],
+    "times": [
+      "abend"
+    ],
     "steps": [
-      { "t": "Masken & Tee", "min": 45 },
-      { "t": "Gegenseitige Massage", "min": 45 },
-      { "t": "Bad bei Kerzenschein", "min": 45 }
+      {
+        "t": "Masken & Tee",
+        "min": 45
+      },
+      {
+        "t": "Gegenseitige Massage",
+        "min": 45
+      },
+      {
+        "t": "Bad bei Kerzenschein",
+        "min": 45
+      }
     ],
     "recipe": {
       "name": "Spa-Set",
       "url": "https://www.chefkoch.de/rs/s0/tee/Rezepte.html",
-      "ingredients": ["Gesichtsmasken", "Massageöl", "Badezusatz", "Teelichter", "Kräutertee"]
-    }
+      "ingredients": [
+        "Gesichtsmasken",
+        "Massageöl",
+        "Badezusatz",
+        "Teelichter",
+        "Kräutertee"
+      ]
+    },
+    "moods": [
+      "entspannt",
+      "romantisch",
+      "gemütlich"
+    ]
   },
   {
     "id": "buchhandlung",
@@ -609,10 +1317,25 @@
     "place": "drinnen",
     "cost": 40,
     "reach": 1,
-    "times": ["tag"],
+    "times": [
+      "tag"
+    ],
     "steps": [
-      { "t": "Buchhandlung", "min": 45, "q": "Buchhandlung" },
-      { "t": "Café & erste Seiten lesen", "min": 60, "q": "Café", "food": true }
+      {
+        "t": "Buchhandlung",
+        "min": 45,
+        "q": "Buchhandlung"
+      },
+      {
+        "t": "Café & erste Seiten lesen",
+        "min": 60,
+        "q": "Café",
+        "food": true
+      }
+    ],
+    "moods": [
+      "gemütlich",
+      "kultur"
     ]
   },
   {
@@ -623,10 +1346,27 @@
     "place": "drinnen",
     "cost": 45,
     "reach": 1,
-    "times": ["abend", "tag"],
+    "times": [
+      "abend",
+      "tag"
+    ],
     "steps": [
-      { "t": "Lasertag", "min": 45, "q": "Lasertag", "book": true, "todo": "Lasertag-Runde buchen" },
-      { "t": "Arcade-Automaten", "min": 60, "q": "Arcade Spielhalle" }
+      {
+        "t": "Lasertag",
+        "min": 45,
+        "q": "Lasertag",
+        "book": true,
+        "todo": "Lasertag-Runde buchen"
+      },
+      {
+        "t": "Arcade-Automaten",
+        "min": 60,
+        "q": "Arcade Spielhalle"
+      }
+    ],
+    "moods": [
+      "lustig",
+      "aktiv"
     ]
   },
   {
@@ -637,16 +1377,42 @@
     "place": "drinnen",
     "cost": 30,
     "reach": 0,
-    "times": ["abend"],
+    "times": [
+      "abend"
+    ],
     "steps": [
-      { "t": "Reis kochen & Zutaten schneiden", "min": 45, "recipe": true },
-      { "t": "Rollen & essen", "min": 75 }
+      {
+        "t": "Reis kochen & Zutaten schneiden",
+        "min": 45,
+        "recipe": true
+      },
+      {
+        "t": "Rollen & essen",
+        "min": 75
+      }
     ],
     "recipe": {
       "name": "Sushi zuhause",
       "url": "https://www.chefkoch.de/rs/s0/sushi/Rezepte.html",
-      "ingredients": ["Sushi-Reis", "Reisessig", "Noriblätter", { "std": "Lachs", "vegan": "Räuchertofu" }, "Avocado", "Gurke", "Sojasauce", "Wasabi & Ingwer", "Bambusmatte"]
-    }
+      "ingredients": [
+        "Sushi-Reis",
+        "Reisessig",
+        "Noriblätter",
+        {
+          "std": "Lachs",
+          "vegan": "Räuchertofu"
+        },
+        "Avocado",
+        "Gurke",
+        "Sojasauce",
+        "Wasabi & Ingwer",
+        "Bambusmatte"
+      ]
+    },
+    "moods": [
+      "kulinarisch",
+      "kreativ"
+    ]
   },
   {
     "id": "nachtspaziergang",
@@ -656,10 +1422,23 @@
     "place": "draußen",
     "cost": 0,
     "reach": 1,
-    "times": ["abend"],
-    "start": { "abend": "20:00" },
+    "times": [
+      "abend"
+    ],
+    "start": {
+      "abend": "20:00"
+    },
     "steps": [
-      { "t": "Spaziergang durch die Altstadt", "min": 90, "q": "Altstadt", "url": "https://www.google.com/search?q=36+fragen+zum+verlieben" }
+      {
+        "t": "Spaziergang durch die Altstadt",
+        "min": 90,
+        "q": "Altstadt",
+        "url": "https://www.google.com/search?q=36+fragen+zum+verlieben"
+      }
+    ],
+    "moods": [
+      "romantisch",
+      "entspannt"
     ]
   },
   {
@@ -670,12 +1449,31 @@
     "place": "drinnen",
     "cost": 140,
     "reach": 1,
-    "times": ["abend"],
+    "times": [
+      "abend"
+    ],
     "special": true,
-    "start": { "abend": "19:00" },
+    "start": {
+      "abend": "19:00"
+    },
     "steps": [
-      { "t": "Aperitif", "min": 30, "q": "Cocktailbar" },
-      { "t": "Mehrgangmenü", "min": 150, "q": "Fine Dining Restaurant", "food": true, "book": true, "todo": "Tisch im Restaurant reservieren" }
+      {
+        "t": "Aperitif",
+        "min": 30,
+        "q": "Cocktailbar"
+      },
+      {
+        "t": "Mehrgangmenü",
+        "min": 150,
+        "q": "Fine Dining Restaurant",
+        "food": true,
+        "book": true,
+        "todo": "Tisch im Restaurant reservieren"
+      }
+    ],
+    "moods": [
+      "romantisch",
+      "kulinarisch"
     ]
   },
   {
@@ -686,13 +1484,36 @@
     "place": "draußen",
     "cost": 90,
     "reach": 2,
-    "times": ["tag"],
+    "times": [
+      "tag"
+    ],
     "special": true,
-    "start": { "tag": "10:00" },
+    "start": {
+      "tag": "10:00"
+    },
     "steps": [
-      { "t": "Zugfahrt in eine Nachbarstadt", "min": 75, "url": "https://www.bahn.de", "book": true, "todo": "Zugtickets kaufen" },
-      { "t": "Altstadt erkunden", "min": 120, "q": "Altstadt Sehenswürdigkeiten" },
-      { "t": "Mittagessen", "min": 75, "q": "Restaurant", "food": true }
+      {
+        "t": "Zugfahrt in eine Nachbarstadt",
+        "min": 75,
+        "url": "https://www.bahn.de",
+        "book": true,
+        "todo": "Zugtickets kaufen"
+      },
+      {
+        "t": "Altstadt erkunden",
+        "min": 120,
+        "q": "Altstadt Sehenswürdigkeiten"
+      },
+      {
+        "t": "Mittagessen",
+        "min": 75,
+        "q": "Restaurant",
+        "food": true
+      }
+    ],
+    "moods": [
+      "abenteuerlich",
+      "romantisch"
     ]
   },
   {
@@ -703,12 +1524,31 @@
     "place": "drinnen",
     "cost": 180,
     "reach": 2,
-    "times": ["tag"],
+    "times": [
+      "tag"
+    ],
     "special": true,
-    "start": { "tag": "11:00" },
+    "start": {
+      "tag": "11:00"
+    },
     "steps": [
-      { "t": "Day-Spa", "min": 180, "q": "Day Spa", "book": true, "todo": "Paarmassage buchen" },
-      { "t": "Leichtes Abendessen", "min": 75, "q": "Restaurant", "food": true }
+      {
+        "t": "Day-Spa",
+        "min": 180,
+        "q": "Day Spa",
+        "book": true,
+        "todo": "Paarmassage buchen"
+      },
+      {
+        "t": "Leichtes Abendessen",
+        "min": 75,
+        "q": "Restaurant",
+        "food": true
+      }
+    ],
+    "moods": [
+      "entspannt",
+      "romantisch"
     ]
   },
   {
@@ -719,11 +1559,25 @@
     "place": "drinnen",
     "cost": 50,
     "reach": 1,
-    "times": ["abend", "tag"],
+    "times": [
+      "abend",
+      "tag"
+    ],
     "special": true,
     "steps": [
-      { "t": "Ort des ersten Dates", "min": 90, "note": "Gleiche Bestellung wie damals?" },
-      { "t": "Briefe aneinander vorlesen", "min": 30, "note": "Vorher kurz aufschreiben: Was ich an dir liebe" }
+      {
+        "t": "Ort des ersten Dates",
+        "min": 90,
+        "note": "Gleiche Bestellung wie damals?"
+      },
+      {
+        "t": "Briefe aneinander vorlesen",
+        "min": 30,
+        "note": "Vorher kurz aufschreiben: Was ich an dir liebe"
+      }
+    ],
+    "moods": [
+      "romantisch"
     ]
   }
 ]

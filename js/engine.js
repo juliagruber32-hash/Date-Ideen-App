@@ -24,8 +24,77 @@ export const ideaDuration = (idea) => idea.steps.reduce((sum, s) => sum + s.min,
 
 export const REACH = ['Zuhause', 'In der Stadt', 'Ausflug'];
 
+export const MOODS = [
+  ['romantisch', 'Romantisch', '💞'],
+  ['gemütlich', 'Gemütlich', '🛋️'],
+  ['abenteuerlich', 'Abenteuerlich', '🧭'],
+  ['aktiv', 'Aktiv', '⚡'],
+  ['entspannt', 'Entspannt', '🌿'],
+  ['lustig', 'Lustig', '😄'],
+  ['kulinarisch', 'Kulinarisch', '🍽️'],
+  ['kultur', 'Kultur', '🎭'],
+  ['kreativ', 'Kreativ', '🎨'],
+];
+export const moodLabel = (m) => MOODS.find((x) => x[0] === m)?.[1] ?? m;
+
+/**
+ * Geschmacksprofil aus euren Bewertungen: Stimmungen, Orte und Ideen,
+ * die euch gefallen (positiv) oder nicht (negativ). Bewertung 1–5, neutral = 3.
+ */
+export function tasteProfile(dates) {
+  const moods = {};
+  const ideas = {};
+  const place = { drinnen: 0, draußen: 0 };
+  let count = 0;
+  for (const d of dates) {
+    const vals = Object.values(d.ratings ?? {}).filter((v) => v > 0);
+    if (!vals.length) continue;
+    const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+    const w = (avg - 3) / 2; // -1 … +1
+    const idea = allIdeas().find((i) => i.id === d.ideaId);
+    const ms = d.moods ?? idea?.moods ?? [];
+    for (const m of ms) moods[m] = (moods[m] ?? 0) + w;
+    const pl = d.place ?? idea?.place;
+    if (pl in place) place[pl] += w * 0.5;
+    if (d.ideaId) ideas[d.ideaId] = avg;
+    count++;
+  }
+  return { moods, ideas, place, count };
+}
+
+function tasteScore(idea, profile) {
+  if (!profile?.count) return 0;
+  let s = 0;
+  for (const m of idea.moods ?? []) s += (profile.moods[m] ?? 0) * 0.45;
+  s += (profile.place[idea.place] ?? 0) * 0.3;
+  return s;
+}
+
+/** Empfehlungen, die euch nach euren Bewertungen gefallen könnten – mit Begründung. */
+export function recommend(dates, count = 3) {
+  const profile = tasteProfile(dates);
+  if (!profile.count) return [];
+  const done = new Set(dates.map((d) => d.ideaId));
+  const liked = Object.entries(profile.moods).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).map(([m]) => m);
+  return allIdeas()
+    .filter((i) => !done.has(i.id))
+    .map((i) => ({ idea: i, score: tasteScore(i, profile) + Math.random() * 0.15 }))
+    .filter((x) => x.score > 0.1)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, count)
+    .map(({ idea }) => {
+      const shared = (idea.moods ?? []).filter((m) => liked.includes(m));
+      const best = dates
+        .filter((d) => Object.values(d.ratings ?? {}).some((v) => v >= 4))
+        .find((d) => (d.moods ?? allIdeas().find((i) => i.id === d.ideaId)?.moods ?? []).some((m) => shared.includes(m)));
+      const reason = best?.title ? `Weil euch „${best.title}“ gefallen hat` : shared.length ? `Ihr mögt es ${shared.map(moodLabel).join(' und ').toLowerCase()}` : 'Passt zu euren Bewertungen';
+      return { idea, reason };
+    });
+}
+
 /** Passt die Idee grundsätzlich zu den Eingaben? */
-function fits(idea, ctx, weather) {
+function fits(idea, ctx, weather, useMood = true) {
+  if (useMood && ctx.mood && !(idea.moods ?? []).includes(ctx.mood)) return false;
   if (idea.cost > ctx.budget) return false;
   if (idea.reach > ctx.reach) return false;
   if (!idea.times.includes(ctx.daytime)) return false;
@@ -36,8 +105,9 @@ function fits(idea, ctx, weather) {
   return true;
 }
 
-function score(idea, ctx, weather, recent) {
-  let s = Math.random();
+function score(idea, ctx, weather, recent, profile) {
+  let s = Math.random() + tasteScore(idea, profile);
+  if (idea.rating?.avg) s += (idea.rating.avg - 3) * 0.15; // Community-Bewertung
   if (ctx.special) s += idea.special ? 1.5 : 0;
   else if (idea.special) s -= 0.6; // Besonderes für besondere Tage aufheben
   if (idea.reach === ctx.reach) s += 0.4; // gewählte Entfernung bevorzugen
@@ -55,20 +125,26 @@ function score(idea, ctx, weather, recent) {
  * Bis zu `count` Vorschläge. `exclude` sind bereits gezeigte Ideen (für „Andere Ideen“).
  * Gibt { ideas, exhausted } zurück; exhausted = alle passenden schon gezeigt.
  */
-export async function suggest(ctx, weather, { exclude = new Set(), recentIds = [], count = 3 } = {}) {
+export async function suggest(ctx, weather, { exclude = new Set(), recentIds = [], count = 3, dates = [] } = {}) {
   await loadIdeas();
   const all = allIdeas();
   const recent = new Set(recentIds);
-  const pool = all.filter((i) => fits(i, ctx, weather));
+  const profile = tasteProfile(dates);
+  let pool = all.filter((i) => fits(i, ctx, weather));
+  let moodRelaxed = false;
+  if (!pool.length && ctx.mood) {
+    pool = all.filter((i) => fits(i, ctx, weather, false));
+    moodRelaxed = pool.length > 0;
+  }
   let fresh = pool.filter((i) => !exclude.has(i.id));
   const exhausted = fresh.length === 0 && pool.length > 0;
   if (exhausted) fresh = pool;
   const ideas = fresh
-    .map((i) => ({ i, s: score(i, ctx, weather, recent) }))
+    .map((i) => ({ i, s: score(i, ctx, weather, recent, profile) }))
     .sort((a, b) => b.s - a.s)
     .slice(0, count)
     .map((x) => x.i);
-  return { ideas, exhausted, poolSize: pool.length };
+  return { ideas, exhausted, poolSize: pool.length, moodRelaxed };
 }
 
 /** Wann geht’s los? */
@@ -106,7 +182,7 @@ export function buildPlan(idea, { date, daytime, start }, settings, weather) {
   let t = start || defaultStart(idea, daytime);
   const steps = idea.steps.map((s) => {
     const step = { time: t, title: s.t, min: s.min, note: s.note ?? '', links: stepLinks(s, idea, opts) };
-    if (s.place) step.place = { name: s.place.name, hours: s.place.hours ?? '', price: s.place.price?.text ?? '', street: s.place.street ?? '' };
+    if (s.place) step.place = { name: s.place.name, hours: s.place.hours ?? '', price: s.place.price?.text ?? '', street: s.place.street ?? '', lat: s.place.lat, lon: s.place.lon, website: s.place.website ?? '', image: s.place.image ?? '', category: s.place.category ?? '' };
     t = addMinutes(t, s.min);
     return step;
   });
@@ -116,6 +192,8 @@ export function buildPlan(idea, { date, daytime, start }, settings, weather) {
     emoji: idea.emoji,
     teaser: idea.teaser,
     place: idea.place,
+    moods: idea.moods ?? [],
+    communityId: idea.communityId ?? null,
     cost: idea.cost,
     duration: ideaDuration(idea),
     date,

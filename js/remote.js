@@ -186,5 +186,51 @@ export async function connectSupabase(cfg) {
     };
   };
 
-  return { db: { doc, collection }, uid, cfg: saved };
+  return { db: { doc, collection }, uid, cfg: saved, community: communityApi(client, uid) };
+}
+
+/* ------------------------------------------------------------ Community */
+
+function communityApi(client, uid) {
+  const fail = (error) => {
+    if (error) throw new Error(/community|relation|schema cache/i.test(error.message) ? 'Die Community ist in der Datenbank noch nicht eingerichtet (setup.sql erneut ausführen).' : error.message);
+  };
+  return {
+    uid,
+    async list() {
+      const { data, error } = await client.from('community_feed').select('*').order('created_at', { ascending: false }).limit(300);
+      fail(error);
+      return data;
+    },
+    async myRatings() {
+      const { data, error } = await client.from('community_ratings').select('idea_id,stars,comment').eq('user_id', uid);
+      fail(error);
+      return Object.fromEntries(data.map((r) => [r.idea_id, r]));
+    },
+    async reviews(ideaId) {
+      const { data, error } = await client.from('community_ratings').select('stars,comment,created_at').eq('idea_id', ideaId).order('created_at', { ascending: false }).limit(20);
+      fail(error);
+      return data;
+    },
+    async publish(idea, meta) {
+      const { data, error } = await client.from('community_ideas').insert({ idea, city: meta.city ?? null, lat: meta.lat ?? null, lon: meta.lon ?? null, moods: idea.moods ?? [], cost: idea.cost, place: idea.place }).select('id').single();
+      fail(error);
+      return data.id;
+    },
+    async remove(id) {
+      const { error } = await client.from('community_ideas').delete().eq('id', id);
+      fail(error);
+    },
+    async rate(ideaId, stars, comment) {
+      const { error } = await client.from('community_ratings').upsert({ idea_id: ideaId, user_id: uid, stars, comment: comment || null });
+      fail(error);
+    },
+    async use(ideaId) {
+      await client.rpc('use_idea', { i: ideaId });
+    },
+    async report(ideaId, reason) {
+      const { error } = await client.from('community_reports').insert({ idea_id: ideaId, reason: reason || null });
+      if (error && !/duplicate/i.test(error.message)) fail(error);
+    },
+  };
 }
