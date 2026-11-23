@@ -65,6 +65,7 @@ export const CATEGORIES = [
   { id: 'chocolate', hidden: true, moods: [], label: 'Schokolade', emoji: '🍫', filters: ['["shop"="chocolate"]', '["shop"="confectionery"]'], place: 'drinnen', times: ['tag'], cost: 20, plan: [['Schokolade', 30]] },
   { id: 'openair', seasonal: 'summer', moods: ['romantisch', 'kultur'], label: 'Open-Air-Kino', emoji: '🎬', filters: ['["amenity"="cinema"]["open_air"="yes"]', '["cinema:type"="open_air"]', '["amenity"="cinema"]["name"~"(Open.?Air|Freiluft|Sommerkino)",i]'], place: 'draußen', times: ['abend'], cost: 25, plan: [['Open-Air-Kino', 150]] },
   { id: 'lake', seasonal: 'summer', moods: ['entspannt', 'romantisch'], label: 'Badeseen', emoji: '🏖️', filters: ['["leisure"="swimming_area"]["name"]', '["leisure"="bathing_place"]["name"]', '["natural"="beach"]["name"]'], place: 'draußen', times: ['tag'], cost: 5, plan: [['Am See', 150]] },
+  { id: 'blacklight', hidden: true, moods: [], label: 'Schwarzlicht-Minigolf', emoji: '⛳', filters: ['["name"~"Schwarzlicht|Blacklight|Glow.?Golf|3D.?Minigolf|Indoor.?Minigolf",i]'], place: 'drinnen', times: ['tag', 'abend'], cost: 30, plan: [['Schwarzlicht-Minigolf', 75]] },
   { id: 'cooking', hidden: true, moods: [], label: 'Kochkurse', emoji: '👩‍🍳', filters: ['["amenity"="cooking_school"]', '["shop"]["name"~"Kochschule|Kochstudio|Kochkurs",i]', '["amenity"]["name"~"Kochschule|Kochstudio",i]'], place: 'drinnen', times: ['tag', 'abend'], cost: 120, food: true, plan: [['Kochkurs', 180]] },
   { id: 'pottery', hidden: true, moods: [], label: 'Töpferkurse', emoji: '🏺', filters: ['["craft"="pottery"]', '["shop"="pottery"]', '["shop"]["name"~"Töpfer|Keramik",i]'], place: 'drinnen', times: ['tag', 'abend'], cost: 80, plan: [['Töpfern', 150]] },
   { id: 'ort', hidden: true, moods: [], label: 'Ort', emoji: '📍', filters: [], place: 'drinnen', times: ['tag', 'abend'], cost: 25, plan: [['Besuch', 90]] },
@@ -208,7 +209,7 @@ export function radiusLadder(radius) {
 // Nominatim erlaubt höchstens eine Anfrage pro Sekunde – deshalb nacheinander mit Pause.
 const NOMI = {
   museum: ['[museum]'], gallery: ['Galerie'], cinema: ['[cinema]'], theatre: ['[theatre]'], restaurant: ['[restaurant]'],
-  cafe: ['[cafe]', 'Café'], bar: ['[bar]', '[pub]'], cooking: ['Kochschule', 'Kochkurs'], pottery: ['Töpferei', 'Keramik'], icecream: ['[ice cream]'], wine: ['Weinbar'], bowling: ['Bowling'],
+  cafe: ['[cafe]', 'Café'], bar: ['[bar]', '[pub]'], cooking: ['Kochschule', 'Kochkurs'], blacklight: ['3D Minigolf', 'Schwarzlicht', 'Indoor Minigolf'], pottery: ['Töpferei', 'Keramik'], icecream: ['[ice cream]'], wine: ['Weinbar'], bowling: ['Bowling'],
   escape: ['Escape Room'], climbing: ['Boulderhalle', 'Kletterhalle'], minigolf: ['[miniature golf]'], zoo: ['[zoo]', 'Wildpark'],
   park: ['[park]'], viewpoint: ['[viewpoint]'], spa: ['Therme', '[sauna]'], icerink: ['[ice rink]', 'Eishalle', 'Eisstadion'],
   xmas: ['Christkindlmarkt', 'Weihnachtsmarkt'], beergarden: ['[biergarten]'], lake: ['Badesee'], boat: ['Bootsverleih'],
@@ -638,6 +639,7 @@ export async function searchByName(term, center, radius) {
 
 const STEP_RULES = [
   [/weihnachtsmarkt|christkindl/, 'xmas'],
+  [/schwarzlicht|blacklight|3d.?minigolf/, 'blacklight'],
   [/kochkurs|kochschule/, 'cooking'],
   [/töpfer|keramik/, 'pottery'],
   [/bowling/, 'bowling'],

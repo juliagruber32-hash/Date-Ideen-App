@@ -3,7 +3,7 @@ import { isHiddenFromMe, myRole, nameOf, other } from './store.js';
 import { geocode, getWeather, manualWeather } from './weather.js';
 import { allIdeas, buildPlan, combineWishes, setPreferences, defaultStart, ideaDuration, loadIdeas, MOODS, moodLabel, REACH, recommend, rhythmStatus, setExtraIdeas, suggest, toICS } from './engine.js';
 import { appleMapsLink, CATEGORIES, CUISINES, catForStep, isXmasSeason, categoryById, directionsLink, distanceKm, fmtKm, fmtMin, formatHours, hoursOn, isOpenAt, locate, mapLink, placeName, reservationLinks, searchByName, searchMixed, searchNearby, travelEstimates } from './places.js';
-import { googleDetails } from './gplaces.js';
+import { googleDetails, googleSearch } from './gplaces.js';
 import { generateLocalDates, travelLine } from './generate.js';
 import { eventWhen, fetchEvents, ideaFromEvent } from './events.js';
 import { findImage, topicFor } from './images.js';
@@ -3172,6 +3172,15 @@ async function loadStepPlaces(steps, draft, stepCats, center, ctx) {
     if (far.length && radius < 60000) {
       const wider = await searchMixed(far, center, Math.min(radius * 3, 60000), 2).catch(() => ({}));
       for (const id of far) if (wider[id]?.length) groups[id] = wider[id];
+    }
+    // Immer noch nichts (z. B. Schwarzlicht-Minigolf, Weihnachtsmarkt)? Mit Google-Schlüssel bei Google suchen
+    const gKey = S().settings.googlePlacesKey;
+    const G_TEXT = { blacklight: 'Schwarzlicht Minigolf', xmas: 'Weihnachtsmarkt Christkindlmarkt', karaoke: 'Karaoke Bar', escape: 'Escape Room', climbing: 'Boulderhalle', cooking: 'Kochkurs', pottery: 'Töpferkurs', arcade: 'Lasertag', bowling: 'Bowling', spa: 'Therme', icerink: 'Eishalle Eislaufen', boat: 'Bootsverleih', bookshop: 'Buchhandlung' };
+    if (gKey) {
+      for (const id of ids.filter((x) => !groups[x]?.length && G_TEXT[x])) {
+        const found = await googleSearch(G_TEXT[id], center, Math.max(radius, 30000), gKey).catch(() => []);
+        groups[id] = found.map((p) => ({ ...p, category: id, km: distanceKm(center, p) })).filter((p) => p.km <= Math.max(radius, 30000) / 1000 * 2).sort((a, b) => a.km - b.km);
+      }
     }
     // Nichts gefunden (z. B. Weihnachtsmarkt nicht in den Kartendaten)? Für Nebenstationen eine passende Alternative
     const realCat = {};

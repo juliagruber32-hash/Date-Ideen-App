@@ -72,3 +72,49 @@ const PRICE = {
   PRICE_LEVEL_EXPENSIVE: '€€€',
   PRICE_LEVEL_VERY_EXPENSIVE: '€€€€',
 };
+
+/**
+ * Orte per Google-Textsuche finden (z. B. „Schwarzlicht Minigolf“, „Weihnachtsmarkt“), wenn die freien
+ * Kartendaten nichts haben. Nur mit eigenem Schlüssel. Ergebnis wird 7 Tage gemerkt.
+ */
+export async function googleSearch(text, center, radiusM, apiKey) {
+  if (!apiKey) return [];
+  const cache = readCache();
+  const ck = `s|${text}|${center.lat.toFixed(2)}|${center.lon.toFixed(2)}|${radiusM}`;
+  const hit = cache[ck];
+  if (hit && Date.now() - hit.at < TTL) return hit.data;
+  const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': apiKey,
+      'X-Goog-FieldMask': 'places.id,places.displayName,places.location,places.formattedAddress,places.websiteUri,places.rating,places.userRatingCount,places.photos,places.businessStatus',
+    },
+    body: JSON.stringify({
+      textQuery: text,
+      languageCode: 'de',
+      maxResultCount: 10,
+      locationBias: { circle: { center: { latitude: center.lat, longitude: center.lon }, radius: Math.min(radiusM, 50000) } },
+    }),
+  });
+  if (!res.ok) return [];
+  const json = await res.json();
+  const data = (json.places ?? [])
+    .filter((g) => g.location && g.businessStatus !== 'CLOSED_PERMANENTLY')
+    .map((g) => ({
+      id: `g${g.id}`,
+      name: g.displayName?.text ?? '',
+      lat: g.location.latitude,
+      lon: g.location.longitude,
+      street: (g.formattedAddress ?? '').split(',')[0],
+      city: ((g.formattedAddress ?? '').split(',')[1] ?? '').replace(/\d{5}/, '').trim(),
+      website: g.websiteUri ?? '',
+      hours: '',
+      price: null,
+      image: g.photos?.[0]?.name ? `https://places.googleapis.com/v1/${g.photos[0].name}/media?maxWidthPx=800&key=${encodeURIComponent(apiKey)}` : '',
+      google: { rating: g.rating ?? null, count: g.userRatingCount ?? 0 },
+    }));
+  cache[ck] = { at: Date.now(), data };
+  writeCache(cache);
+  return data;
+}
