@@ -60,17 +60,17 @@ function mainCategories({ moods, daytime, date, weather, place }) {
   return ids.sort((a, b) => score(b) - score(a));
 }
 
-const placeRef = (p) => ({ name: p.name, street: p.street, city: p.city, lat: p.lat, lon: p.lon, website: p.website, hours: p.hours, price: p.price, image: p.image, category: p.category });
+const placeRef = (p) => ({ id: p.id, wikipedia: p.wikipedia, name: p.name, street: p.street, city: p.city, lat: p.lat, lon: p.lon, website: p.website, hours: p.hours, price: p.price, image: p.image, category: p.category });
 
 /** Ein Date aus Hauptort + Folgeort bauen. */
 export function buildGeneratedIdea(main, follow, pairing, { start, date }) {
   const cat = categoryById(main.category);
   const mainMin = MAIN_MIN[main.category] ?? 90;
   const gap = follow ? distanceKm(main, follow) : 0;
-  const steps = [{ t: `${MAIN_LABEL[main.category] ?? cat.label}: ${main.name}`, min: mainMin, place: placeRef(main), food: !!cat.food }];
+  const steps = [{ t: `${MAIN_LABEL[main.category] ?? cat.label}: ${main.name}`, label: MAIN_LABEL[main.category] ?? cat.label, cat: main.category, min: mainMin, place: placeRef(main), food: !!cat.food }];
   if (follow && pairing) {
     const fcat = categoryById(follow.category);
-    steps.push({ t: `${pairing[1]}: ${follow.name}`, min: pairing[2], place: placeRef(follow), food: !!fcat.food, note: gap > 0.05 ? `${fmtKm(gap)} vom ${MAIN_LABEL[main.category] ?? 'ersten Ort'} entfernt` : '' });
+    steps.push({ t: `${pairing[1]}: ${follow.name}`, label: pairing[1], cat: follow.category, min: pairing[2], place: placeRef(follow), food: !!fcat.food, note: gap > 0.05 ? `${fmtKm(gap)} vom ${MAIN_LABEL[main.category] ?? 'ersten Ort'} entfernt` : '' });
   }
   const amount = main.price?.amount;
   const cost = Math.round((amount != null ? amount * 2 : cat.cost) + (follow ? Math.min(categoryById(follow.category).cost, 40) : 0));

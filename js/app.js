@@ -6,6 +6,7 @@ import { appleMapsLink, CATEGORIES, CUISINES, catForStep, isXmasSeason, category
 import { googleDetails } from './gplaces.js';
 import { generateLocalDates, travelLine } from './generate.js';
 import { eventWhen, fetchEvents, ideaFromEvent } from './events.js';
+import { findImage, topicFor } from './images.js';
 import * as photos from './photos.js';
 import { SUPABASE } from './config.js';
 import * as gcal from './gcal.js';
@@ -55,6 +56,7 @@ function render(scrollTop = false) {
     clearTimeout(enterTimer);
   }
   (RENDER[current.name] ?? RENDER.start)(current.param);
+  hydrateMedia();
   if (scrollTop) {
     window.scrollTo(0, 0);
     // Sanftes Einblenden nur beim Bildschirmwechsel, nicht bei Live-Aktualisierungen
@@ -667,19 +669,71 @@ function placeLine(p, dateIso, time) {
     ${open === false ? `<p class="warn-text small">${icon('clock')} Um ${time} laut Öffnungszeiten geschlossen</p>` : ''}`;
 }
 
-const thumb = (src, emoji, cls = '') =>
-  src ? `<span class="thumb ${cls}"><img src="${esc(src)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentNode.classList.add('noimg');this.remove()"><span class="thumb-emoji" aria-hidden="true">${glyph(emoji)}</span></span>`
+// Bilder und Google-Sterne werden nach dem Zeichnen nachgeladen
+const imgJobs = new Map();
+let imgSeq = 0;
+const imgJob = (job, target) => {
+  const id = `j${++imgSeq}`;
+  imgJobs.set(id, { job, target });
+  return id;
+};
+const gJobs = new Map();
+const gJob = (place) => {
+  const id = `g${++imgSeq}`;
+  gJobs.set(id, place);
+  return id;
+};
+const imgTag = (src) => `<img src="${esc(src)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentNode.classList.add('noimg');this.remove()">`;
+
+function hydrateMedia() {
+  const key = S().settings.googlePlacesKey;
+  $$('[data-img]', root).forEach((el) => {
+    const j = imgJobs.get(el.dataset.img);
+    el.removeAttribute('data-img');
+    if (!j) return;
+    findImage(j.job, key).then((url) => {
+      if (!url) return;
+      if (j.target) j.target.image = url;
+      el.classList.remove('noimg');
+      el.insertAdjacentHTML('afterbegin', imgTag(url));
+    });
+  });
+  if (!key) return;
+  $$('[data-grating]', root).forEach((el) => {
+    const p = gJobs.get(el.dataset.grating);
+    el.removeAttribute('data-grating');
+    if (!p) return;
+    googleDetails({ ...p, id: p.id ?? `${p.name}@${p.lat}` }, key).then((g) => {
+      if (g?.rating) el.innerHTML = `${icon('star')} Google ${String(g.rating).replace('.', ',')} <span class="muted">(${g.count.toLocaleString('de-DE')})</span>`;
+    }).catch(() => {});
+  });
+}
+
+/** Vorschaubild für eine Idee: Foto des Orts oder ein passendes Themenbild. */
+function ideaThumb(i, cls) {
+  const img = i.photos?.[0] || i.image || i.steps?.find((s) => s.place?.image)?.place.image;
+  const mp = i.mainPlace ?? i.steps?.find((s) => s.place?.lat != null)?.place;
+  const t = topicFor(i);
+  return thumb(img, i.emoji ?? '💡', cls, mp ? { place: mp, topic: t } : t ? { topic: t } : null, i);
+}
+
+const gRating = (p) => (S().settings.googlePlacesKey && p?.lat != null ? `<span class="g-rating" data-grating="${gJob(p)}"></span>` : '');
+
+const thumb = (src, emoji, cls = '', job = null, target = null) =>
+  !src && job ? `<span class="thumb noimg ${cls}" data-img="${imgJob(job, target)}"><span class="thumb-emoji" aria-hidden="true">${glyph(emoji)}</span></span>`
+  : src ? `<span class="thumb ${cls}"><img src="${esc(src)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentNode.classList.add('noimg');this.remove()"><span class="thumb-emoji" aria-hidden="true">${glyph(emoji)}</span></span>`
     : `<span class="thumb noimg ${cls}"><span class="thumb-emoji" aria-hidden="true">${glyph(emoji)}</span></span>`;
 
 function placeCard(p, mini = false) {
   const cat = categoryById(p.category);
+  const pJob = { place: p };
   const favIdea = ideaFromPlace(p);
   const now = new Date();
   const open = isOpenAt(p.hours, now);
   const todayHours = hoursOn(p.hours, now);
   return `
     <article class="place ${mini ? 'mini' : ''}" data-open-place="${p.id}" tabindex="0" role="button" aria-label="${esc(p.name)} öffnen">
-      ${thumb(p.image, cat.emoji, 'wide')}
+      ${thumb(p.image, cat.emoji, 'wide', pJob, p)}
       ${favBtn(favIdea, 'on-img')}
       <div class="place-body">
         ${mini ? `<span class="kicker">${esc(cat.label)}</span>` : ''}
@@ -726,7 +780,7 @@ async function planIdeaNow(idea, el) {
   const ls = L().lastSearch;
   await withBusy(el, async () => {
     await prepareSession({ date: idea.fixedDate ?? (idea.generated && idea.date) ?? resolveDate(ls), daytime: idea.times?.includes(ls.daytime) ? ls.daytime : idea.times?.[0] ?? 'abend', budget: Math.max(ls.budget, idea.cost ?? 0), reach: 2, radiusKm: feedFilter.radiusKm || 15 }, null);
-    if (idea.fixedStart) drafts[idea.id] = { start: idea.fixedStart, surprise: true, hint: '', picks: {}, near: null, openAlt: null };
+    drafts[idea.id] = { start: idea.fixedStart ?? defaultStart(idea, session.ctx.daytime), surprise: true, hint: '', picks: {}, near: null, openAlt: null, duration: idea.fixedStart || idea.reach === 0 ? null : feedFilter.duration, variant: 0 };
     session.backTo = [current.name, current.param ?? '', current.name === 'ort' ? 'Ort' : 'Entdecken'];
     go('plan', idea.id);
   });
@@ -1082,7 +1136,7 @@ function renderCommunity(head) {
     const mine = d.myRatings[r.id];
     return `
       <article class="community-card">
-        ${thumb(img, i.emoji ?? '💡', 'wide')}
+        ${ideaThumb(i, 'wide')}
         <div class="place-body">
           <div class="row between top"><h3>${esc(i.title)}</h3>${r.rating_count ? `<span class="score">${icon('star')}${String(r.avg_stars).replace('.', ',')}<small class="muted"> (${r.rating_count})</small></span>` : '<small class="muted">neu</small>'}</div>
           <p class="muted small">${[r.city, r.km != null ? fmtKm(r.km) : '', fmtEuro(i.cost ?? 0), `${r.uses}× übernommen`].filter(Boolean).map(esc).join(' · ')}</p>
@@ -1520,7 +1574,9 @@ root.addEventListener('click', (e) => {
 
 /* ================================================================ Entdecken: Für euch */
 
-const feedFilter = { budget: null, mood: '', place: '', reach: 1, radiusKm: 15, daytime: new Date().getHours() >= 14 ? 'abend' : 'tag', open: false };
+const feedFilter = { budget: null, mood: '', place: '', reach: 1, radiusKm: 15, duration: null, daytime: new Date().getHours() >= 14 ? 'abend' : 'tag', open: false };
+const DUR_OPTS = [['', 'Wie vorgeschlagen'], ['120', '2 Std.'], ['180', '3 Std.'], ['240', '4 Std.'], ['300', '5 Std.'], ['480', 'Ganzer Tag']];
+const durLabel = (m) => DUR_OPTS.find(([v]) => v === String(m))?.[1] ?? fmtDuration(m);
 
 const NEAR_CATS = { abend: ['restaurant', 'bar', 'cinema', 'theatre', 'wine', 'escape'], tag: ['cafe', 'museum', 'park', 'zoo', 'icecream', 'gallery'] };
 
@@ -1577,12 +1633,14 @@ async function loadNear() {
 
 function feedCard(i) {
   const img = i.photos?.[0] || i.image || i.steps?.find((s) => s.place?.image)?.place.image;
+  const mp = i.mainPlace ?? i.steps?.find((s) => s.place?.lat != null)?.place;
+  const job = mp ? { place: mp, topic: topicFor(i) } : topicFor(i) ? { topic: topicFor(i) } : null;
   return `
     <article class="feed-card">
-      ${thumb(img, i.emoji ?? '💡', 'sq big')}
+      ${thumb(img, i.emoji ?? '💡', 'sq big', job, i)}
       <div class="grow">
         <div class="row between top"><h3>${esc(i.title)}</h3>${favBtn(i)}</div>
-        <p class="muted small">${fmtEuro(i.cost ?? 0)} · ${fmtDuration(ideaDuration(i))} · ${i.place === 'drinnen' ? 'Drinnen' : 'Draußen'}${i.rating?.count ? ` · ★ ${String(i.rating.avg).replace('.', ',')}` : ''}</p>
+        <p class="muted small">${fmtEuro(i.cost ?? 0)} · ${fmtDuration(feedFilter.duration && i.reach !== 0 ? feedFilter.duration : ideaDuration(i))} · ${i.place === 'drinnen' ? 'Drinnen' : 'Draußen'}${i.rating?.count ? ` · ★ ${String(i.rating.avg).replace('.', ',')}` : ''}</p>
         <p class="teaser">${esc(i.teaser ?? '')}</p>
         ${genExtras(i)}
         <button class="btn sm primary" data-feed-plan="${esc(i.id)}">${icon('sparkle')}Planen</button>
@@ -1613,8 +1671,10 @@ function genExtras(i) {
   const mp = i.mainPlace ?? i.steps?.find((s) => s.place?.lat != null)?.place;
   const g = mp ? encodeURIComponent(`${mp.name} ${mp.street ?? ''} ${mp.city ?? ''}`.trim()) : '';
   const facts = [i.eventWhenText, i.km != null ? travelLine(i) : '', i.priceText, r ? `★ ${r.avg} von ${r.count} ${r.count === 1 ? 'Bewertung' : 'Bewertungen'} anderer Paare` : ''].filter(Boolean);
+  const places = (i.steps ?? []).map((s) => s.place).filter((p) => p?.lat != null);
   return `
     ${facts.length ? `<p class="gen-meta">${facts.map(esc).join(' · ')}</p>` : ''}
+    ${S().settings.googlePlacesKey && places.length ? `<div class="g-ratings">${places.map((p) => `<span class="g-place"><small class="muted">${esc(p.name)}</small> ${gRating(p)}</span>`).join('')}</div>` : ''}
     <div class="links">
       ${mp?.lat != null ? `<a class="link" href="https://www.google.com/maps/dir/?api=1&destination=${mp.lat},${mp.lon}" target="_blank" rel="noopener">Route${icon('external')}</a>
       <a class="link" href="https://www.google.com/maps/search/?api=1&query=${g}" target="_blank" rel="noopener">Google-Bewertungen${icon('external')}</a>` : ''}
@@ -1698,6 +1758,7 @@ function renderForYou(head) {
       <button class="filter-chip" data-ftoggle>${f.radiusKm === 0 ? 'Zuhause' : `${f.radiusKm} km`}</button>
       ${f.mood ? `<button class="filter-chip on" data-ftoggle>${esc(moodLabel(f.mood))}</button>` : ''}
       ${f.place ? `<button class="filter-chip on" data-ftoggle>${f.place === 'drinnen' ? 'Drinnen' : 'Draußen'}</button>` : ''}
+      ${f.duration ? `<button class="filter-chip on" data-ftoggle>${icon('clock')}${esc(durLabel(f.duration))}</button>` : ''}
       <button class="filter-chip strong" data-ftoggle>${icon('more')}Filter</button>
     </section>
     <section class="panel form filter-panel" ${f.open ? '' : 'hidden'}>
@@ -1713,6 +1774,7 @@ function renderForYou(head) {
       <div class="field"><span class="label">Stimmung</span>${chips('ff-mood', [['', 'Alle'], ...MOODS.map(([v, l]) => [v, l])], f.mood)}</div>
       <div class="field"><span class="label">Drinnen oder draußen</span>${chips('ff-place', [['', 'Beides'], ['drinnen', 'Drinnen', 'home'], ['draußen', 'Draußen', 'sun']], f.place, 'seg')}</div>
       <div class="field"><span class="label">Wie weit?</span>${radiusChips('ff-reach', f.radiusKm, { home: true })}</div>
+      <div class="field"><span class="label">Wie lange soll das Date dauern?</span>${chips('ff-dur', DUR_OPTS, String(f.duration ?? ''))}<small class="muted">Dately verteilt die Zeit auf die Stationen und rechnet die Wege mit ein.</small></div>
       <button type="button" class="btn primary" id="ff-apply">Anwenden</button>
     </section>
 
@@ -1785,6 +1847,7 @@ function renderForYou(head) {
   bindChips(panel, 'ff-mood', (v) => (f.mood = v));
   bindChips(panel, 'ff-place', (v) => (f.place = v));
   bindRadius(panel, 'ff-reach', (km) => (f.radiusKm = km));
+  bindChips(panel, 'ff-dur', (v) => (f.duration = v ? Number(v) : null));
   $('#ff-budget').addEventListener('input', (e) => {
     f.budget = Number(e.target.value);
     $('#ff-budget-out').textContent = `${f.budget} €`;
@@ -1838,7 +1901,7 @@ function renderSaved(head) {
       <h2 class="section-title">Favoriten</h2>
       ${favIdeas.length ? favIdeas.map(({ f, idea }) => `
         <article class="feed-card">
-          ${thumb(idea.photos?.[0] || idea.image || idea.steps?.find((s) => s.place?.image)?.place.image, idea.emoji ?? '💡', 'sq big')}
+          ${ideaThumb(idea, 'sq big')}
           <div class="grow">
             <div class="row between top"><h3>${esc(idea.title)}</h3>${favBtn(idea)}</div>
             <p class="muted small">${fmtEuro(idea.cost ?? 0)} · ${fmtDuration(ideaDuration(idea))} · gemerkt von ${f.by === myRole() ? 'dir' : esc(nameOf(f.by))}</p>
@@ -1850,7 +1913,7 @@ function renderSaved(head) {
       <div class="row between"><h2 class="section-title">Eigene Ideen</h2><button class="btn sm soft" data-go="idee">${icon('plus')}Neue Idee</button></div>
       ${custom.length ? `<div class="list-card">${custom.map((i) => `
         <div class="date-item static">
-          ${thumb(i.image || i.steps?.find((s) => s.place?.image)?.place.image, i.emoji ?? '💡', 'sq')}
+          ${ideaThumb(i, 'sq')}
           <span class="grow"><strong>${esc(i.title)}</strong><small class="muted">${i.place === 'drinnen' ? 'Drinnen' : 'Draußen'} · ${fmtEuro(i.cost)} · ${fmtDuration(ideaDuration(i))}${(i.moods ?? []).length ? ` · ${i.moods.map(moodLabel).join(', ')}` : ''}</small></span>
           <button class="icon-btn small" data-feed-plan="${i.id}" aria-label="Planen">${icon('sparkle')}</button>
           ${community.api && !i.communityId ? `<button class="icon-btn small" data-share-idea="${i.id}" aria-label="Mit der Community teilen">${icon('share')}</button>` : ''}
@@ -1967,7 +2030,7 @@ function recommendationsHTML() {
       <div class="reco-row">
         ${recos.map(({ idea, reason }) => `
           <button class="reco" data-reco="${idea.id}">
-            <span class="idea-emoji" aria-hidden="true">${glyph(idea.emoji)}</span>
+            ${ideaThumb(idea, 'wide reco-img')}
             <strong>${esc(idea.title)}</strong>
             <small class="muted">${esc(reason)}</small>
           </button>`).join('')}
@@ -2729,7 +2792,7 @@ function ideaCard(i, extra = '') {
   return `
     <article class="idea" data-idea="${i.id}">
       <div class="idea-top">
-        <span class="idea-emoji" aria-hidden="true">${glyph(i.emoji)}</span>
+        ${ideaThumb(i, 'ideaico')}
         <div class="grow">
           <h3>${esc(i.title)}</h3>
           <p class="teaser">${esc(i.teaser)}</p>
@@ -2816,6 +2879,83 @@ function planHead(plan, eyebrow = '') {
     </header>`;
 }
 
+
+/* --- Plan zusammensetzen: Idee, Dauer, Wege ----------------------------------- */
+
+const round5 = (m) => Math.max(5, Math.round(m / 5) * 5);
+const round15 = (m) => Math.max(15, Math.round(m / 15) * 15);
+
+/** Mögliche weitere Stationen, wenn das Date länger dauern soll. */
+function extensionsFor(lastCat, endTime) {
+  const evening = endTime >= '17:00' || endTime < '04:00';
+  const dinner = { t: 'Abendessen', q: 'Restaurant', min: 105, food: true, cost: 60 };
+  const lunch = { t: 'Essen', q: 'Restaurant', min: 90, food: true, cost: 40 };
+  const coffee = { t: 'Kaffee & Kuchen', q: 'Café', min: 60, food: true, cost: 20 };
+  const drink = { t: 'Drink zum Ausklang', q: 'Bar', min: 60, cost: 30 };
+  const walk = { t: 'Spaziergang', q: 'Park', min: 60 };
+  const dessert = { t: 'Eis oder Dessert', q: 'Eisdiele', min: 30, food: true, cost: 12 };
+  if (['restaurant', 'wine', 'xmas', 'beergarden'].includes(lastCat)) return evening ? [drink, dessert] : [walk, coffee];
+  if (lastCat === 'bar') return [dinner, dessert];
+  if (['cafe', 'icecream'].includes(lastCat)) return evening ? [dinner, drink] : [walk, lunch];
+  return evening ? [dinner, drink] : [coffee, lunch, walk];
+}
+
+/** Stationen der Idee inkl. gewählter Variante und – bei gewünschter Dauer – weiteren Stationen. */
+function effectiveSteps(idea, draft, ctx) {
+  const steps = idea.steps.map((x) => ({ ...x }));
+  const v = idea.variants?.[draft.variant ?? 0];
+  if (v) {
+    const k = steps.findIndex((x) => x.t === v.step);
+    if (k >= 0) steps[k] = { ...steps[k], note: `${v.name} – ${v.text}` };
+  }
+  if (draft.duration && idea.reach !== 0) {
+    const cats = steps.map((x) => x.cat ?? catForStep(x, ctx.date));
+    let sum = steps.reduce((a, x) => a + x.min, 0);
+    for (let n = 0; n < 2 && draft.duration - sum >= 75 && cats.some(Boolean); n++) {
+      const lastCat = [...cats].reverse().find(Boolean);
+      const ext = extensionsFor(lastCat, addMinutes(draft.start, sum)).find((e) => !cats.includes(catForStep(e, ctx.date)));
+      if (!ext) break;
+      steps.push({ ...ext, ext: true });
+      cats.push(catForStep(ext, ctx.date));
+      sum += ext.min;
+    }
+  }
+  return steps;
+}
+
+/** Wege zwischen den Orten einfügen und die Zeit auf die gewünschte Dauer verteilen. */
+function timedSteps(steps, draft, from) {
+  const out = [];
+  const map = [];
+  let prev = from;
+  let travel = 0;
+  steps.forEach((x, i) => {
+    const p = x.place;
+    if (p?.lat != null && prev?.lat != null) {
+      const km = distanceKm(prev, p);
+      if (km > (prev === from ? 0.3 : 0.15)) {
+        const opts = travelEstimates(km);
+        const t = opts.find((o) => o.mode === (km < 1.5 ? 'walking' : 'driving')) ?? opts[0];
+        const min = round5(t.min);
+        out.push({ t: prev === from ? `Anfahrt zu ${p.name}` : `Weg zu ${p.name}`, min, travel: true, note: `${fmtKm(km)} · ca. ${fmtMin(t.min)} ${t.mode === 'walking' ? 'zu Fuß' : 'mit dem Auto'}`, from: { lat: prev.lat, lon: prev.lon }, to: { lat: p.lat, lon: p.lon }, mode: t.mode });
+        map.push(-1);
+        travel += min;
+      }
+    }
+    out.push({ ...x });
+    map.push(i);
+    if (p?.lat != null) prev = p;
+  });
+  if (draft.duration) {
+    const base = out.filter((x) => !x.travel).reduce((a, x) => a + x.min, 0);
+    const factor = Math.min(3, Math.max(0.5, (draft.duration - travel) / Math.max(base, 1)));
+    out.forEach((x) => {
+      if (!x.travel) x.min = round15(x.min * factor);
+    });
+  }
+  return { steps: out, map };
+}
+
 RENDER.plan = (ideaId) => {
   const idea = ideaById(ideaId);
   const ctx = session.ctx;
@@ -2823,21 +2963,38 @@ RENDER.plan = (ideaId) => {
   const role = myRole();
   const partner = other(role);
   const fromPoll = !!session.pollId;
-  const draft = (drafts[ideaId] ??= { start: defaultStart(idea, ctx.daytime), surprise: !fromPoll, hint: '', picks: {}, near: null, openAlt: null });
-  const stepCats = idea.steps.map((s) => catForStep(s, ctx.date));
+  const draft = (drafts[ideaId] ??= { start: defaultStart(idea, ctx.daytime), surprise: !fromPoll, hint: '', picks: {}, near: null, openAlt: null, duration: idea.reach === 0 ? null : feedFilter.duration, variant: 0 });
+  const baseSteps = effectiveSteps(idea, draft, ctx);
+  const stepCats = baseSteps.map((s) => s.cat ?? catForStep(s, ctx.date));
   const center = discoverCenter();
   const wantsPlaces = stepCats.some(Boolean) && ctx.reach !== 0 && !store.inArtifact();
-  if (wantsPlaces && center && !draft.near && !draft.nearLoading) loadStepPlaces(idea, draft, stepCats, center, ctx);
+  const nearKey = stepCats.join('|');
+  if (draft.nearKey !== nearKey) {
+    draft.near = null;
+    draft.nearKey = nearKey;
+  }
+  if (wantsPlaces && center && !draft.near && !draft.nearLoading) loadStepPlaces(baseSteps, draft, stepCats, center, ctx);
   // Gewählte Orte in die Stationen einsetzen
-  const withPicks = {
-    ...idea,
-    steps: idea.steps.map((s, i) => {
-      const p = draft.picks[i] && placeIndex.get(draft.picks[i]);
-      return p ? { ...s, t: `${s.t}: ${p.name}`, place: { name: p.name, street: p.street, city: p.city, lat: p.lat, lon: p.lon, website: p.website, hours: p.hours, price: p.price, image: p.image, category: p.category } } : s;
-    }),
-  };
-  const plan = buildPlan(withPicks, { ...ctx, start: draft.start }, S().settings, session.weather);
-  const stepExtra = (i) => {
+  const picked = baseSteps.map((s, i) => {
+    const p = draft.picks[i] && placeIndex.get(draft.picks[i]);
+    return p ? { ...s, note: s.place?.id && s.place.id !== p.id ? '' : s.note, t: `${s.label ?? s.t}: ${p.name}`, place: { id: p.id, name: p.name, street: p.street, city: p.city, lat: p.lat, lon: p.lon, website: p.website, hours: p.hours, price: p.price, image: p.image, category: p.category, wikipedia: p.wikipedia } } : s;
+  });
+  const timed = timedSteps(picked, draft, ctx.reach !== 0 ? center : null);
+  const variant = idea.variants?.[draft.variant ?? 0];
+  const recipe = variant ? { name: variant.name, url: idea.recipe?.url ?? '', ingredients: variant.materials } : idea.recipe;
+  const plan = buildPlan({ ...idea, steps: timed.steps, recipe }, { ...ctx, start: draft.start }, S().settings, session.weather);
+  if (variant) plan.title = `${idea.title}: ${variant.name}`;
+  if (idea.generated && !idea.event) {
+    const names = picked.map((x) => x.place?.name).filter(Boolean);
+    if (names.length) plan.title = names.join(' & ');
+  }
+  plan.cost = (idea.cost ?? 0) + baseSteps.filter((x) => x.ext).reduce((a, x) => a + (x.cost ?? 0), 0);
+  const stepExtra = (k) => {
+    const i = timed.map[k];
+    if (i === -1) {
+      const t = timed.steps[k];
+      return `<div class="links"><a class="link" href="https://www.google.com/maps/dir/?api=1&origin=${t.from.lat},${t.from.lon}&destination=${t.to.lat},${t.to.lon}&travelmode=${t.mode}" target="_blank" rel="noopener">Route${icon('external')}</a></div>`;
+    }
     if (!stepCats[i] || !wantsPlaces) return '';
     if (!center) return `<p class="muted small">Erlaube den Standort oder trag eine Stadt ein, dann schlägt Dately hier konkrete Orte vor.</p>`;
     if (draft.nearLoading && !draft.near) return `<p class="muted small"><span class="spinner tiny"></span> Suche passende Orte in der Nähe …</p>`;
@@ -2851,13 +3008,15 @@ RENDER.plan = (ideaId) => {
         <div class="links"><a class="link" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(term)}" target="_blank" rel="noopener">${esc(cat.label)} auf Google Maps${icon('external')}</a></div>`;
     }
     const pick = draft.picks[i];
+    const pp = placeIndex.get(pick);
     return `
+      ${pp ? gRating(pp) : ''}
       <div class="alt-row">
         <button type="button" class="linkish small" data-open-place="${esc(pick)}" data-from-plan>Details & Fotos</button>
-        ${list.length > 1 ? `<button type="button" class="linkish small" data-alt="${i}">${draft.openAlt === i ? 'Schließen' : `Andere Orte (${list.length - 1})`}</button>` : ''}
+        ${list.length > 1 ? `<button type="button" class="btn sm soft swap-btn" data-alt="${i}">${icon('repeat')}${draft.openAlt === i ? 'Schließen' : 'Tauschen'}</button>` : ''}
       </div>
-      ${draft.openAlt === i ? `<div class="alt-list">${list.map((p) => {
-        const when = new Date(`${plan.date}T${plan.steps[i].time}:00`);
+      ${draft.openAlt === i ? `<div class="alt-list"><p class="muted small">Andere passende Orte in der Nähe:</p>${list.map((p) => {
+        const when = new Date(`${plan.date}T${plan.steps[k].time}:00`);
         const h = hoursOn(p.hours, when);
         return `<button type="button" class="alt ${p.id === pick ? 'on' : ''}" data-pick-step="${i}" data-pick-place="${esc(p.id)}">
           <span class="grow"><strong>${esc(p.name)}</strong><small class="muted">${fmtKm(p.distFromPrev ?? p.km)}${h ? ` · ${esc(h)}` : ''}${p.cuisine ? ` · ${esc(p.cuisine)}` : ''}</small></span>
@@ -2874,6 +3033,25 @@ RENDER.plan = (ideaId) => {
       <label for="p-start" class="label">Startzeit</label>
       <input type="time" id="p-start" class="input narrow" value="${plan.start}">
     </div>
+    ${idea.reach !== 0 ? `
+    <div class="panel slim field">
+      <span class="label">Wie lange soll das Date dauern?</span>
+      ${chips('p-dur', DUR_OPTS, String(draft.duration ?? ''))}
+      ${draft.duration ? `<small class="muted">Zeit verteilt auf ${timed.steps.filter((x) => !x.travel).length} Stationen${timed.steps.some((x) => x.travel) ? ', Wege eingerechnet' : ''}.</small>` : ''}
+    </div>` : ''}
+    ${variant ? `
+    <section class="panel idea-variant">
+      <div class="panel-head">${icon('sparkle')}<h2>Eure Idee</h2></div>
+      <p><strong>${esc(variant.name)}</strong></p>
+      <p class="muted">${esc(variant.text)}</p>
+      ${idea.variants.length > 1 ? `<button type="button" class="btn sm soft" id="p-variant">${icon('dice')}Andere Idee (${(draft.variant ?? 0) + 1}/${idea.variants.length})</button>` : ''}
+    </section>` : ''}
+    ${plan.recipe?.ingredients?.length && !(fromPoll && false) ? `
+    <section class="panel">
+      <div class="panel-head">${icon('cart')}<h2>Das braucht ihr</h2></div>
+      <ul class="needs">${plan.recipe.ingredients.map((x) => `<li>${icon('check')}<span>${esc(x)}</span></li>`).join('')}</ul>
+      ${plan.recipe.url ? `<a class="link" href="${esc(plan.recipe.url)}" target="_blank" rel="noopener">${/youtube/.test(plan.recipe.url) ? 'Anleitungen ansehen' : 'Rezepte ansehen'}${icon('external')}</a>` : ''}
+    </section>` : ''}
     ${timeline(plan, stepExtra)}
     ${plan.todos.length ? `<p class="hint">${icon('bell')} Vorher erledigen: ${plan.todos.map(esc).join(', ')}</p>` : ''}
 
@@ -2897,6 +3075,14 @@ RENDER.plan = (ideaId) => {
   $('#p-start').addEventListener('change', (e) => {
     if (!e.target.value) return;
     draft.start = e.target.value;
+    render();
+  });
+  bindChips(root, 'p-dur', (v) => {
+    draft.duration = v ? Number(v) : null;
+    render();
+  });
+  $('#p-variant')?.addEventListener('click', () => {
+    draft.variant = ((draft.variant ?? 0) + 1) % idea.variants.length;
     render();
   });
   on('[data-alt]', 'click', (_, el) => {
@@ -2950,7 +3136,7 @@ RENDER.plan = (ideaId) => {
 
 /** Für jede Station Orte in der Nähe suchen und automatisch den besten wählen:
  *  zur geplanten Zeit geöffnet, möglichst nah – ab der zweiten Station nah an der vorherigen. */
-async function loadStepPlaces(idea, draft, stepCats, center, ctx) {
+async function loadStepPlaces(steps, draft, stepCats, center, ctx) {
   draft.nearLoading = true;
   const ids = [...new Set(stepCats.filter(Boolean))];
   try {
@@ -2959,16 +3145,23 @@ async function loadStepPlaces(idea, draft, stepCats, center, ctx) {
     const used = new Set();
     let prev = center;
     let t = draft.start;
-    idea.steps.forEach((s, i) => {
+    steps.forEach((s, i) => {
       const cat = stepCats[i];
       if (cat) {
         const when = new Date(`${ctx.date}T${t}:00`);
-        const list = (groups[cat] ?? [])
+        // Von Dately bereits gewählter Ort bleibt vorausgewählt
+        const fixed = s.place?.id ? { ...s.place, km: distanceKm(center, s.place) } : null;
+        if (fixed) {
+          placeIndex.set(fixed.id, { ...(placeIndex.get(fixed.id) ?? {}), ...fixed });
+          draft.picks[i] ??= fixed.id;
+        }
+        const pool = [...(fixed && !(groups[cat] ?? []).some((p) => p.id === fixed.id) ? [placeIndex.get(fixed.id)] : []), ...(groups[cat] ?? [])];
+        const list = pool
           .filter((p) => !used.has(p.id))
           .map((p) => ({ ...p, distFromPrev: distanceKm(prev, p), open: isOpenAt(p.hours, when) }))
-          .filter((p) => p.open !== false)
-          .sort((a, b) => (b.open === true) - (a.open === true) || a.distFromPrev - b.distFromPrev)
-          .slice(0, 5);
+          .filter((p) => p.open !== false || p.id === draft.picks[i])
+          .sort((a, b) => (b.id === draft.picks[i]) - (a.id === draft.picks[i]) || (b.open === true) - (a.open === true) || a.distFromPrev - b.distFromPrev)
+          .slice(0, 6);
         list.forEach((p) => placeIndex.set(p.id, p));
         draft.near[i] = list;
         if (list[0]) {
@@ -3059,16 +3252,22 @@ RENDER.date = (id) => {
             <li class="item ${secret.checks?.[t] ? 'done' : ''}"><label class="check"><input type="checkbox" data-check="${esc(t)}" ${secret.checks?.[t] ? 'checked' : ''}><span class="grow">${esc(t)}</span></label></li>`).join('')}
         </ul>
       </section>` : ''}
+    ${!d.surprise && (plan.todos.length || plan.recipe?.ingredients?.length) ? `
+      <section class="panel">
+        <div class="panel-head">${icon('cart')}<h2>Das braucht ihr</h2></div>
+        <ul class="items">
+          ${[...plan.todos, ...(plan.recipe?.ingredients ?? [])].map((t) => `
+            <li class="item ${d.checks?.[t] ? 'done' : ''}"><label class="check"><input type="checkbox" data-dcheck="${esc(t)}" ${d.checks?.[t] ? 'checked' : ''}><span class="grow">${esc(t)}</span></label></li>`).join('')}
+        </ul>
+      </section>` : ''}
     <div class="actions">
       ${calendarButtons()}
-      ${!d.surprise && plan.recipe ? `<button class="btn" id="shop">${icon('cart')}Zutaten auf Einkaufsliste</button>` : ''}
-      ${!d.surprise && plan.todos.length ? `<button class="btn" id="todos">${icon('check')}To-dos übernehmen</button>` : ''}
       <button class="btn" data-go-cost="${d.id}">${icon('wallet')}Ausgabe eintragen</button>
       ${mySurprise ? `<button class="btn" id="reveal">${icon('eye')}Überraschung jetzt auflösen</button>` : ''}
       ${community.api && !d.surprise && !plan.communityId ? (d.sharedId ? `<p class="muted small center">${icon('check')} Mit der Community geteilt</p>` : `<button class="btn" data-share-date="${d.id}">${icon('share')}Mit der Community teilen</button>`) : ''}
       <button class="btn ghost danger" id="del">${icon('trash')}Date löschen</button>
     </div>
-    ${plan.recipe && !d.surprise ? `
+    ${plan.recipe?.url && !d.surprise ? `
       <details class="panel recipe">
         <summary>${esc(plan.recipe.name)} · ${plan.recipe.ingredients.length} Zutaten</summary>
         <ul>${plan.recipe.ingredients.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
@@ -3088,6 +3287,13 @@ RENDER.date = (id) => {
     store.update((s) => {
       const sec = s.secrets[id];
       sec.checks = { ...(sec.checks ?? {}), [el.dataset.check]: e.target.checked };
+    });
+    el.closest('.item').classList.toggle('done', e.target.checked);
+  });
+  on('[data-dcheck]', 'change', (e, el) => {
+    store.update((s) => {
+      const x = s.dates.find((y) => y.id === id);
+      x.checks = { ...(x.checks ?? {}), [el.dataset.dcheck]: e.target.checked };
     });
     el.closest('.item').classList.toggle('done', e.target.checked);
   });
@@ -4166,7 +4372,7 @@ RENDER.mehr = () => {
 
 (async function boot() {
   const initial = location.hash.replace('#', '');
-  if (['kalender', 'listen', 'dates', 'mehr', 'entdecken'].includes(initial)) current = { name: initial, param: null };
+  if (['kalender', 'dates', 'mehr', 'entdecken'].includes(initial)) current = { name: initial, param: null };
   try {
     await loadIdeas();
   } catch {

@@ -189,6 +189,53 @@
       "gemütlich",
       "kulinarisch",
       "romantisch"
+    ],
+    "variants": [
+      {
+        "name": "Tagliatelle mit Tomatensauce",
+        "text": "Klassisch: Teig kneten, ausrollen, in Streifen schneiden.",
+        "materials": [
+          "400 g Hartweizengrieß",
+          "4 Eier (vegan: Olivenöl & Wasser)",
+          "2 Dosen Tomaten",
+          "Knoblauch",
+          "Frisches Basilikum",
+          "Parmesan",
+          "Rotwein",
+          "Kerzen"
+        ],
+        "step": "Candle-Light-Dinner zuhause"
+      },
+      {
+        "name": "Ravioli mit Ricotta-Spinat",
+        "text": "Etwas aufwendiger – aber genau richtig, um zusammen zu werkeln.",
+        "materials": [
+          "400 g Mehl (Type 00)",
+          "4 Eier",
+          "250 g Ricotta",
+          "200 g Blattspinat",
+          "Butter & Salbei",
+          "Parmesan",
+          "Weißwein",
+          "Kerzen"
+        ],
+        "step": "Candle-Light-Dinner zuhause"
+      },
+      {
+        "name": "Gnocchi mit Salbeibutter",
+        "text": "Kartoffeln kochen, kneten, rollen – geht auch ohne Nudelmaschine.",
+        "materials": [
+          "1 kg mehligkochende Kartoffeln",
+          "250 g Mehl",
+          "1 Ei",
+          "Butter",
+          "Frischer Salbei",
+          "Parmesan",
+          "Weißwein",
+          "Kerzen"
+        ],
+        "step": "Candle-Light-Dinner zuhause"
+      }
     ]
   },
   {
@@ -229,6 +276,42 @@
     "moods": [
       "gemütlich",
       "lustig"
+    ],
+    "variants": [
+      {
+        "name": "Zwei-Personen-Klassiker",
+        "text": "Drei kurze Spiele, Punkte werden gezählt – wer verliert, macht morgen Frühstück.",
+        "materials": [
+          "Kartenspiel (z. B. Skip-Bo oder Uno)",
+          "Ein Zwei-Personen-Spiel (z. B. Patchwork, Jaipur oder Schach)",
+          "Block & Stift für die Punkte",
+          "Snacks & Getränke"
+        ],
+        "step": "Spielerunde"
+      },
+      {
+        "name": "Quiz über euch",
+        "text": "Jeder schreibt vorher 15 Fragen über die gemeinsame Zeit. Wer mehr richtig hat, darf sich das nächste Date wünschen.",
+        "materials": [
+          "Karteikarten",
+          "2 Stifte",
+          "Kleiner Preis für den Gewinner",
+          "Snacks & Getränke"
+        ],
+        "step": "Spielerunde"
+      },
+      {
+        "name": "Puzzle & Musik",
+        "text": "Ein 500-Teile-Puzzle, eine gemeinsame Playlist, kein Handy.",
+        "materials": [
+          "Puzzle mit 500 Teilen",
+          "Große freie Tischfläche",
+          "Playlist mit euren Lieblingsliedern",
+          "Tee oder Wein",
+          "Snacks"
+        ],
+        "step": "Spielerunde"
+      }
     ]
   },
   {
@@ -542,6 +625,43 @@
     "moods": [
       "gemütlich",
       "romantisch"
+    ],
+    "variants": [
+      {
+        "name": "Euer erster gemeinsamer Film",
+        "text": "Schaut den Film, den ihr zusammen zuerst gesehen habt – oder den, über den ihr am meisten geredet habt.",
+        "materials": [
+          "Popcorn-Mais & Öl",
+          "Salz oder Zucker",
+          "Decken & Kissen für die Deckenburg",
+          "Lichterkette",
+          "Getränke"
+        ],
+        "step": "Film-Abend"
+      },
+      {
+        "name": "Blind-Auswahl",
+        "text": "Jeder schreibt drei Filme auf Zettel, einer wird gezogen. Keine Diskussion!",
+        "materials": [
+          "Zettel & Stift",
+          "Popcorn & Nachos",
+          "Decken & Kissen",
+          "Lichterkette",
+          "Getränke"
+        ],
+        "step": "Film-Abend"
+      },
+      {
+        "name": "Themenabend",
+        "text": "Film aus einem Land + passendes Essen: z. B. italienischer Film mit Pizza oder japanischer Animationsfilm mit Sushi.",
+        "materials": [
+          "Passendes Essen zum Film",
+          "Getränke",
+          "Decken & Kissen",
+          "Kerzen oder Lichterkette"
+        ],
+        "step": "Film-Abend"
+      }
     ]
   },
   {
@@ -592,6 +712,37 @@
       "gemütlich",
       "kulinarisch",
       "lustig"
+    ],
+    "variants": [
+      {
+        "name": "Pizza-Wettbacken",
+        "text": "Jeder belegt eine Pizza geheim, die andere Person bewertet in drei Kategorien.",
+        "materials": [
+          "500 g Mehl (Type 00)",
+          "1 Würfel Hefe",
+          "Passierte Tomaten",
+          "2 Mozzarella",
+          "Belag nach Wahl (Pilze, Paprika, Salami, Rucola)",
+          "Oregano",
+          "Bewertungskarten & Stift"
+        ],
+        "step": "Belegen, backen, bewerten"
+      },
+      {
+        "name": "Pizza aus vier Ländern",
+        "text": "Jede Pizza bekommt einen Länder-Belag: Italien, Mexiko, Griechenland, Bayern.",
+        "materials": [
+          "500 g Mehl",
+          "Hefe",
+          "Passierte Tomaten",
+          "Mozzarella",
+          "Jalapeños & Mais",
+          "Feta & Oliven",
+          "Leberkäse oder Brezen-Brot",
+          "Rucola"
+        ],
+        "step": "Belegen, backen, bewerten"
+      }
     ]
   },
   {
@@ -631,6 +782,35 @@
       "kulinarisch",
       "gemütlich",
       "lustig"
+    ],
+    "variants": [
+      {
+        "name": "Von weiß bis 85 %",
+        "text": "Fünf Sorten von mild bis bitter, blind probieren und den Kakaoanteil schätzen.",
+        "materials": [
+          "Weiße Schokolade",
+          "Vollmilch (30–40 %)",
+          "Zartbitter (55–60 %)",
+          "Edelbitter (70 %)",
+          "Extra bitter (85 %)",
+          "Augenbinde",
+          "Wasser & Weißbrot",
+          "Block für Notizen"
+        ],
+        "step": "Blind-Verkostung"
+      },
+      {
+        "name": "Schokolade aus aller Welt",
+        "text": "Tafeln aus fünf Ländern – wer erkennt die Herkunft?",
+        "materials": [
+          "5 Tafeln aus verschiedenen Ländern",
+          "Augenbinde",
+          "Wasser",
+          "Weißbrot zum Neutralisieren",
+          "Block & Stift"
+        ],
+        "step": "Blind-Verkostung"
+      }
     ]
   },
   {
@@ -809,8 +989,7 @@
       },
       {
         "t": "Malen & anstoßen",
-        "min": 120,
-        "note": "Thema: Porträt der anderen Person"
+        "min": 120
       }
     ],
     "recipe": {
@@ -828,6 +1007,64 @@
       "kreativ",
       "gemütlich",
       "romantisch"
+    ],
+    "variants": [
+      {
+        "name": "Porträt der anderen Person",
+        "text": "Setzt euch gegenüber, 60 Minuten Zeit, kein Radiergummi. Danach tauscht ihr die Bilder und gebt ihnen einen Titel.",
+        "materials": [
+          "2 Leinwände (30 × 40 cm)",
+          "Acrylfarben-Set (Grundfarben + Weiß & Schwarz)",
+          "2 Sets Pinsel (fein, mittel, breit)",
+          "Farbpalette oder alter Teller",
+          "2 Gläser Wasser",
+          "Küchenrolle",
+          "Zeitung oder Malunterlage",
+          "Wein oder Saft",
+          "Knabberzeug"
+        ],
+        "step": "Malen & anstoßen"
+      },
+      {
+        "name": "Euer schönster Urlaubsort",
+        "text": "Jeder malt einen gemeinsamen Lieblingsort aus dem Gedächtnis – das andere muss raten, welcher es ist.",
+        "materials": [
+          "2 Leinwände (30 × 40 cm)",
+          "Acrylfarben-Set",
+          "Pinsel-Set",
+          "Farbpalette",
+          "Wasserglas & Küchenrolle",
+          "Ein Urlaubsfoto als Vorlage (optional)",
+          "Wein oder Saft"
+        ],
+        "step": "Malen & anstoßen"
+      },
+      {
+        "name": "Sonnenuntergang nach Video",
+        "text": "Sucht ein Anfänger-Video „Acryl Sonnenuntergang“ und malt Schritt für Schritt mit – gleiches Motiv, zwei Ergebnisse.",
+        "materials": [
+          "2 Leinwände",
+          "Acrylfarben in Gelb, Orange, Rot, Lila, Blau, Schwarz, Weiß",
+          "Breiter Flachpinsel & feiner Pinsel",
+          "Tablet oder Laptop für das Video",
+          "Wasserglas & Küchenrolle",
+          "Wein oder Saft"
+        ],
+        "step": "Malen & anstoßen"
+      },
+      {
+        "name": "Ein Bild, vier Hände",
+        "text": "Ihr malt abwechselnd je 5 Minuten am selben Bild, ohne euch abzusprechen. Am Ende bekommt es einen Ehrenplatz.",
+        "materials": [
+          "1 große Leinwand (50 × 70 cm)",
+          "Acrylfarben-Set",
+          "Pinsel-Set",
+          "Küchenwecker oder Handy-Timer",
+          "Malunterlage",
+          "Wein oder Saft"
+        ],
+        "step": "Malen & anstoßen"
+      }
     ]
   },
   {
@@ -1177,6 +1414,32 @@
     "moods": [
       "romantisch",
       "gemütlich"
+    ],
+    "variants": [
+      {
+        "name": "Euer Jahr in 24 Bildern",
+        "text": "Jeder wählt 12 Lieblingsfotos des Jahres und erzählt, warum.",
+        "materials": [
+          "24 ausgedruckte Fotos (z. B. im Drogeriemarkt-Automaten)",
+          "Album oder Notizbuch",
+          "Fotoecken oder Kleber",
+          "Stifte zum Beschriften",
+          "Tee oder Wein"
+        ],
+        "step": "Album gestalten & erzählen"
+      },
+      {
+        "name": "Glas der Erinnerungen",
+        "text": "Ihr schreibt gemeinsame Momente auf kleine Zettel und füllt ein Glas, das ihr am Jahrestag wieder öffnet.",
+        "materials": [
+          "Großes Schraubglas",
+          "Bunte Zettel",
+          "Stifte",
+          "Schleife oder Band",
+          "Ein paar Fotos"
+        ],
+        "step": "Album gestalten & erzählen"
+      }
     ]
   },
   {
@@ -1222,6 +1485,33 @@
     "moods": [
       "romantisch",
       "gemütlich"
+    ],
+    "variants": [
+      {
+        "name": "Französisches Frühstück",
+        "text": "Croissants, Café au lait und frisch gepresster Saft.",
+        "materials": [
+          "Croissants",
+          "Butter & Marmelade",
+          "Orangen zum Pressen",
+          "Kaffee & Milch",
+          "Beeren",
+          "Tablett"
+        ],
+        "step": "Frühstück im Bett"
+      },
+      {
+        "name": "Pancakes im Bett",
+        "text": "Fluffige Pancakes mit Ahornsirup und Obst.",
+        "materials": [
+          "Mehl, Milch, Eier, Backpulver",
+          "Ahornsirup",
+          "Blaubeeren & Banane",
+          "Kaffee",
+          "Tablett"
+        ],
+        "step": "Frühstück im Bett"
+      }
     ]
   },
   {
@@ -1265,6 +1555,36 @@
       "gemütlich",
       "kulinarisch",
       "romantisch"
+    ],
+    "variants": [
+      {
+        "name": "Käsefondue",
+        "text": "Klassisch schweizerisch – wer sein Brot verliert, muss eine Frage ehrlich beantworten.",
+        "materials": [
+          "400 g Bergkäse",
+          "200 g Emmentaler",
+          "300 ml Weißwein",
+          "Knoblauch",
+          "Speisestärke",
+          "1 Baguette",
+          "Fonduetopf & Gabeln"
+        ],
+        "step": "Fondue genießen"
+      },
+      {
+        "name": "Schokofondue",
+        "text": "Zum Dessert oder als Hauptattraktion.",
+        "materials": [
+          "300 g Zartbitterschokolade",
+          "200 ml Sahne",
+          "Erdbeeren",
+          "Bananen",
+          "Äpfel",
+          "Marshmallows",
+          "Fonduetopf & Gabeln"
+        ],
+        "step": "Fondue genießen"
+      }
     ]
   },
   {
@@ -1307,6 +1627,35 @@
       "entspannt",
       "romantisch",
       "gemütlich"
+    ],
+    "variants": [
+      {
+        "name": "Klassischer Wellness-Abend",
+        "text": "Masken auftragen, Tee trinken, dann je 20 Minuten Massage – Handy aus.",
+        "materials": [
+          "2 Gesichtsmasken",
+          "Massageöl",
+          "Badezusatz",
+          "Teelichter",
+          "Kräutertee",
+          "Große Handtücher",
+          "Entspannungs-Playlist"
+        ],
+        "step": "Gegenseitige Massage"
+      },
+      {
+        "name": "Fußbad & Handpflege",
+        "text": "Warmes Fußbad, Peeling und Handmassage – perfekt für kalte Abende.",
+        "materials": [
+          "Große Schüssel",
+          "Fußbadsalz",
+          "Peeling",
+          "Handcreme",
+          "Kuschelsocken",
+          "Kräutertee"
+        ],
+        "step": "Gegenseitige Massage"
+      }
     ]
   },
   {
@@ -1412,6 +1761,41 @@
     "moods": [
       "kulinarisch",
       "kreativ"
+    ],
+    "variants": [
+      {
+        "name": "Maki & Inside-Out",
+        "text": "Erst klassische Maki, dann die Königsdisziplin Inside-Out.",
+        "materials": [
+          "500 g Sushi-Reis",
+          "Reisessig",
+          "10 Noriblätter",
+          "Lachs oder Räuchertofu",
+          "Avocado",
+          "Gurke",
+          "Sesam",
+          "Sojasauce, Wasabi & Ingwer",
+          "Bambusmatte & Frischhaltefolie"
+        ],
+        "step": "Rollen & essen"
+      },
+      {
+        "name": "Veggie-Sushi-Abend",
+        "text": "Komplett vegetarisch – bunt und einfach.",
+        "materials": [
+          "500 g Sushi-Reis",
+          "Reisessig",
+          "Noriblätter",
+          "Avocado",
+          "Gurke",
+          "Karotte",
+          "Paprika",
+          "Mango",
+          "Sojasauce",
+          "Bambusmatte"
+        ],
+        "step": "Rollen & essen"
+      }
     ]
   },
   {

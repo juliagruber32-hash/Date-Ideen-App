@@ -194,6 +194,7 @@ function toPlace(el, cat, center) {
     reservationUrl: t['reservation:url'] || t['contact:opentable'] || '',
     image: imageFromTags(t),
     wikidata: t.wikidata ?? '',
+    wikipedia: t.wikipedia ?? '',
   };
 }
 
