@@ -97,9 +97,10 @@ Ort die Google-Bewertungen. Für Google-Sterne und Fotos direkt in der App:
 2. **APIs & Dienste → Anmeldedaten → Anmeldedaten erstellen → API-Schlüssel**.
 3. Den Schlüssel einschränken: **Anwendungseinschränkung: Websites** → `https://juliagruber32-hash.github.io/*`,
    **API-Einschränkung: Places API (New)**.
-4. In der App: **Zahnrad → Google-Bewertungen & Fotos** → Schlüssel einfügen.
+4. In der App: **Zahnrad → Weitere Datenquellen → Google-Places-Schlüssel** einfügen.
 
-Die App fragt Google nur, wenn ihr einen Ort öffnet, und merkt sich das Ergebnis 7 Tage.
+Die App zeigt dann Google-Sterne und Fotos auf den Date-Karten und im Plan und merkt sich jedes Ergebnis 7 Tage,
+damit möglichst wenige Abfragen anfallen.
 
 ### 5. Veranstaltungen in der Nähe (optional, ca. 3 Minuten)
 
@@ -107,7 +108,7 @@ Konzerte, Shows, Theater und Festivals kommen von Ticketmaster (kostenlos):
 
 1. Auf **developer.ticketmaster.com** ein Konto anlegen.
 2. Unter **My Apps** steht der **Consumer Key** – kopieren.
-3. In Dately: **Mehr → Einstellungen → Weitere Datenquellen → Ticketmaster API Key** einfügen.
+3. In Dately: **Zahnrad → Weitere Datenquellen → Ticketmaster API Key** einfügen.
 
 Weihnachtsmärkte, Eislaufen, Open-Air-Kinos und Badeseen findet Dately auch ohne Schlüssel über die Kartendaten (OpenStreetMap) – passend zur Jahreszeit.
 
