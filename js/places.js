@@ -86,7 +86,9 @@ const OVERPASS = [
 const MAX_PARALLEL = 2;
 let active = 0;
 const waiting = [];
+let overpassDownUntil = 0; // nach einem Ausfall für ein paar Minuten direkt die Ausweich-Suche nehmen
 function overpass(query, prio = 0) {
+  if (Date.now() < overpassDownUntil) return Promise.reject(new Error('Ortssuche gerade nicht erreichbar.'));
   return new Promise((resolve, reject) => {
     waiting.push({ query, prio, resolve, reject });
     waiting.sort((x, y) => y.prio - x.prio);
@@ -98,7 +100,10 @@ function pump() {
     const job = waiting.shift();
     active++;
     overpassNow(job.query)
-      .then(job.resolve, job.reject)
+      .then(job.resolve, (e) => {
+        overpassDownUntil = Date.now() + 5 * 60 * 1000;
+        job.reject(e);
+      })
       .finally(() => {
         active--;
         pump();
@@ -113,7 +118,7 @@ async function overpassNow(query) {
     for (const url of OVERPASS) {
       try {
         const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 30000);
+        const timer = setTimeout(() => ctrl.abort(), url === OVERPASS[0] ? 25000 : 15000);
         const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -171,13 +176,95 @@ export function radiusLadder(radius) {
   return [...[3000, 10000, 30000, 70000].filter((r) => r < radius), radius];
 }
 
+/* ------------------------------------------------------------ Ausweich-Suche über Nominatim */
+// Antwortet der Overpass-Kartendienst nicht, sucht Dately über Nominatim (ebenfalls OpenStreetMap).
+// Nominatim erlaubt höchstens eine Anfrage pro Sekunde – deshalb nacheinander mit Pause.
+const NOMI = {
+  museum: ['[museum]'], gallery: ['Galerie'], cinema: ['[cinema]'], theatre: ['[theatre]'], restaurant: ['[restaurant]'],
+  cafe: ['[cafe]'], bar: ['[bar]', '[pub]'], icecream: ['[ice cream]'], wine: ['Weinbar'], bowling: ['Bowling'],
+  escape: ['Escape Room'], climbing: ['Boulderhalle', 'Kletterhalle'], minigolf: ['[miniature golf]'], zoo: ['[zoo]', 'Wildpark'],
+  park: ['[park]'], viewpoint: ['[viewpoint]'], spa: ['Therme', '[sauna]'], icerink: ['[ice rink]', 'Eishalle', 'Eisstadion'],
+  xmas: ['Christkindlmarkt', 'Weihnachtsmarkt'], beergarden: ['[biergarten]'], lake: ['Badesee'], boat: ['Bootsverleih'],
+  bookshop: ['[bookshop]'], karaoke: ['Karaoke'], arcade: ['Lasertag'], chocolate: ['Chocolaterie'], openair: ['Open-Air-Kino'],
+};
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const nomiWaiting = [];
+let nomiBusy = false;
+
+/** Eine Nominatim-Anfrage; wichtige Anfragen (prio) kommen zuerst dran. */
+function nominatimOnce(q, center, radius, prio = 0) {
+  return new Promise((resolve, reject) => {
+    nomiWaiting.push({ q, center, radius, prio, resolve, reject });
+    nomiWaiting.sort((x, y) => y.prio - x.prio);
+    nomiPump();
+  });
+}
+
+async function nomiPump() {
+  if (nomiBusy) return;
+  nomiBusy = true;
+  while (nomiWaiting.length) {
+    const { q, center, radius, resolve, reject } = nomiWaiting.shift();
+    const r = Math.min(radius, 40000) / 1000;
+    const dLat = r / 111;
+    const dLon = r / (111 * Math.cos((center.lat * Math.PI) / 180));
+    const box = [center.lon - dLon, center.lat + dLat, center.lon + dLon, center.lat - dLat].map((x) => x.toFixed(4)).join(',');
+    const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(q)}&viewbox=${box}&bounded=1&limit=40&extratags=1&addressdetails=1&accept-language=de`;
+    try {
+      const res = await fetch(url);
+      resolve(res.ok ? await res.json() : []);
+    } catch (e) {
+      reject(e);
+    }
+    await sleep(1100); // höchstens eine Anfrage pro Sekunde
+  }
+  nomiBusy = false;
+}
+
+async function nominatimCategory(catId, center, radius, prio = 0) {
+  const cat = categoryById(catId);
+  const out = [];
+  const seen = new Set();
+  for (const q of NOMI[catId] ?? [cat.label]) {
+    const list = await nominatimOnce(q, center, radius, prio).catch(() => []);
+    for (const x of list) {
+      const a = x.address ?? {};
+      const el = {
+        type: x.osm_type, id: x.osm_id, lat: Number(x.lat), lon: Number(x.lon),
+        tags: { ...(x.extratags ?? {}), name: x.name, [x.category]: x.type, 'addr:street': a.road, 'addr:housenumber': a.house_number, 'addr:city': a.city || a.town || a.village || '' },
+      };
+      if (['bus_stop', 'platform', 'station'].includes(x.type)) continue;
+      const p = toPlace(el, cat, center);
+      if (!p || seen.has(p.name) || p.km * 1000 > radius) continue;
+      seen.add(p.name);
+      out.push(p);
+    }
+    if (out.length >= 8) break;
+  }
+  return out.sort((a, b) => a.km - b.km).slice(0, 12);
+}
+
+async function nominatimGroups(catIds, center, radius, prio = 0) {
+  const groups = {};
+  await Promise.all(catIds.map(async (id) => (groups[id] = await nominatimCategory(id, center, radius, prio))));
+  await addWikidataImages(Object.values(groups).flat());
+  return groups;
+}
+
 export async function searchNearby(categoryId, center, radius, cuisineId = '') {
   const key = `${categoryId}|${cuisineId}|${center.lat.toFixed(3)}|${center.lon.toFixed(3)}|${radius}`;
   if (memo.has(key)) return memo.get(key);
   let places = [];
-  for (const r of radiusLadder(radius)) {
-    places = await searchOnce(categoryId, center, r, cuisineId);
-    if (places.length >= 20) break;
+  try {
+    for (const r of radiusLadder(radius)) {
+      places = await searchOnce(categoryId, center, r, cuisineId);
+      if (places.length >= 20) break;
+    }
+  } catch (e) {
+    if (places.length) return places;
+    if (cuisineId) throw e;
+    places = await nominatimCategory(categoryId, center, radius, 1);
+    if (!places.length) throw e;
   }
   memo.set(key, places);
   return places;
@@ -398,7 +485,7 @@ export function travelEstimates(km) {
   if (road <= 6) out.push({ mode: 'walking', label: 'Zu Fuß', icon: 'walk', min: Math.round((road / 4.8) * 60) });
   if (road <= 25) out.push({ mode: 'bicycling', label: 'Rad', icon: 'bike', min: Math.round((road / 15) * 60) });
   out.push({ mode: 'transit', label: 'Bahn & Bus', icon: 'train', min: Math.round((road / 22) * 60 + 8) });
-  out.push({ mode: 'driving', label: 'Auto', icon: 'car', min: Math.round((road / (road > 15 ? 55 : 24)) * 60 + 4) });
+  out.push({ mode: 'driving', label: 'Auto', icon: 'car', min: Math.round((road / (road > 15 ? 60 : road > 5 ? 42 : 25)) * 60 + 4) });
   return out;
 }
 
@@ -434,12 +521,19 @@ export async function searchMixed(catIds, center, radius, prio = 0) {
       found = await mixedOnce(missing, center, r, prio);
     } catch {
       failed = true;
-      continue; // ein Server-Fehler soll nicht alles verwerfen – nächste Stufe versuchen
+      break; // Dienst antwortet nicht – mit dem bisher Gefundenen bzw. der Ausweich-Suche weitermachen
     }
     for (const id of missing) if (found[id].length >= groups[id].length) groups[id] = found[id];
   }
-  const total = Object.values(groups).reduce((a, g) => a + g.length, 0);
-  if (failed && !total) throw new Error('Ortssuche gerade nicht erreichbar.');
+  let total = Object.values(groups).reduce((a, g) => a + g.length, 0);
+  if (failed && !total) {
+    // Hauptdienst nicht erreichbar → Ausweich-Suche
+    Object.assign(groups, await nominatimGroups(catIds, center, radius, prio));
+    total = Object.values(groups).reduce((a, g) => a + g.length, 0);
+    if (!total) throw new Error('Ortssuche gerade nicht erreichbar.');
+    memo.set(key, groups);
+    return groups;
+  }
   if (!failed) memo.set(key, groups);
   return groups;
 }
