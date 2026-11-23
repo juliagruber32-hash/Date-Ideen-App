@@ -96,13 +96,10 @@ export async function onAuthChange(cfg, cb) {
 export const validUsername = (u) => /^[a-z0-9._-]{3,20}$/.test(u);
 
 /** Registrieren. Gibt { session } zurück; session ist null, wenn die E-Mail erst bestätigt werden muss. */
-export async function signUp(cfg, { email, password, username, invite }) {
+export async function signUp(cfg, { email, password, invite }) {
   const client = await getClient(cfg);
-  const name = username.trim().toLowerCase();
-  if (!validUsername(name)) throw new Error('Benutzername: 3–20 Zeichen, nur Buchstaben, Zahlen, Punkt, Strich oder Unterstrich.');
-  const free = await client.rpc('username_available', { name });
-  if (free.error) throw new Error(/function|schema cache/i.test(free.error.message) ? 'Die Datenbank ist noch nicht vollständig eingerichtet (setup.sql erneut ausführen).' : authError(free.error));
-  if (!free.data) throw new Error('Dieser Benutzername ist schon vergeben.');
+  // Interne Kennung (niemand sieht sie) – die Namen legt ihr in der App selbst fest.
+  const name = `u${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`.slice(0, 20);
   const { data, error } = await client.auth.signUp({
     email: email.trim(),
     password,

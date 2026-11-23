@@ -123,6 +123,16 @@ export function update(fn) {
   notify('local');
 }
 
+/** Nur den Speicher auf diesem Gerät leeren (z. B. beim Abmelden) – nichts an die gemeinsame Datenbank senden. */
+export function clearDeviceData() {
+  try {
+    localStorage.removeItem(KEY);
+    localStorage.removeItem(LOCAL_KEY);
+  } catch {
+    /* ignorieren */
+  }
+}
+
 export function reset() {
   update((s) => {
     const fresh = defaults();

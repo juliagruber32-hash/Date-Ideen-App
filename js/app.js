@@ -421,7 +421,7 @@ async function doConnectRemote(cfg, announce) {
     store.attach(db, uid, { backend: 'supabase' });
     community.api = api;
     photos.setRemote(photosApi);
-    if (announce) toast(`Willkommen${user.username ? `, @${user.username}` : ''}!`);
+    if (announce) toast('Willkommen bei Dately!');
     if (current.name === 'konto') current = { name: 'start', param: null };
   } catch (e) {
     if (e.code === 'auth') {
@@ -442,9 +442,6 @@ function autoClaim() {
   const role = !m.a ? 'a' : !m.b ? 'b' : null;
   if (!role) return;
   store.claimRole(role);
-  const key = role === 'a' ? 'nameA' : 'nameB';
-  const u = auth.user.username;
-  if (u && !S().settings[key]) store.update((st) => (st.settings[key] = u.charAt(0).toUpperCase() + u.slice(1)));
 }
 
 function sharingHTML() {
@@ -477,7 +474,7 @@ function sharingHTML() {
     </section>
     <section class="panel form">
       <div class="panel-head">${icon('user')}<h2>Dein Konto</h2></div>
-      <p>Angemeldet als <strong>@${esc(auth.user?.username ?? '')}</strong><br><small class="muted">${esc(auth.user?.email ?? '')}</small></p>
+      <p>Angemeldet als <strong>${esc(auth.user?.email ?? '')}</strong></p>
       <div class="row gap wrap">
         <button class="btn" id="logout" type="button">Abmelden</button>
         <button class="btn ghost" id="pw-reset" type="button">Passwort ändern</button>
@@ -508,7 +505,7 @@ function bindSharing() {
   });
   $('#logout')?.addEventListener('click', async () => {
     await signOut(auth.cfg).catch(() => {});
-    store.reset();
+    store.clearDeviceData();
     location.reload();
   });
   $('#pw-reset')?.addEventListener('click', async (e) => {
@@ -525,7 +522,7 @@ function bindSharing() {
   if (del) armed(del, async () => {
     try {
       await deleteAccount(auth.cfg);
-      store.reset();
+      store.clearDeviceData();
       const c = getConfig();
       if (c) saveConfig({ url: c.url, key: c.key });
       location.reload();
@@ -1731,9 +1728,6 @@ RENDER.konto = () => {
       </form>`,
     registrieren: `
       <form class="panel form" id="auth-form" novalidate>
-        <div class="field"><label class="label" for="a-user">Benutzername</label>
-          <div class="input-ico"><span class="at">@</span><input class="input" id="a-user" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="20" required placeholder="z. B. sam.m"></div>
-          <small class="muted">3–20 Zeichen: Buchstaben, Zahlen, Punkt, Strich, Unterstrich.</small></div>
         <div class="field"><label class="label" for="a-email">E-Mail-Adresse</label><input class="input" id="a-email" type="email" autocomplete="email" inputmode="email" required></div>
         ${pw('a-pw', 'Passwort (mindestens 8 Zeichen)', 'new-password')}
         <button class="btn primary big" type="submit">Konto erstellen</button>
@@ -1807,7 +1801,7 @@ RENDER.konto = () => {
         } else if (mode === 'registrieren') {
           if (password.length < 8) throw new Error('Das Passwort braucht mindestens 8 Zeichen.');
           if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error('Bitte eine gültige E-Mail-Adresse eingeben.');
-          const { session } = await signUp(auth.cfg, { email, password, username: $('#a-user').value, invite: getConfig()?.code ?? null });
+          const { session } = await signUp(auth.cfg, { email, password, invite: getConfig()?.code ?? null });
           if (session) {
             auth.mode = null;
             await connectRemote(auth.cfg, true);
@@ -1863,6 +1857,34 @@ async function startAccount(cfg) {
     remoteError = e.message;
     render();
   }
+}
+
+/** Nach der ersten Anmeldung: Namen für Person 1 und 2 festlegen. */
+function namesCard() {
+  const st = S().settings;
+  const role = myRole();
+  if (!role || (st.nameA && st.nameB)) return '';
+  const other = role === 'a' ? 'b' : 'a';
+  const field = (r, label) => `<div class="field grow"><label class="label" for="nm-${r}">${label}</label><input class="input" id="nm-${r}" maxlength="30" value="${esc(r === 'a' ? st.nameA : st.nameB)}" placeholder="Name" autocomplete="${r === role ? 'given-name' : 'off'}"></div>`;
+  return `
+    <form class="panel form names-card" id="names-form" novalidate>
+      <div class="panel-head">${icon('users')}<h2>Wie heißt ihr?</h2></div>
+      <p class="muted small">Die Namen seht ihr überall in Dately. Ihr könnt sie jederzeit unter Einstellungen ändern.</p>
+      <div class="row gap wrap">${field(role, 'Dein Name')}${field(other, 'Name deines Gegenübers')}</div>
+      <button class="btn primary" type="submit">${icon('check')}Speichern</button>
+    </form>`;
+}
+
+function bindNamesCard() {
+  $('#names-form')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const a = $('#nm-a').value.trim();
+    const b = $('#nm-b').value.trim();
+    if (!a || !b) return toast('Bitte beide Namen eintragen');
+    store.update((st) => Object.assign(st.settings, { nameA: a, nameB: b }));
+    toast(`Schön, dass ihr da seid, ${myRole() === 'a' ? a : b}!`);
+    render();
+  });
 }
 
 /* ================================================================ 1. Start */
@@ -2005,6 +2027,7 @@ RENDER.start = () => {
     </section>
 
     ${whoAmICard()}
+    ${namesCard()}
 
     ${inbox.length ? `<section class="stack"><h2 class="section-title">Für dich</h2>${inbox.join('')}</section>` : ''}
 
@@ -2162,6 +2185,7 @@ RENDER.start = () => {
   });
 
   bindWhoAmI();
+  bindNamesCard();
   $('#swap-turn')?.addEventListener('click', () => {
     store.update((st) => (st.settings.nextTurn = other(np)));
     session.plannerTouched = false;
@@ -3595,7 +3619,7 @@ RENDER.mehr = () => {
         <button class="btn" id="export" type="button">${icon('download')}Backup speichern</button>
         <label class="btn" for="import">${icon('repeat')}Backup laden</label>
         <input type="file" id="import" accept="application/json,.json" hidden>
-        <button class="btn ghost danger" id="reset" type="button">${icon('trash')}Alles löschen</button>
+        <button class="btn ghost danger" id="reset" type="button">${icon('trash')}${store.syncInfo().mode === 'shared' ? 'Alle gemeinsamen Daten löschen' : 'Alles löschen'}</button>
       </div>
     </section>`;
 
@@ -3678,7 +3702,7 @@ RENDER.mehr = () => {
     store.reset();
     toast('Alles gelöscht');
     render(true);
-  }, 'Nochmal tippen: wirklich alles löschen');
+  }, store.syncInfo().mode === 'shared' ? 'Nochmal tippen: alles für euch beide löschen' : 'Nochmal tippen: wirklich alles löschen');
   root.insertAdjacentHTML('beforeend', '<p class="signature">Dately · Made for moments.</p>');
 };
 
