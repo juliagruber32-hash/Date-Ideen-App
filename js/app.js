@@ -2,12 +2,12 @@ import * as store from './store.js';
 import { isHiddenFromMe, myRole, nameOf, other } from './store.js';
 import { geocode, getWeather, manualWeather } from './weather.js';
 import { allIdeas, buildPlan, combineWishes, setPreferences, defaultStart, ideaDuration, loadIdeas, MOODS, moodLabel, REACH, recommend, rhythmStatus, setExtraIdeas, suggest, toICS } from './engine.js';
-import { appleMapsLink, CATEGORIES, catForStep, categoryById, directionsLink, distanceKm, fmtKm, fmtMin, formatHours, hoursOn, isOpenAt, locate, mapLink, placeName, reservationLinks, searchMixed, searchNearby, travelEstimates } from './places.js';
+import { appleMapsLink, CATEGORIES, CUISINES, catForStep, categoryById, directionsLink, distanceKm, fmtKm, fmtMin, formatHours, hoursOn, isOpenAt, locate, mapLink, placeName, reservationLinks, searchMixed, searchNearby, travelEstimates } from './places.js';
 import { googleDetails } from './gplaces.js';
 import * as photos from './photos.js';
 import { SUPABASE } from './config.js';
 import * as gcal from './gcal.js';
-import { connectSupabase, currentSession, deleteAccount, getConfig, inviteLink, onAuthChange, readInvite, resetPassword, saveConfig, signIn, signOut, signUp, updatePassword } from './remote.js';
+import { connectSupabase, currentSession, deleteAccount, getConfig, getRemember, lastEmail, setRemember, inviteLink, onAuthChange, readInvite, resetPassword, saveConfig, signIn, signOut, signUp, updatePassword } from './remote.js';
 import { nearSpecial, specialsOn, upcomingSpecials } from './special.js';
 import { glyph, icon } from './icons.js';
 import {
@@ -83,6 +83,7 @@ store.onChange((source) => {
   if (source === 'error' && store.syncInfo().writeError) toast(store.syncInfo().writeError);
   if (source === 'local') return;
   autoClaim();
+  cleanDuplicateSurveys();
   autoReveal();
   if (isTyping() || formDirty) pendingRender = true;
   else render();
@@ -433,6 +434,22 @@ async function doConnectRemote(cfg, announce) {
   render(true);
 }
 
+/** Doppelte, noch unbeantwortete Umfragen derselben Art entfernen (ältere Versionen legten sie mehrfach an). */
+let surveysCleaned = false;
+function cleanDuplicateSurveys() {
+  const sync = store.syncInfo();
+  if (surveysCleaned || (sync.mode === 'shared' && !sync.ready)) return;
+  surveysCleaned = true;
+  const open = S().polls.filter((p) => p.status === 'open' && p.stage === 'survey');
+  const keep = new Set();
+  for (const k of ['full', 'day']) {
+    const list = open.filter((p) => (p.kind ?? 'full') === k).sort((a, b) => Object.keys(b.survey ?? {}).length - Object.keys(a.survey ?? {}).length || b.createdAt - a.createdAt);
+    if (list[0]) keep.add(list[0].id);
+  }
+  const drop = open.filter((p) => !keep.has(p.id) && !Object.keys(p.survey ?? {}).length).map((p) => p.id);
+  if (drop.length) store.update((st) => (st.polls = st.polls.filter((p) => !drop.includes(p.id))));
+}
+
 /** Nach dem ersten Anmelden automatisch „Ich bin“ setzen und den Benutzernamen als Namen übernehmen. */
 let autoClaimed = false;
 function autoClaim() {
@@ -701,9 +718,6 @@ RENDER.entdecken = () => {
   if (!cats.some((c) => c.id === d.cat)) d.cat = cats[0]?.id ?? 'restaurant';
   const cat = categoryById(d.cat);
   let results = d.results ?? [];
-  const cuisines = cat.id === 'restaurant' ? [...new Set(results.flatMap((p) => p.cuisine ? p.cuisine.split(', ') : []))].slice(0, 10) : [];
-  if (d.cuisine === 'vegan') results = results.filter((p) => p.vegan || p.vegetarian);
-  else if (d.cuisine) results = results.filter((p) => p.cuisine.includes(d.cuisine));
 
   root.innerHTML = `
     ${head}${tabs}
@@ -717,12 +731,12 @@ RENDER.entdecken = () => {
     </section>
     <div class="cat-scroll">${moodChips('mood', d.mood)}</div>
     <div class="cat-scroll">${chips('cat', cats.map((c) => [c.id, c.label]), d.cat, 'cats')}</div>
-    ${cuisines.length || cat.food ? `<div class="cat-scroll">${chips('cuisine', [['', 'Alle Küchen'], ['vegan', '🌱 Vegan/Vegetarisch'], ...cuisines.map((c) => [c, c])], d.cuisine, 'small-chips')}</div>` : ''}
+    ${cat.id === 'restaurant' ? `<div class="cat-scroll">${chips('cuisine', [['', 'Alle Küchen'], ...CUISINES.map((c) => [c.id, c.label])], d.cuisine, 'small-chips')}</div>` : ''}
     <section class="stack" id="results">
       ${d.loading ? '<div class="loading"><span class="spinner"></span>Suche Orte …</div>'
         : d.error ? `<div class="empty"><p>${esc(d.error)}</p></div>`
           : !center ? '<div class="empty"><p>Tippe auf „Standort“, damit die App Orte in deiner Nähe findet.</p></div>'
-            : d.results ? (results.length ? `<div class="places">${results.map(placeCard).join('')}</div>` : '<div class="empty"><p>Nichts gefunden. Vergrößere den Umkreis oder ändere den Filter.</p></div>')
+            : d.results ? (results.length ? `<div class="places">${results.map(placeCard).join('')}</div>` : `<div class="empty"><p>${d.cuisine ? `Keine Restaurants mit „${esc(CUISINES.find((c) => c.id === d.cuisine)?.label ?? '')}“ im Umkreis eingetragen.` : 'Nichts gefunden.'} Vergrößere den Umkreis oder wähle einen anderen Filter.</p></div>`)
               : ''}
       ${d.results?.length ? '<p class="muted small center">Orte und Bilder: OpenStreetMap & Wikimedia. Tippe auf einen Ort für Anfahrt, Reservierung und Bewertungen.</p>' : ''}
     </section>`;
@@ -732,10 +746,10 @@ RENDER.entdecken = () => {
     if (!c) return;
     d.loading = true;
     d.error = null;
-    d.cuisine = '';
+    if (d.cat !== 'restaurant') d.cuisine = '';
     render();
     try {
-      d.results = await searchNearby(d.cat, c, d.radius);
+      d.results = await searchNearby(d.cat, c, d.radius, d.cat === 'restaurant' ? d.cuisine : '');
       d.results.forEach((p) => placeIndex.set(p.id, p));
     } catch (e) {
       d.results = null;
@@ -765,7 +779,7 @@ RENDER.entdecken = () => {
   });
   bindChips(root, 'cuisine', (v) => {
     d.cuisine = v;
-    render();
+    load();
   });
   $('#d-gps').addEventListener('click', async (e) => {
     await withBusy(e.currentTarget, async () => {
@@ -1095,6 +1109,15 @@ const SURVEY_DAYS = 14;
 const surveyDays = () => Array.from({ length: SURVEY_DAYS }, (_, i) => isoDate(addDays(today(), i)));
 
 function createSurvey(kind) {
+  // Läuft schon eine offene Umfrage dieser Art? Dann diese öffnen statt eine neue anzulegen.
+  const openSurveys = S().polls.filter((p) => p.status === 'open' && p.stage === 'survey').sort((a, b) => b.createdAt - a.createdAt);
+  const same = openSurveys.find((p) => (p.kind ?? 'full') === kind);
+  if (same) return same.id;
+  // Die große Umfrage fragt die Tage mit ab – keine zweite Tagesabfrage daneben.
+  const full = openSurveys.find((p) => (p.kind ?? 'full') === 'full');
+  if (kind === 'day' && full) return full.id;
+  const emptyDay = openSurveys.filter((p) => p.kind === 'day' && !Object.keys(p.survey ?? {}).length).map((p) => p.id);
+  if (kind === 'full' && emptyDay.length) store.update((st) => (st.polls = st.polls.filter((p) => !emptyDay.includes(p.id))));
   const id = uid();
   const ls = L().lastSearch;
   store.update((s) =>
@@ -1722,8 +1745,9 @@ RENDER.konto = () => {
   const forms = {
     anmelden: `
       <form class="panel form" id="auth-form" novalidate>
-        <div class="field"><label class="label" for="a-email">E-Mail-Adresse</label><input class="input" id="a-email" type="email" autocomplete="email" inputmode="email" required></div>
+        <div class="field"><label class="label" for="a-email">E-Mail-Adresse</label><input class="input" id="a-email" type="email" autocomplete="email" inputmode="email" required value="${esc(lastEmail())}"></div>
         ${pw('a-pw', 'Passwort', 'current-password')}
+        <label class="switch"><input type="checkbox" id="a-remember" ${getRemember() ? 'checked' : ''}><span>Angemeldet bleiben</span></label>
         <button class="btn primary big" type="submit">Anmelden</button>
         <button class="linkish small center" type="button" data-amode="vergessen">Passwort vergessen?</button>
       </form>`,
@@ -1796,12 +1820,14 @@ RENDER.konto = () => {
       try {
         if (mode === 'anmelden') {
           if (!email || !password) throw new Error('Bitte E-Mail und Passwort eingeben.');
+          setRemember($('#a-remember').checked);
           await signIn(auth.cfg, { email, password });
           auth.mode = null;
           await connectRemote(auth.cfg, true);
         } else if (mode === 'registrieren') {
           if (password.length < 8) throw new Error('Das Passwort braucht mindestens 8 Zeichen.');
           if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error('Bitte eine gültige E-Mail-Adresse eingeben.');
+          setRemember(true);
           const { session } = await signUp(auth.cfg, { email, password, invite: getConfig()?.code ?? null });
           if (session) {
             auth.mode = null;
@@ -2063,7 +2089,13 @@ function inboxItems() {
     }
   }
 
+  // Pro Art nur die neueste offene Umfrage zeigen
+  const latestSurvey = {};
   for (const p of s.polls.filter((x) => x.status === 'open' && x.stage === 'survey')) {
+    const k = p.kind ?? 'full';
+    if (!latestSurvey[k] || p.createdAt > latestSurvey[k].createdAt) latestSurvey[k] = p;
+  }
+  for (const p of Object.values(latestSurvey)) {
     const mine = !!p.survey?.[role];
     const theirs = !!p.survey?.[other(role)];
     const label = mine && theirs ? 'Beide fertig – Ergebnis ansehen' : mine ? `Warte auf ${esc(nameOf(other(role)))}` : `${p.createdBy === role ? 'Deine' : `${esc(nameOf(p.createdBy))} wartet auf deine`} Antworten (1 Minute)`;
@@ -3863,6 +3895,10 @@ RENDER.mehr = () => {
   render();
   autoReveal();
   if (await store.connect()) return render();
+  if (!getConfig()?.url && !SUPABASE.url) {
+    cleanDuplicateSurveys();
+    render();
+  }
   let cfg = getConfig();
   if (!cfg?.url && SUPABASE.url && SUPABASE.key) cfg = { url: SUPABASE.url, key: SUPABASE.key, coupleId: null, code: null };
   if (cfg?.url && cfg?.key) await startAccount(cfg);

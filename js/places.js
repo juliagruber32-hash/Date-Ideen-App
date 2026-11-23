@@ -70,11 +70,38 @@ export const categoryById = (id) => CATEGORIES.find((c) => c.id === id);
 const memo = new Map();
 
 /** Orte einer Kategorie im Umkreis (Meter). Sortiert nach Entfernung. */
-export async function searchNearby(categoryId, center, radius) {
+export const CUISINES = [
+  { id: 'asiatisch', label: 'Asiatisch', tags: ['asian', 'chinese', 'japanese', 'sushi', 'thai', 'vietnamese', 'korean', 'ramen', 'noodle', 'dim_sum'] },
+  { id: 'italienisch', label: 'Italienisch', tags: ['italian', 'pizza', 'pasta'] },
+  { id: 'indisch', label: 'Indisch', tags: ['indian', 'nepalese', 'pakistani', 'sri_lankan'] },
+  { id: 'vegan', label: 'Vegan', diet: ['vegan'] },
+  { id: 'vegetarisch', label: 'Vegetarisch', diet: ['vegetarian', 'vegan'] },
+  { id: 'griechisch', label: 'Griechisch', tags: ['greek'] },
+  { id: 'tuerkisch', label: 'Türkisch', tags: ['turkish', 'kebab'] },
+  { id: 'orientalisch', label: 'Orientalisch', tags: ['lebanese', 'arab', 'persian', 'syrian', 'middle_eastern', 'falafel', 'israeli'] },
+  { id: 'mexikanisch', label: 'Mexikanisch', tags: ['mexican', 'tex-mex', 'latin_american'] },
+  { id: 'spanisch', label: 'Spanisch', tags: ['spanish', 'tapas'] },
+  { id: 'franzoesisch', label: 'Französisch', tags: ['french'] },
+  { id: 'deutsch', label: 'Deutsch & regional', tags: ['german', 'regional', 'bavarian', 'austrian'] },
+  { id: 'burger', label: 'Burger', tags: ['burger', 'american'] },
+  { id: 'steak', label: 'Steak', tags: ['steak_house', 'steak', 'grill', 'argentinian'] },
+  { id: 'fisch', label: 'Fisch', tags: ['seafood', 'fish'] },
+];
+
+/** Zusatzfilter für eine Küche (Overpass), z. B. ["cuisine"~"(^|;)(italian|pizza)(;|$)"]. */
+function cuisineFilters(cuisineId) {
+  const c = CUISINES.find((x) => x.id === cuisineId);
+  if (!c) return [''];
+  if (c.diet) return c.diet.map((d) => `["diet:${d}"~"^(yes|only)$"]`);
+  return [`["cuisine"~"(^|;)(${c.tags.join('|')})(;|$)",i]`];
+}
+
+export async function searchNearby(categoryId, center, radius, cuisineId = '') {
   const cat = categoryById(categoryId);
-  const key = `${categoryId}|${center.lat.toFixed(3)}|${center.lon.toFixed(3)}|${radius}`;
+  const key = `${categoryId}|${cuisineId}|${center.lat.toFixed(3)}|${center.lon.toFixed(3)}|${radius}`;
   if (memo.has(key)) return memo.get(key);
-  const parts = cat.filters.map((f) => `nwr${f}(around:${radius},${center.lat},${center.lon});`).join('');
+  const extra = cuisineId ? cuisineFilters(cuisineId) : [''];
+  const parts = cat.filters.flatMap((f) => extra.map((x) => `nwr${f}${x}(around:${radius},${center.lat},${center.lon});`)).join('');
   const query = `[out:json][timeout:25];(${parts});out center tags 60;`;
   const res = await fetch('https://overpass-api.de/api/interpreter', {
     method: 'POST',

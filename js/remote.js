@@ -60,12 +60,55 @@ function mergeDeep(a, b) {
 /* ------------------------------------------------------------ Konten (E-Mail + Passwort) */
 
 const clients = new Map();
+const REMEMBER_KEY = 'dately-remember';
+
+/** „Angemeldet bleiben“: an = Anmeldung bleibt nach dem Schließen gespeichert, aus = nur bis zum Schließen. */
+export function getRemember() {
+  try {
+    return localStorage.getItem(REMEMBER_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+export function setRemember(on) {
+  try {
+    localStorage.setItem(REMEMBER_KEY, on ? '1' : '0');
+  } catch {
+    /* ignorieren */
+  }
+  clients.clear(); // Client mit passendem Speicher neu erstellen
+}
+
+function authStorage() {
+  // Anmeldung, die schon im dauerhaften Speicher liegt, immer weiterverwenden.
+  try {
+    return getRemember() ? window.localStorage : window.sessionStorage;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function getClient(cfg) {
   if (!clients.has(cfg.url)) {
     const lib = await loadLib();
-    clients.set(cfg.url, lib.createClient(cfg.url, cfg.key, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: 'dately-auth' } }));
+    clients.set(cfg.url, lib.createClient(cfg.url, cfg.key, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: 'dately-auth', storage: authStorage() } }));
   }
   return clients.get(cfg.url);
+}
+
+export function lastEmail() {
+  try {
+    return localStorage.getItem('dately-last-email') ?? '';
+  } catch {
+    return '';
+  }
+}
+function rememberEmail(email) {
+  try {
+    localStorage.setItem('dately-last-email', email);
+  } catch {
+    /* ignorieren */
+  }
 }
 
 const appUrl = () => `${location.origin}${location.pathname}`;
@@ -117,6 +160,7 @@ export async function signIn(cfg, { email, password }) {
   const client = await getClient(cfg);
   const { data, error } = await client.auth.signInWithPassword({ email: email.trim(), password });
   if (error) throw new Error(authError(error));
+  rememberEmail(email.trim());
   return data.session;
 }
 
