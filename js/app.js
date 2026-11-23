@@ -9,7 +9,7 @@ import { SUPABASE } from './config.js';
 import * as gcal from './gcal.js';
 import { connectSupabase, getConfig, inviteLink, readInvite, saveConfig } from './remote.js';
 import { nearSpecial, specialsOn, upcomingSpecials } from './special.js';
-import { icon } from './icons.js';
+import { glyph, icon } from './icons.js';
 import {
   $, $$, addDays, daysBetween, esc, fmtDate, fmtDuration, fmtEuro, fmtShort, isoDate, MONTHS,
   parseISO, relDay, toast, today, uid, WD_SHORT, WEEKDAYS,
@@ -42,14 +42,27 @@ function render(scrollTop = false) {
   pendingRender = false;
   setExtraIdeas([...S().ideas, ...S().favorites.filter((f) => f.idea).map((f) => ({ ...f.idea, id: f.ideaId }))]);
   $$('.tabbar button').forEach((b) => b.toggleAttribute('aria-current', b.dataset.tab === TAB_OF[current.name]));
+  if (!scrollTop) {
+    root.classList.remove('enter');
+    clearTimeout(enterTimer);
+  }
   (RENDER[current.name] ?? RENDER.start)(current.param);
-  if (scrollTop) window.scrollTo(0, 0);
+  if (scrollTop) {
+    window.scrollTo(0, 0);
+    // Sanftes Einblenden nur beim Bildschirmwechsel, nicht bei Live-Aktualisierungen
+    root.classList.remove('enter');
+    void root.offsetWidth;
+    root.classList.add('enter');
+    clearTimeout(enterTimer);
+    enterTimer = setTimeout(() => root.classList.remove('enter'), 700);
+  }
 }
 
 $$('.tabbar button').forEach((b) => b.addEventListener('click', () => go(b.dataset.tab)));
 
 // Änderungen der anderen Person live übernehmen, aber nicht mitten im Tippen neu zeichnen.
 let pendingRender = false;
+let enterTimer;
 let formDirty = false; // ungespeicherte Eingaben im aktuellen Formular
 root.addEventListener('input', (e) => e.target.closest('form') && (formDirty = true));
 root.addEventListener('change', (e) => e.target.closest('form') && (formDirty = true));
@@ -149,9 +162,11 @@ async function saveFile(filename, data, type) {
 const daytimeLabel = (d) => (d === 'abend' ? 'abends' : 'tagsüber');
 const ctxLine = (c) => `${relDay(c.date) ?? fmtShort(c.date)} · ${daytimeLabel(c.daytime)} · bis ${c.budget} €`;
 
+const weatherGlyph = (w) => (w?.wet ? 'rain' : w?.clear ? 'sun' : 'cloud');
+
 function weatherPill(w) {
   if (!w?.icon) return '';
-  return `<span class="pill">${w.icon} ${w.temp != null ? `${w.temp}° · ` : ''}${esc(w.label)}</span>`;
+  return `<span class="pill">${icon(weatherGlyph(w))}${w.temp != null ? `${w.temp}° · ` : ''}${esc(w.label)}</span>`;
 }
 
 function resolveDate(ctx) {
@@ -518,8 +533,8 @@ function placeLine(p, dateIso, time) {
 }
 
 const thumb = (src, emoji, cls = '') =>
-  src ? `<span class="thumb ${cls}"><img src="${esc(src)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentNode.classList.add('noimg');this.remove()"><span class="thumb-emoji" aria-hidden="true">${emoji}</span></span>`
-    : `<span class="thumb noimg ${cls}"><span class="thumb-emoji" aria-hidden="true">${emoji}</span></span>`;
+  src ? `<span class="thumb ${cls}"><img src="${esc(src)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentNode.classList.add('noimg');this.remove()"><span class="thumb-emoji" aria-hidden="true">${glyph(emoji)}</span></span>`
+    : `<span class="thumb noimg ${cls}"><span class="thumb-emoji" aria-hidden="true">${glyph(emoji)}</span></span>`;
 
 function placeCard(p, mini = false) {
   const cat = categoryById(p.category);
@@ -582,7 +597,7 @@ async function planIdeaNow(idea, el) {
 }
 
 function moodChips(group, value) {
-  return chips(group, [['', 'Alle'], ...MOODS.map(([v, l, e]) => [v, `${e} ${l}`])], value);
+  return chips(group, [['', 'Alle'], ...MOODS.map(([v, l]) => [v, l])], value);
 }
 
 RENDER.entdecken = () => {
@@ -622,7 +637,7 @@ RENDER.entdecken = () => {
       ${chips('radius', [[2000, '2 km'], [5000, '5 km'], [15000, '15 km'], [40000, '40 km']], d.radius)}
     </section>
     <div class="cat-scroll">${moodChips('mood', d.mood)}</div>
-    <div class="cat-scroll">${chips('cat', cats.map((c) => [c.id, `${c.emoji} ${c.label}`]), d.cat, 'cats')}</div>
+    <div class="cat-scroll">${chips('cat', cats.map((c) => [c.id, c.label]), d.cat, 'cats')}</div>
     ${cuisines.length || cat.food ? `<div class="cat-scroll">${chips('cuisine', [['', 'Alle Küchen'], ['vegan', '🌱 Vegan/Vegetarisch'], ...cuisines.map((c) => [c, c])], d.cuisine, 'small-chips')}</div>` : ''}
     <section class="stack" id="results">
       ${d.loading ? '<div class="loading"><span class="spinner"></span>Suche Orte …</div>'
@@ -720,7 +735,7 @@ RENDER.ort = (id) => {
     ${topbar({ title: '', back: ['entdecken', '', 'Entdecken'] })}
     <div class="hero-img ${img ? '' : 'noimg'}">
       ${img ? `<img src="${esc(img)}" alt="${esc(p.name)}" referrerpolicy="no-referrer" onerror="this.parentNode.classList.add('noimg');this.remove()">` : ''}
-      <span class="thumb-emoji" aria-hidden="true">${cat.emoji}</span>
+      <span class="thumb-emoji" aria-hidden="true">${glyph(cat.emoji)}</span>
     </div>
     <header class="topbar">
       <p class="eyebrow">${esc(cat.label)} · ${fmtKm(p.km)}</p>
@@ -954,7 +969,7 @@ RENDER.teilen = (param) => {
     <form class="panel form" id="share-form" novalidate>
       <div class="field"><label class="label" for="sh-title">Titel</label><input class="input" id="sh-title" maxlength="60" value="${esc(pub.title)}"></div>
       <div class="field"><label class="label" for="sh-teaser">Was macht das Date besonders?</label><input class="input" id="sh-teaser" maxlength="140" value="${esc(pub.teaser)}" placeholder="z. B. Perfekt für Regentage, das Café hat die beste Torte"></div>
-      <div class="field"><span class="label">Stimmung</span><div class="chips" id="sh-moods">${MOODS.map(([v, l, e]) => `<button type="button" class="chip" data-m="${v}" aria-pressed="${draft.moods.has(v)}">${e} ${l}</button>`).join('')}</div></div>
+      <div class="field"><span class="label">Stimmung</span><div class="chips" id="sh-moods">${MOODS.map(([v, l]) => `<button type="button" class="chip" data-m="${v}" aria-pressed="${draft.moods.has(v)}">${l}</button>`).join('')}</div></div>
       <div class="field"><label class="label" for="sh-city">Stadt</label><input class="input" id="sh-city" maxlength="60" value="${esc(currentPlaceName())}"></div>
       <div class="panel inset"><strong>Ablauf</strong><p class="flow">${pub.steps.map((s) => esc(s.t)).join(' → ')}</p><p class="muted small">${fmtEuro(pub.cost)} für zwei</p></div>
       <button class="btn primary big" type="submit">${icon('share')}Teilen</button>
@@ -1167,7 +1182,7 @@ function renderSurvey(p) {
       <div class="field"><span class="label">Tageszeit</span>${chips('s-daytime', [['tag', 'Tagsüber', 'sun'], ['abend', 'Abends', 'moon'], ['beides', 'Egal']], draft.daytime, 'seg')}</div>
       ${full ? `
         <div class="field"><span class="label">Worauf hast du Lust? <small class="muted">(bis zu 3)</small></span>
-          <div class="chips" id="s-moods">${MOODS.map(([v, l, e]) => `<button type="button" class="chip" data-m="${v}" aria-pressed="${draft.moods.has(v)}">${e} ${l}</button>`).join('')}</div></div>
+          <div class="chips" id="s-moods">${MOODS.map(([v, l]) => `<button type="button" class="chip" data-m="${v}" aria-pressed="${draft.moods.has(v)}">${l}</button>`).join('')}</div></div>
         <div class="field"><span class="label">Drinnen oder draußen?</span>${chips('s-place', [['drinnen', 'Drinnen', 'home'], ['draußen', 'Draußen', 'sun'], ['egal', 'Egal']], draft.place, 'seg')}</div>
         <div class="field">
           <div class="label-row"><span class="label">Budget für euch beide</span><output id="s-budget-out" class="budget-out">${draft.budget} €</output></div>
@@ -1365,13 +1380,13 @@ function renderForYou(head) {
         <div class="label-row"><span class="label">Budget für euch beide</span><output id="ff-budget-out" class="budget-out">${budget} €</output></div>
         <input type="range" id="ff-budget" min="0" max="200" step="5" value="${budget}" aria-label="Budget in Euro">
       </div>
-      <div class="field"><span class="label">Stimmung</span>${chips('ff-mood', [['', 'Alle'], ...MOODS.map(([v, l, e]) => [v, `${e} ${l}`])], f.mood)}</div>
+      <div class="field"><span class="label">Stimmung</span>${chips('ff-mood', [['', 'Alle'], ...MOODS.map(([v, l]) => [v, l])], f.mood)}</div>
       <div class="field"><span class="label">Drinnen oder draußen</span>${chips('ff-place', [['', 'Beides'], ['drinnen', 'Drinnen', 'home'], ['draußen', 'Draußen', 'sun']], f.place, 'seg')}</div>
       <div class="field"><span class="label">Wie weit?</span>${chips('ff-reach', [[0, 'Zuhause'], [1, 'In der Stadt'], [2, 'Ausflug']], f.reach, 'seg')}</div>
       <button type="button" class="btn primary" id="ff-apply">Anwenden</button>
     </section>
 
-    ${w?.known ? `<p class="weather-line">${w.icon} ${relDay(feedDate()) ?? fmtShort(feedDate())} ${daytimeLabel(f.daytime)}: ${esc(w.label)}${w.temp != null ? `, ${w.temp}°` : ''}${w.wet ? ' – Ideen für drinnen' : ''}</p>` : ''}
+    ${w?.known ? `<p class="weather-line">${icon(weatherGlyph(w))} ${relDay(feedDate()) ?? fmtShort(feedDate())} ${daytimeLabel(f.daytime)}: ${esc(w.label)}${w.temp != null ? `, ${w.temp}°` : ''}${w.wet ? ' – Ideen für drinnen' : ''}</p>` : ''}
 
     <section class="stack">
       <h2 class="section-title">Passt zu euch</h2>
@@ -1482,7 +1497,7 @@ function renderSaved(head) {
       <div class="row between"><h2 class="section-title">Eigene Ideen</h2><button class="btn sm soft" data-go="idee">${icon('plus')}Neue Idee</button></div>
       ${custom.length ? `<div class="list-card">${custom.map((i) => `
         <div class="date-item static">
-          ${thumb(i.image || i.steps?.find((s) => s.place?.image)?.place.image, esc(i.emoji ?? '💡'), 'sq')}
+          ${thumb(i.image || i.steps?.find((s) => s.place?.image)?.place.image, i.emoji ?? '💡', 'sq')}
           <span class="grow"><strong>${esc(i.title)}</strong><small class="muted">${i.place === 'drinnen' ? 'Drinnen' : 'Draußen'} · ${fmtEuro(i.cost)} · ${fmtDuration(ideaDuration(i))}${(i.moods ?? []).length ? ` · ${i.moods.map(moodLabel).join(', ')}` : ''}</small></span>
           <button class="icon-btn small" data-feed-plan="${i.id}" aria-label="Planen">${icon('sparkle')}</button>
           ${community.api && !i.communityId ? `<button class="icon-btn small" data-share-idea="${i.id}" aria-label="Mit der Community teilen">${icon('share')}</button>` : ''}
@@ -1505,7 +1520,7 @@ function renderSaved(head) {
 
 /* ================================================================ Eigene Idee */
 
-const EMOJIS = ['💡', '🍷', '🎶', '🌲', '🏖️', '🎡', '🧁', '🛶', '🎤', '🏛️', '🧘', '🎮', '🍜', '🌃', '🚴', '🎁'];
+const EMOJIS = ['💡', '🍷', '🍝', '☕', '🎬', '🏛️', '🎶', '🎭', '🎮', '🌲', '🥾', '🌃', '📸', '📚', '🎁', '✨'];
 
 RENDER.idee = () => {
   const draft = { emoji: '💡', place: 'drinnen', times: 'beides', reach: 1 };
@@ -1513,12 +1528,12 @@ RENDER.idee = () => {
     ${topbar({ title: 'Eigene Idee', sub: 'Erscheint bei euren Vorschlägen, wenn Budget, Wetter und Stimmung passen.', back: ['entdecken', '', 'Entdecken'] })}
     <form class="panel form" id="idea-form" novalidate>
       <div class="field"><label class="label" for="i-title">Titel</label><input class="input" id="i-title" required maxlength="60" placeholder="z. B. Picknick am Lieblingssee"></div>
-      <div class="field"><span class="label">Symbol</span>${chips('emoji', EMOJIS.map((e) => [e, e]), draft.emoji, 'emoji-chips')}</div>
+      <div class="field"><span class="label">Symbol</span>${chips('emoji', EMOJIS.map((e) => [e, glyph(e)]), draft.emoji, 'emoji-chips')}</div>
       <div class="field"><label class="label" for="i-teaser">Beschreibung</label><input class="input" id="i-teaser" maxlength="120" placeholder="Ein Satz, worum es geht"></div>
       <div class="field"><span class="label">Wo?</span>${chips('place', [['drinnen', 'Drinnen', 'home'], ['draußen', 'Draußen', 'sun']], draft.place, 'seg')}</div>
       <div class="field"><span class="label">Tageszeit</span>${chips('times', [['tag', 'Tagsüber'], ['abend', 'Abends'], ['beides', 'Beides']], draft.times, 'seg')}</div>
       <div class="field"><span class="label">Wie weit?</span>${chips('reach', [[0, 'Zuhause'], [1, 'In der Stadt'], [2, 'Ausflug']], draft.reach, 'seg')}</div>
-      <div class="field"><span class="label">Stimmung (mehrere möglich)</span><div class="chips" id="i-moods">${MOODS.map(([v, l, e]) => `<button type="button" class="chip" data-m="${v}" aria-pressed="false">${e} ${l}</button>`).join('')}</div></div>
+      <div class="field"><span class="label">Stimmung (mehrere möglich)</span><div class="chips" id="i-moods">${MOODS.map(([v, l]) => `<button type="button" class="chip" data-m="${v}" aria-pressed="false">${l}</button>`).join('')}</div></div>
       <div class="row gap">
         <div class="field grow"><label class="label" for="i-cost">Kosten für beide (€)</label><input class="input" id="i-cost" type="number" min="0" max="999" inputmode="numeric" value="20"></div>
         <div class="field grow"><label class="label" for="i-start">Startzeit (optional)</label><input class="input" id="i-start" type="time"></div>
@@ -1599,7 +1614,7 @@ function recommendationsHTML() {
       <div class="reco-row">
         ${recos.map(({ idea, reason }) => `
           <button class="reco" data-reco="${idea.id}">
-            <span class="idea-emoji" aria-hidden="true">${idea.emoji}</span>
+            <span class="idea-emoji" aria-hidden="true">${glyph(idea.emoji)}</span>
             <strong>${esc(idea.title)}</strong>
             <small class="muted">${esc(reason)}</small>
           </button>`).join('')}
@@ -1697,7 +1712,7 @@ function inboxItems() {
     const when = sp.days === 0 ? 'heute' : sp.days === 1 ? 'morgen' : `in ${sp.days} Tagen`;
     items.push(`
       <article class="inbox-item special">
-        <div class="inbox-ico emoji">${sp.icon}</div>
+        <div class="inbox-ico special">${icon(sp.kind === 'geburtstag' ? 'gift' : sp.kind === 'sonstiges' ? 'star' : 'heart')}</div>
         <div class="grow"><strong>${esc(sp.label)} ${when}</strong><p>${fmtDate(sp.iso)}</p></div>
         <button class="btn sm" data-special="${sp.iso}">Date planen</button>
       </article>`);
@@ -1792,7 +1807,7 @@ RENDER.start = () => {
       </div>
       <div class="field only-solo">
         <span class="label">Stimmung</span>
-        ${chips('fmood', [['', 'Egal'], ...MOODS.map(([v, l, e]) => [v, `${e} ${l}`])], f.mood ?? '')}
+        ${chips('fmood', [['', 'Egal'], ...MOODS.map(([v, l]) => [v, l])], f.mood ?? '')}
       </div>
       <div class="field" id="city-field">
         <label class="label" for="f-city">Stadt</label>
@@ -2022,7 +2037,7 @@ function ideaCard(i, extra = '') {
   return `
     <article class="idea" data-idea="${i.id}">
       <div class="idea-top">
-        <span class="idea-emoji" aria-hidden="true">${i.emoji}</span>
+        <span class="idea-emoji" aria-hidden="true">${glyph(i.emoji)}</span>
         <div class="grow">
           <h3>${esc(i.title)}</h3>
           <p class="teaser">${esc(i.teaser)}</p>
@@ -2096,7 +2111,7 @@ function planHead(plan, eyebrow = '') {
   const day = relDay(plan.date);
   return `
     <header class="plan-head">
-      <span class="plan-emoji" aria-hidden="true">${plan.emoji}</span>
+      <span class="plan-emoji" aria-hidden="true">${glyph(plan.emoji)}</span>
       ${eyebrow ? `<p class="eyebrow">${eyebrow}</p>` : ''}
       <h1>${esc(plan.title)}</h1>
       <p class="sub">${day ? day + ', ' : ''}${fmtDate(plan.date)} · ${plan.start}–${plan.end} Uhr</p>
@@ -2405,7 +2420,7 @@ RENDER.poll = (id) => {
         <p class="eyebrow">Ihr habt ein Match</p>
         ${st.matches.map((mid) => `
           <div class="match-row">
-            <span class="idea-emoji" aria-hidden="true">${ideaById(mid)?.emoji ?? ''}</span>
+            <span class="idea-emoji" aria-hidden="true">${glyph(ideaById(mid)?.emoji ?? '')}</span>
             <strong class="grow">${esc(ideaById(mid)?.title ?? '')}</strong>
             <button class="btn primary sm" data-plan-match="${mid}">Planen</button>
           </div>`).join('')}
@@ -2482,7 +2497,7 @@ function entriesFor(date) {
   for (const r of s.requests.filter((x) => x.status === 'open' && x.ctx.date === iso)) list.push({ type: 'pending', time: '', title: `${nameOf(r.to)} plant ein Date` });
   for (const p of s.polls.filter((x) => x.status === 'open' && x.stage !== 'survey' && x.ctx.date === iso)) list.push({ type: 'pending', time: '', title: 'Abstimmung läuft', poll: p.id });
   for (const f of s.settings.fixed.filter((x) => x.weekday === date.getDay())) list.push({ type: 'fixed', time: f.time, title: f.title });
-  for (const sp of specialsOn(s.settings, date)) list.push({ type: 'special', time: '', title: `${sp.icon} ${sp.label}` });
+  for (const sp of specialsOn(s.settings, date)) list.push({ type: 'special', time: '', title: sp.label });
   for (const e of s.events.filter((x) => x.date === iso)) list.push({ type: 'event', time: e.time, title: e.title, who: e.who, id: e.id });
   for (const t of s.todos.filter((x) => x.due === iso && !x.done)) list.push({ type: 'todo', time: '', title: t.text });
   for (const e of L().gcal.events.filter((x) => x.date === iso)) list.push({ type: 'gcal', time: e.start, title: e.allDay ? `${e.title} (ganztägig)` : `${e.title}${e.end ? ` bis ${e.end}` : ''}` });
@@ -2542,7 +2557,7 @@ RENDER.kalender = () => {
       ${entries.length ? `<ul class="entries">${entries.map((e) => `
         <li class="entry ${e.type}">
           <span class="time">${e.time || ''}</span>
-          ${e.date || e.poll ? `<button class="grow entry-link" ${e.date ? `data-open-date="${e.date}"` : `data-open-poll="${e.poll}"`}>${e.emoji ? `<span aria-hidden="true">${e.emoji}</span> ` : ''}${esc(e.title)}${icon('right')}</button>` : `<span class="grow">${esc(e.title)}${e.who ? ` <small class="muted">· ${esc(e.who)}</small>` : ''}</span>`}
+          ${e.date || e.poll ? `<button class="grow entry-link" ${e.date ? `data-open-date="${e.date}"` : `data-open-poll="${e.poll}"`}>${esc(e.title)}${icon('right')}</button>` : `<span class="grow">${esc(e.title)}${e.who ? ` <small class="muted">· ${esc(e.who)}</small>` : ''}</span>`}
           ${e.type === 'event' ? `<button class="icon-btn small" data-del-event="${e.id}" aria-label="Termin löschen">${icon('x')}</button>` : ''}
         </li>`).join('')}</ul>` : '<p class="muted">Noch nichts eingetragen.</p>'}
       <form class="panel add-row" id="add-event">
@@ -3028,7 +3043,7 @@ RENDER.rueckblick = (param) => {
           <span class="page-month">${MONTHS[Number(d.date.slice(5, 7)) - 1]}</span>
           <span class="page-no">${String(i + 1).padStart(2, '0')}</span>
         </header>
-        ${photoLayout(list) || `<div class="page-emoji" aria-hidden="true">${plan.emoji ?? '💞'}</div>`}
+        ${photoLayout(list) || `<div class="page-emoji" aria-hidden="true">${glyph(plan.emoji ?? '💞')}</div>`}
         <div class="page-text">
           <h2>${esc(plan.title ?? 'Unser Date')}</h2>
           <p class="page-meta">${fmtDate(d.date, { weekday: 'long', day: 'numeric', month: 'long' })}${stops.length ? ` · ${stops.map(esc).join(' → ')}` : ''}</p>
@@ -3108,7 +3123,7 @@ RENDER.dates = () => {
     const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
     return `
       <button class="date-item" data-open-date="${d.id}">
-        <span class="idea-emoji" aria-hidden="true">${dateEmoji(d)}</span>
+        <span class="idea-emoji" aria-hidden="true">${glyph(dateEmoji(d))}</span>
         <span class="grow">
           <strong>${esc(dateTitle(d))}</strong>
           <small class="muted">${relDay(d.date) ?? fmtShort(d.date)} · ${d.start} Uhr · ${esc(plannerLabel(d))}</small>
@@ -3316,6 +3331,7 @@ RENDER.mehr = () => {
     toast('Alles gelöscht');
     render(true);
   }, 'Nochmal tippen: wirklich alles löschen');
+  root.insertAdjacentHTML('beforeend', '<p class="signature">Dately · Made for moments.</p>');
 };
 
 /* ================================================================ Start */

@@ -1,4 +1,4 @@
-// Linien-Icons (24er Raster, 1.8 Strichstärke). Farbe folgt `currentColor`.
+// Linien-Icons (24er Raster, feine Linien). Farbe folgt `currentColor`.
 
 const P = {
   rings: '<circle cx="9" cy="12" r="5.5"/><circle cx="15" cy="12" r="5.5"/>',
@@ -47,8 +47,47 @@ const P = {
   wallet: '<path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H18v3"/><rect x="4" y="7.5" width="16.5" height="12" rx="2.5"/><circle cx="16" cy="13.5" r="1.2" fill="currentColor"/>',
   camera: '<path d="M4 8.5A2 2 0 0 1 6 6.5h2l1.5-2h5l1.5 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/>',
   book: '<path d="M12 6.5c-2-1.5-5-2-8-1.5v13c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5V5c-3-.5-6 0-8 1.5Z"/><path d="M12 6.5v13"/>',
+  utensils: '<path d="M7 3v8a2 2 0 0 0 2 2v8M5 3v5a2 2 0 0 0 2 2M9 3v5a2 2 0 0 1-2 2M17 21V3c-2 1.5-3 4-3 7v3h3"/>',
+  cup: '<path d="M5 9h11v5a5 5 0 0 1-5 5h-1a5 5 0 0 1-5-5z"/><path d="M16 11h1.5a2.5 2.5 0 0 1 0 5H16M9 3c-.8 1 .8 2 0 3M12.5 3c-.8 1 .8 2 0 3"/>',
+  glass: '<path d="M7 3h10l-1 6a4 4 0 0 1-8 0z"/><path d="M12 13v8M8.5 21h7"/>',
+  film: '<rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="M7.5 5v14M16.5 5v14M3.5 9.5h4M3.5 14.5h4M16.5 9.5h4M16.5 14.5h4"/>',
+  frame: '<rect x="4" y="4" width="16" height="16" rx="1.5"/><path d="m6.5 16.5 4-4.5 3 3 2-2 2 2.5"/><circle cx="15" cy="9" r="1.3"/>',
+  music: '<path d="M9 18V5.5l10-2V16"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/>',
+  mask: '<path d="M4 5h11v5a5.5 5.5 0 0 1-11 0z"/><path d="M7.5 12.5c1 .8 3 .8 4 0M15 9h5v5a5 5 0 0 1-7.5 4.3"/><circle cx="7.6" cy="8.8" r=".7" fill="currentColor"/><circle cx="11.4" cy="8.8" r=".7" fill="currentColor"/>',
+  game: '<rect x="3" y="7.5" width="18" height="10" rx="5"/><path d="M8 10.5v4M6 12.5h4"/><circle cx="15.5" cy="11.5" r=".9" fill="currentColor"/><circle cx="17.5" cy="13.5" r=".9" fill="currentColor"/>',
+  leaf: '<path d="M5 19c0-8 5-14 15-14 0 10-6 15-14 15"/><path d="M5 19c3-4 6-6.5 10-8.5"/>',
+  mountain: '<path d="m3 19 6.5-11 4 6.5 2.5-3.5L21 19z"/>',
+  paw: '<circle cx="12" cy="15.5" r="3.5"/><circle cx="6.5" cy="10" r="1.8"/><circle cx="10" cy="6.5" r="1.8"/><circle cx="14" cy="6.5" r="1.8"/><circle cx="17.5" cy="10" r="1.8"/>',
+  snow: '<path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9M9.5 4.5 12 7l2.5-2.5M9.5 19.5 12 17l2.5 2.5"/>',
   star: '<path d="m12 4 2.4 5 5.4.6-4 3.7 1.1 5.4L12 16l-4.9 2.7 1.1-5.4-4-3.7 5.4-.6z"/>',
 };
+
+// Farbige Emojis aus Ideen und Orten werden als ruhige Line Icons dargestellt.
+const EMOJI_ICON = {
+  utensils: '🍝🍕🍣🍽️🫕🥐🥞🍜🧁🍫🧑‍🍳👩‍🍳🥨',
+  cup: '☕🍦🍨',
+  glass: '🍷🍹🥂🍸',
+  film: '🎬🍿',
+  frame: '🖼️🎨🏺🏛️',
+  camera: '📷📸',
+  book: '📚📔',
+  music: '🎷🎤🎶',
+  mask: '🎭',
+  game: '🎲🎳🕹️🎮⛳🔐🎡',
+  leaf: '🧺🌳🌺🌲🌿🪷♨️🛁🧘💆',
+  mountain: '🥾🧗🚲🚴🚣🛶🏖️',
+  moon: '🌙🌃',
+  star: '✨⭐',
+  sun: '🌅☀️',
+  gift: '🎁🧸🎂',
+  heart: '💞💘💍🕯️💡',
+  paw: '🦒',
+  snow: '⛸️❄️',
+};
+const LOOKUP = {};
+for (const [name, list] of Object.entries(EMOJI_ICON)) for (const e of [...new Intl.Segmenter().segment(list)].map((x) => x.segment)) LOOKUP[e] = name;
+export const glyphName = (emoji) => (P[emoji] ? emoji : LOOKUP[emoji] ?? 'sparkle');
+export const glyph = (emoji, cls = '') => icon(glyphName(emoji), cls);
 
 export const icon = (name, cls = '') =>
   `<svg class="ico ${cls}" viewBox="0 0 24 24" aria-hidden="true">${P[name] ?? ''}</svg>`;
