@@ -24,11 +24,29 @@ function writeCache(c) {
  * Sucht den Ort bei Google und liefert Bewertung, Anzahl, Foto-URL und Links.
  * Gibt null zurück, wenn nichts Passendes gefunden wurde.
  */
+// Google über die Server-Funktion (Schlüssel bleibt geheim, Tageslimit auf dem Server)
+let gProxy = null;
+export function setGoogleProxy(fn) {
+  gProxy = fn;
+}
+export const googleViaServer = () => !!gProxy;
+
 export async function googleDetails(place, apiKey) {
-  if (!apiKey) return null;
+  if (apiKey === 'server') apiKey = '';
+  if (!apiKey && !gProxy) return null;
   const cache = readCache();
   const hit = cache[place.id];
   if (hit && Date.now() - hit.at < TTL) return hit.data;
+  if (gProxy) {
+    try {
+      const data = await gProxy({ action: 'google_details', place: { name: place.name, street: place.street ?? '', lat: place.lat, lon: place.lon } });
+      cache[place.id] = { at: Date.now(), data };
+      writeCache(cache);
+      return data;
+    } catch (e) {
+      if (!apiKey) throw e;
+    }
+  }
 
   const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
     method: 'POST',
@@ -78,11 +96,22 @@ const PRICE = {
  * Kartendaten nichts haben. Nur mit eigenem Schlüssel. Ergebnis wird 7 Tage gemerkt.
  */
 export async function googleSearch(text, center, radiusM, apiKey) {
-  if (!apiKey) return [];
+  if (apiKey === 'server') apiKey = '';
+  if (!apiKey && !gProxy) return [];
   const cache = readCache();
   const ck = `s|${text}|${center.lat.toFixed(2)}|${center.lon.toFixed(2)}|${radiusM}`;
   const hit = cache[ck];
   if (hit && Date.now() - hit.at < TTL) return hit.data;
+  if (gProxy) {
+    try {
+      const data = await gProxy({ action: 'google_search', text, lat: center.lat, lon: center.lon, radius: radiusM });
+      cache[ck] = { at: Date.now(), data };
+      writeCache(cache);
+      return data;
+    } catch (e) {
+      if (!apiKey) return [];
+    }
+  }
   const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
     method: 'POST',
     headers: {

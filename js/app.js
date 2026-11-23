@@ -5,7 +5,8 @@ import { setAvailability } from './engine.js';
 import { allIdeas, buildPlan, combineWishes, setPreferences, defaultStart, ideaDuration, loadIdeas, MOODS, moodLabel, REACH, recommend, rhythmStatus, setExtraIdeas, suggest, toICS } from './engine.js';
 import { searchNotable } from './places.js';
 import { appleMapsLink, CATEGORIES, CUISINES, catForStep, isXmasSeason, categoryById, directionsLink, distanceKm, fmtKm, fmtMin, formatHours, hoursOn, isOpenAt, locate, mapLink, placeName, reservationLinks, searchByName, searchMixed, searchNearby, travelEstimates } from './places.js';
-import { googleDetails, googleSearch } from './gplaces.js';
+import { googleDetails, googleSearch, googleViaServer, setGoogleProxy } from './gplaces.js';
+import { setPlacesProxy } from './places.js';
 import { generateLocalDates, travelLine } from './generate.js';
 import { eventWhen, fetchEvents, ideaFromEvent } from './events.js';
 import { findImage, topicFor } from './images.js';
@@ -13,7 +14,7 @@ import { areaProgress, ensureArea, getArea, onAreaChange } from './area.js';
 import * as photos from './photos.js';
 import { SUPABASE } from './config.js';
 import * as gcal from './gcal.js';
-import { connectSupabase, currentSession, deleteAccount, getConfig, getRemember, lastEmail, setRemember, inviteLink, onAuthChange, readInvite, resetPassword, saveConfig, signIn, signOut, signUp, updatePassword } from './remote.js';
+import { callPlaces, connectSupabase, currentSession, deleteAccount, getConfig, getRemember, lastEmail, setRemember, inviteLink, onAuthChange, readInvite, resetPassword, saveConfig, signIn, signOut, signUp, updatePassword } from './remote.js';
 import { nearSpecial, specialsOn, upcomingSpecials } from './special.js';
 import { glyph, icon } from './icons.js';
 import {
@@ -457,6 +458,23 @@ function connectRemote(cfg, announce = false) {
   return connecting;
 }
 
+/** Server-Funktion „places“ nutzen, falls sie eingerichtet ist (Orte & Google über Supabase). */
+async function enableServerPlaces(cfg) {
+  try {
+    const st = await callPlaces(cfg, { action: 'status' });
+    if (!st?.ok) return;
+    setPlacesProxy((body) => callPlaces(cfg, body));
+    if (st.google) setGoogleProxy((body) => callPlaces(cfg, body));
+    serverStatus = st;
+    if (current.name === 'entdecken' || current.name === 'plan') render();
+  } catch {
+    serverStatus = null; // noch nicht eingerichtet – die App sucht wie bisher selbst
+  }
+}
+let serverStatus = null;
+/** Google-Daten verfügbar (eigener Schlüssel oder über den Server)? Liefert den Schlüssel bzw. 'server'. */
+const googleKey = () => S().settings.googlePlacesKey || (googleViaServer() ? 'server' : '');
+
 async function doConnectRemote(cfg, announce) {
   remoteError = null;
   auth.cfg = cfg;
@@ -467,6 +485,7 @@ async function doConnectRemote(cfg, announce) {
     store.attach(db, uid, { backend: 'supabase' });
     community.api = api;
     photos.setRemote(photosApi);
+    enableServerPlaces(cfg);
     if (announce) toast('Willkommen bei Dately!');
     if (current.name === 'konto') current = { name: 'start', param: null };
   } catch (e) {
@@ -671,7 +690,7 @@ function ideaAvailable(idea) {
   if (a.cats[main].length) return true;
   const fb = categoryById(main)?.fallback;
   if (fb && a.cats[fb]?.length) return true;
-  return S().settings.googlePlacesKey && GOOGLE_FINDABLE.has(main) ? null : false;
+  return googleKey() && GOOGLE_FINDABLE.has(main) ? null : false;
 }
 
 /** Umgebung im Hintergrund erkunden, sobald Ort und Umkreis bekannt sind. */
@@ -753,7 +772,7 @@ const refPol = (src) => (/googleapis\.com/.test(src) ? 'strict-origin-when-cross
 const imgTag = (src) => `<img src="${esc(src)}" alt="" loading="lazy" referrerpolicy="${refPol(src)}" onerror="this.parentNode.classList.add('noimg');this.remove()">`;
 
 function hydrateMedia() {
-  const key = S().settings.googlePlacesKey;
+  const key = googleKey();
   $$('[data-img]', root).forEach((el) => {
     const j = imgJobs.get(el.dataset.img);
     el.removeAttribute('data-img');
@@ -784,7 +803,7 @@ function ideaThumb(i, cls) {
   return thumb(img, i.emoji ?? '💡', cls, mp ? { place: mp, topic: t } : t ? { topic: t } : null, i);
 }
 
-const gRating = (p) => (S().settings.googlePlacesKey && p?.lat != null ? `<span class="g-rating" data-grating="${gJob(p)}"></span>` : '');
+const gRating = (p) => (googleKey() && p?.lat != null ? `<span class="g-rating" data-grating="${gJob(p)}"></span>` : '');
 
 const thumb = (src, emoji, cls = '', job = null, target = null) =>
   !src && job ? `<span class="thumb noimg ${cls}" data-img="${imgJob(job, target)}"><span class="thumb-emoji" aria-hidden="true">${glyph(emoji)}</span></span>`
@@ -1106,7 +1125,7 @@ RENDER.ort = (id) => {
     </header>
 
     <section class="panel rating-box">
-      ${g?.rating ? `<div class="g-rating"><strong>${String(g.rating).replace('.', ',')}</strong>${stars(g.rating)}<span class="muted small">${g.count} Google-Bewertungen${g.price ? ` · ${g.price}` : ''}</span></div>` : `<p class="muted small">${S().settings.googlePlacesKey ? 'Keine Google-Bewertung gefunden.' : 'Bewertungen und Fotos von Google siehst du direkt bei Google Maps.'}</p>`}
+      ${g?.rating ? `<div class="g-rating"><strong>${String(g.rating).replace('.', ',')}</strong>${stars(g.rating)}<span class="muted small">${g.count} Google-Bewertungen${g.price ? ` · ${g.price}` : ''}</span></div>` : `<p class="muted small">${googleKey() ? 'Keine Google-Bewertung gefunden.' : 'Bewertungen und Fotos von Google siehst du direkt bei Google Maps.'}</p>`}
       <a class="link" href="${esc(g?.mapsUri || mapLink(p))}" target="_blank" rel="noopener">Google-Bewertungen ansehen${icon('external')}</a>
     </section>
 
@@ -1147,11 +1166,12 @@ RENDER.ort = (id) => {
     await toggleFav(`ort-${p.id}`);
     render();
   });
-  const key = S().settings.googlePlacesKey;
+  const key = googleKey();
   if (key && !gInfo.has(id)) {
     googleDetails(p, key)
       .then((info) => {
         gInfo.set(id, info);
+        if (info?.hours && !p.hours) p.hours = info.hours;
         if (current.name === 'ort' && current.param === id) render();
       })
       .catch((e) => {
@@ -1742,7 +1762,7 @@ function genExtras(i) {
   const places = (i.steps ?? []).map((s) => s.place).filter((p) => p?.lat != null);
   return `
     ${facts.length ? `<p class="gen-meta">${facts.map(esc).join(' · ')}</p>` : ''}
-    ${S().settings.googlePlacesKey && places.length ? `<div class="g-ratings">${places.map((p) => `<span class="g-place"><small class="muted">${esc(p.name)}</small> ${gRating(p)}</span>`).join('')}</div>` : ''}
+    ${googleKey() && places.length ? `<div class="g-ratings">${places.map((p) => `<span class="g-place"><small class="muted">${esc(p.name)}</small> ${gRating(p)}</span>`).join('')}</div>` : ''}
     <div class="links">
       ${mp?.lat != null ? `<a class="link" href="https://www.google.com/maps/dir/?api=1&destination=${mp.lat},${mp.lon}" target="_blank" rel="noopener">Route${icon('external')}</a>
       <a class="link" href="https://www.google.com/maps/search/?api=1&query=${g}" target="_blank" rel="noopener">Google-Bewertungen${icon('external')}</a>` : ''}
@@ -3205,6 +3225,7 @@ RENDER.plan = (ideaId) => {
     draft.picks[Number(el.dataset.pickStep)] = el.dataset.pickPlace;
     draft.openAlt = null;
     render();
+    fillGoogleHours(draft);
   });
   on('[data-from-plan]', 'click', (_, el) => {
     session.ortBack = ['plan', ideaId, 'Plan'];
@@ -3276,7 +3297,7 @@ async function loadStepPlaces(steps, draft, stepCats, center, ctx) {
       for (const id of soft) groups[id] = fb[categoryById(id).fallback] ?? [];
     }
     // Immer noch nichts (z. B. Schwarzlicht-Minigolf, Weihnachtsmarkt)? Mit Google-Schlüssel bei Google suchen
-    const gKey = S().settings.googlePlacesKey;
+    const gKey = googleKey();
     const G_TEXT = { rooftop: 'Rooftop Bar', livemusic: 'Live Musik Bar', botanic: 'Botanischer Garten', blacklight: 'Schwarzlicht Minigolf', xmas: 'Weihnachtsmarkt Christkindlmarkt', karaoke: 'Karaoke Bar', escape: 'Escape Room', climbing: 'Boulderhalle', cooking: 'Kochkurs', pottery: 'Töpferkurs', arcade: 'Lasertag', bowling: 'Bowling', spa: 'Therme', icerink: 'Eishalle Eislaufen', boat: 'Bootsverleih', bookshop: 'Buchhandlung' };
     if (gKey) {
       for (const id of ids.filter((x) => !groups[x]?.length && G_TEXT[x])) {
@@ -3369,6 +3390,24 @@ async function loadStepPlaces(steps, draft, stepCats, center, ctx) {
   }
   draft.nearLoading = false;
   if (current.name === 'plan') render();
+  fillGoogleHours(draft);
+}
+
+/** Fehlende Öffnungszeiten der gewählten Orte von Google holen (eigener Schlüssel oder Server). */
+function fillGoogleHours(draft) {
+  const key = googleKey();
+  if (!key) return;
+  for (const id of Object.values(draft.picks ?? {})) {
+    const p = placeIndex.get(id);
+    if (!p || p.hours || p.hoursTried) continue;
+    p.hoursTried = true;
+    googleDetails(p, key).then((g) => {
+      if (!g?.hours) return;
+      p.hours = g.hours;
+      for (const list of Object.values(draft.near ?? {})) for (const x of list) if (x.id === id) x.hours = g.hours;
+      if (current.name === 'plan') render();
+    }).catch(() => {});
+  }
 }
 
 /** Ist das Date vorbei (Datum vergangen oder heute nach dem Ende)? */
@@ -4457,6 +4496,7 @@ RENDER.mehr = () => {
 
     <section class="panel form">
       <div class="panel-head">${icon('star')}<h2>Weitere Datenquellen</h2></div>
+      <p class="${serverStatus ? '' : 'muted '}small">${serverStatus ? `${icon('check', 'inline')} Dately-Server ist eingerichtet: Orte kommen schnell über euren Supabase-Server${serverStatus.google ? ', Google-Bewertungen, Fotos und Öffnungszeiten ebenfalls – ein eigener Schlüssel unten ist nicht mehr nötig' : ''}.` : 'Tipp: Mit der Server-Funktion „places“ (Anleitung im README) laden Orte viel schneller und Google-Daten kommen sicher über euren Server.'}</p>
       <p><strong>Veranstaltungen</strong> (Konzerte, Shows, Theater, Festivals): Mit einem kostenlosen Ticketmaster-Schlüssel zeigt Dately Veranstaltungen in eurem Umkreis und macht daraus Date-Ideen.</p>
       <div class="field"><label class="label" for="tm-key">Ticketmaster API Key</label><input class="input" id="tm-key" data-set="ticketmasterKey" value="${esc(S().settings.ticketmasterKey ?? '')}" placeholder="Consumer Key" autocomplete="off"><small class="muted">Kostenlos unter developer.ticketmaster.com → „Get your API Key“ (Anleitung im README).</small></div>
       <p><strong>Google-Bewertungen & Fotos:</strong> Mit einem eigenen Google-Places-Schlüssel zeigt die App bei Orten die Google-Sterne und ein Foto. Ohne Schlüssel gibt es Bilder aus Wikimedia und einen Link zu den Google-Bewertungen.</p>

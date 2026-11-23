@@ -107,7 +107,7 @@ export async function findImage(job, googleKey = '') {
     }
     // Ohne Google-Foto (z. B. Schlüssel noch nicht aktiv) nur für diese Sitzung merken – später erneut versuchen
     // Nichts gefunden oder noch kein Google-Foto: nur für diese Sitzung merken, später erneut versuchen
-    if (!url || (googleKey && job.place && !/googleapis\.com/.test(url))) session.set(key, url);
+    if (!url || (googleKey && job.place && !/googleapis\.com|functions\/v1\/places/.test(url))) session.set(key, url);
     else {
       c[key] = url;
       save();

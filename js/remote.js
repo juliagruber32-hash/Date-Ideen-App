@@ -404,3 +404,12 @@ function communityApi(client, uid) {
     },
   };
 }
+
+/** Server-Funktion „places“ aufrufen (Orte & Google-Daten über Supabase). */
+export async function callPlaces(cfg, body) {
+  const c = await getClient(cfg);
+  const { data, error } = await c.functions.invoke('places', { body });
+  if (error) throw new Error(error.message || 'Server-Funktion nicht erreichbar');
+  if (data?.error) throw new Error(data.error);
+  return data;
+}

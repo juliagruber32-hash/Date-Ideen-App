@@ -112,6 +112,27 @@ Konzerte, Shows, Theater und Festivals kommen von Ticketmaster (kostenlos):
 
 Weihnachtsmärkte, Eislaufen, Open-Air-Kinos und Badeseen findet Dately auch ohne Schlüssel über die Kartendaten (OpenStreetMap) – passend zur Jahreszeit.
 
+### 6. Dately-Server für Orte & Google (empfohlen, ca. 10 Minuten)
+
+Damit Orte in 1–2 Sekunden statt in Minuten laden und Google-Daten (Sterne, Fotos, Öffnungszeiten) sicher über
+euren Server kommen, gibt es die Server-Funktion `places`. Sie merkt sich alle Ergebnisse 7 Tage – eine Suche
+hilft also allen.
+
+1. **Tabelle anlegen:** Supabase → **SQL Editor** → **New query** → Inhalt von
+   [`supabase/places.sql`](supabase/places.sql) einfügen → **Run**.
+2. **Funktion anlegen:** Supabase → **Edge Functions** → **Deploy a new function** → **Via Editor**.
+   - Name: `places`
+   - Den gesamten Inhalt von [`supabase/functions/places/index.ts`](supabase/functions/places/index.ts) einfügen
+     (vorhandenen Beispielcode vorher löschen) → **Deploy function**.
+3. **Anmeldeprüfung umstellen:** In der Funktion `places` → **Details** → **Enforce JWT verification** ausschalten
+   → **Save**. (Die Funktion prüft die Anmeldung selbst; nur so können Fotos direkt angezeigt werden.)
+4. **Google-Schlüssel hinterlegen (optional):** **Edge Functions** → **Secrets** → **Add new secret**:
+   - Name `GOOGLE_PLACES_KEY`, Wert: euer Google-Places-Schlüssel (`AIza…`).
+   - Optional `GOOGLE_DAILY_LIMIT`, z. B. `300` (max. Google-Abfragen pro Tag, schützt vor Kosten).
+5. Dately neu öffnen. Unter **Einstellungen → Weitere Datenquellen** steht dann „Dately-Server ist eingerichtet“.
+
+Ohne diese Funktion arbeitet die App wie bisher (langsamer, direkt vom Handy aus).
+
 ### Community: Gut zu wissen
 
 Wenn andere Paare eure Webseite nutzen und Ideen teilen, betreibst du eine Plattform mit Inhalten von Nutzern.

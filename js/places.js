@@ -100,6 +100,26 @@ let OVERPASS = [
 const MAX_PARALLEL = 2;
 let active = 0;
 const waiting = [];
+// Server-Funktion (Supabase) – holt und merkt sich Orte für alle. Fällt sie aus, sucht das Handy selbst.
+let proxy = null;
+let proxyOk = null;
+export function setPlacesProxy(fn) {
+  proxy = fn;
+  proxyOk = null;
+}
+export const placesProxyActive = () => !!proxy && proxyOk !== false;
+async function viaProxy(body) {
+  if (!proxy || proxyOk === false) throw new Error('Kein Server');
+  try {
+    const r = await proxy(body);
+    proxyOk = true;
+    return r;
+  } catch (e) {
+    if (proxyOk !== true) proxyOk = false; // z. B. Funktion noch nicht eingerichtet
+    throw e;
+  }
+}
+
 let overpassDownUntil = 0; // nach einem Ausfall für ein paar Minuten direkt die Ausweich-Suche nehmen
 let health = null;
 let healthAt = 0;
@@ -127,6 +147,13 @@ function overpassHealthy() {
 }
 
 async function overpass(query, prio = 0) {
+  if (placesProxyActive()) {
+    try {
+      return await viaProxy({ action: 'overpass', query });
+    } catch {
+      /* Server nicht erreichbar – selbst suchen */
+    }
+  }
   if (Date.now() < overpassDownUntil || !(await overpassHealthy())) throw new Error('Ortssuche gerade nicht erreichbar.');
   return new Promise((resolve, reject) => {
     waiting.push({ query, prio, resolve, reject });
@@ -261,13 +288,25 @@ async function nomiPump() {
     const dLon = r / (111 * Math.cos((center.lat * Math.PI) / 180));
     const box = [center.lon - dLon, center.lat + dLat, center.lon + dLon, center.lat - dLat].map((x) => x.toFixed(4)).join(',');
     const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(q)}&viewbox=${box}&bounded=1&limit=40&extratags=1&addressdetails=1&accept-language=de`;
+    let viaServer = false;
     try {
-      const res = await fetch(url);
-      resolve(res.ok ? await res.json() : []);
+      if (placesProxyActive()) {
+        try {
+          const params = Object.fromEntries(new URL(url).searchParams);
+          resolve(await viaProxy({ action: 'nominatim', params }));
+          viaServer = true;
+        } catch {
+          /* selbst fragen */
+        }
+      }
+      if (!viaServer) {
+        const res = await fetch(url);
+        resolve(res.ok ? await res.json() : []);
+      }
     } catch (e) {
       reject(e);
     }
-    await sleep(1100); // höchstens eine Anfrage pro Sekunde
+    await sleep(viaServer ? 150 : 1100); // direkt: höchstens eine Anfrage pro Sekunde (der Server achtet selbst darauf)
   }
   nomiBusy = false;
 }
