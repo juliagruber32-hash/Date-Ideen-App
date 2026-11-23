@@ -3174,6 +3174,7 @@ async function loadStepPlaces(steps, draft, stepCats, center, ctx) {
       for (const id of far) if (wider[id]?.length) groups[id] = wider[id];
     }
     // Nichts gefunden (z. B. Weihnachtsmarkt nicht in den Kartendaten)? Für Nebenstationen eine passende Alternative
+    const realCat = {};
     const ALT = { xmas: ctx.daytime === 'abend' ? 'bar' : 'cafe', chocolate: 'cafe', boat: 'icecream' };
     // Alternativen nur für Nebenstationen eines Dates, dessen Hauptort gefunden wurde (z. B. Punsch nach dem Eislaufen)
     const anyFound = ids.some((id) => groups[id]?.length);
@@ -3184,6 +3185,7 @@ async function loadStepPlaces(steps, draft, stepCats, center, ctx) {
         const alt = ALT[stepCats[i]];
         if (!(groups[stepCats[i]] ?? []).length && alt && extra[alt]?.length && !/weihnachtsmarkt|christkindl/i.test(s.t)) {
           groups[`alt${i}`] = extra[alt];
+          realCat[i] = alt;
           stepCats[i] = `alt${i}`;
         }
       });
@@ -3192,10 +3194,21 @@ async function loadStepPlaces(steps, draft, stepCats, center, ctx) {
     const used = new Set();
     let prev = center;
     let t = draft.start;
-    steps.forEach((s, i) => {
+    for (let i = 0; i < steps.length; i++) {
+      const s = steps[i];
       const cat = stepCats[i];
       if (cat) {
         const when = new Date(`${ctx.date}T${t}:00`);
+        // Folgestation: direkt rund um den vorherigen Ort suchen (z. B. Essen in Dorfen nach dem Escape Room in Dorfen)
+        if (prev !== center && !s.place?.id) {
+          const near = (groups[cat] ?? []).filter((p) => distanceKm(prev, p) <= 2);
+          if (near.length < 2) {
+            const local = await searchMixed([realCat[i] ?? cat], prev, 5000, 2).catch(() => ({}));
+            const add = (local[realCat[i] ?? cat] ?? []).map((p) => ({ ...p, km: distanceKm(center, p) }));
+            const have = new Set((groups[cat] ?? []).map((p) => p.name));
+            groups[cat] = [...add.filter((p) => !have.has(p.name)), ...(groups[cat] ?? [])];
+          }
+        }
         // Von Dately bereits gewählter Ort bleibt vorausgewählt
         const fixed = s.place?.id ? { ...s.place, km: distanceKm(center, s.place) } : null;
         if (fixed) {
@@ -3220,7 +3233,7 @@ async function loadStepPlaces(steps, draft, stepCats, center, ctx) {
         }
       }
       t = addMinutes(t, s.min);
-    });
+    }
     draft.nearError = false;
   } catch {
     draft.near = {};
