@@ -186,7 +186,41 @@ export async function connectSupabase(cfg) {
     };
   };
 
-  return { db: { doc, collection }, uid, cfg: saved, community: communityApi(client, uid) };
+  return { db: { doc, collection }, uid, cfg: saved, community: communityApi(client, uid), photos: photoApi(client, uid, coupleId) };
+}
+
+/* ------------------------------------------------------------ Fotos */
+
+function photoApi(client, uid, coupleId) {
+  const signed = new Map(); // Pfad -> { url, exp }
+  return {
+    /** Lädt ein (bereits verkleinertes) Bild hoch. Gibt { bucket, path } zurück. */
+    async upload(blob, { dateId, isPublic }) {
+      const name = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+      const bucket = isPublic ? 'public-photos' : 'couple-photos';
+      const path = isPublic ? `${uid}/${dateId}/${name}` : `${coupleId}/${dateId}/${name}`;
+      const { error } = await client.storage.from(bucket).upload(path, blob, { contentType: 'image/jpeg', cacheControl: '31536000', upsert: false });
+      if (error) throw new Error(/bucket|not found/i.test(error.message) ? 'Der Foto-Speicher ist noch nicht eingerichtet (setup.sql erneut ausführen).' : `Upload fehlgeschlagen: ${error.message}`);
+      return { bucket, path };
+    },
+    /** Anzeige-URL: öffentlich direkt, privat als zeitlich begrenzter Link. */
+    async url(photo) {
+      if (photo.bucket === 'public-photos') return client.storage.from('public-photos').getPublicUrl(photo.path).data.publicUrl;
+      const hit = signed.get(photo.path);
+      if (hit && hit.exp > Date.now() + 60000) return hit.url;
+      const { data, error } = await client.storage.from('couple-photos').createSignedUrl(photo.path, 3600);
+      if (error) throw new Error('Foto nicht verfügbar');
+      signed.set(photo.path, { url: data.signedUrl, exp: Date.now() + 3600 * 1000 });
+      return data.signedUrl;
+    },
+    publicUrl(path) {
+      return client.storage.from('public-photos').getPublicUrl(path).data.publicUrl;
+    },
+    async remove(photo) {
+      const { error } = await client.storage.from(photo.bucket).remove([photo.path]);
+      if (error) throw new Error('Löschen fehlgeschlagen');
+    },
+  };
 }
 
 /* ------------------------------------------------------------ Community */
@@ -224,6 +258,13 @@ function communityApi(client, uid) {
     async rate(ideaId, stars, comment) {
       const { error } = await client.from('community_ratings').upsert({ idea_id: ideaId, user_id: uid, stars, comment: comment || null });
       fail(error);
+    },
+    async addPhoto(ideaId, url) {
+      const { data, error } = await client.from('community_ideas').select('idea').eq('id', ideaId).single();
+      fail(error);
+      const idea = { ...data.idea, photos: [...(data.idea.photos ?? []), url].slice(0, 12) };
+      const res = await client.from('community_ideas').update({ idea }).eq('id', ideaId);
+      fail(res.error);
     },
     async use(ideaId) {
       await client.rpc('use_idea', { i: ideaId });

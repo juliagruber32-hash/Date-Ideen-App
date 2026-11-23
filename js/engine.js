@@ -225,9 +225,9 @@ export function toICS(plan) {
   return [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//Date-Ideen-App//DE',
+    'PRODID:-//Dately//DE',
     'BEGIN:VEVENT',
-    `UID:${plan.id || plan.ideaId}-${plan.date}@date-ideen-app`,
+    `UID:${plan.id || plan.ideaId}-${plan.date}@dately`,
     `DTSTAMP:${stamp}`,
     `DTSTART:${dt(plan.date, plan.start)}`,
     `DTEND:${dt(endDate, plan.end)}`,

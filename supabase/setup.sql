@@ -208,3 +208,44 @@ create trigger hide_reported after insert on public.community_reports for each r
 
 grant select on public.community_feed to authenticated;
 grant execute on function public.use_idea(uuid) to authenticated;
+
+-- =====================================================================
+-- Fotos: privat fürs Paar (couple-photos) oder öffentlich (public-photos)
+-- =====================================================================
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('couple-photos', 'couple-photos', false, 6291456, array['image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do nothing;
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('public-photos', 'public-photos', true, 6291456, array['image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do nothing;
+
+-- Pfad beginnt mit der Paar-ID: <couple_id>/<date_id>/<foto>.jpg
+create or replace function public.is_member_path(p text)
+returns boolean language plpgsql stable security definer set search_path = public as $$
+begin
+  return public.is_member(split_part(p, '/', 1)::uuid);
+exception when others then
+  return false;
+end $$;
+
+drop policy if exists "paarfotos lesen" on storage.objects;
+create policy "paarfotos lesen" on storage.objects for select to authenticated
+  using (bucket_id = 'couple-photos' and public.is_member_path(name));
+drop policy if exists "paarfotos hochladen" on storage.objects;
+create policy "paarfotos hochladen" on storage.objects for insert to authenticated
+  with check (bucket_id = 'couple-photos' and public.is_member_path(name));
+drop policy if exists "paarfotos löschen" on storage.objects;
+create policy "paarfotos löschen" on storage.objects for delete to authenticated
+  using (bucket_id = 'couple-photos' and public.is_member_path(name));
+
+-- Öffentliche Fotos: jeder liest (öffentlicher Bucket), hochladen/löschen nur im eigenen Ordner <user_id>/…
+drop policy if exists "öffentliche fotos hochladen" on storage.objects;
+create policy "öffentliche fotos hochladen" on storage.objects for insert to authenticated
+  with check (bucket_id = 'public-photos' and split_part(name, '/', 1) = auth.uid()::text);
+drop policy if exists "öffentliche fotos löschen" on storage.objects;
+create policy "öffentliche fotos löschen" on storage.objects for delete to authenticated
+  using (bucket_id = 'public-photos' and split_part(name, '/', 1) = auth.uid()::text);
+drop policy if exists "öffentliche fotos lesen" on storage.objects;
+create policy "öffentliche fotos lesen" on storage.objects for select to authenticated
+  using (bucket_id = 'public-photos');

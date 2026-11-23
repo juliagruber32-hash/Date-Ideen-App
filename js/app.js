@@ -4,6 +4,7 @@ import { geocode, getWeather, manualWeather } from './weather.js';
 import { allIdeas, buildPlan, defaultStart, ideaDuration, loadIdeas, MOODS, moodLabel, REACH, recommend, rhythmStatus, setExtraIdeas, suggest, toICS } from './engine.js';
 import { appleMapsLink, CATEGORIES, categoryById, directionsLink, distanceKm, fmtKm, fmtMin, formatHours, hoursOn, isOpenAt, locate, mapLink, placeName, reservationLinks, searchNearby, travelEstimates } from './places.js';
 import { googleDetails } from './gplaces.js';
+import * as photos from './photos.js';
 import { SUPABASE } from './config.js';
 import * as gcal from './gcal.js';
 import { connectSupabase, getConfig, inviteLink, readInvite, saveConfig } from './remote.js';
@@ -27,7 +28,7 @@ const drafts = {}; // ungespeicherte Eingaben auf dem Plan-Bildschirm, pro Idee
 
 /* ================================================================ Navigation */
 
-const TAB_OF = { start: 'start', suggest: 'start', plan: 'start', poll: 'start', entdecken: 'entdecken', idee: 'entdecken', ort: 'entdecken', teilen: 'entdecken', kosten: 'dates', kalender: 'kalender', listen: 'listen', dates: 'dates', date: 'dates', mehr: 'mehr' };
+const TAB_OF = { start: 'start', suggest: 'start', plan: 'start', poll: 'start', entdecken: 'entdecken', idee: 'entdecken', ort: 'entdecken', teilen: 'entdecken', kosten: 'dates', rueckblick: 'dates', kalender: 'kalender', listen: 'listen', dates: 'dates', date: 'dates', mehr: 'mehr' };
 const RENDER = {};
 let current = { name: 'start', param: null };
 
@@ -386,9 +387,10 @@ async function syncGcal() {
 async function connectRemote(cfg, announce = false) {
   remoteError = null;
   try {
-    const { db, uid, community: api } = await connectSupabase(cfg);
+    const { db, uid, community: api, photos: photosApi } = await connectSupabase(cfg);
     store.attach(db, uid, { backend: 'supabase' });
     community.api = api;
+    photos.setRemote(photosApi);
     if (announce) toast('Verbunden! Wähle jetzt, wer du bist.');
   } catch (e) {
     remoteError = e.message;
@@ -813,7 +815,7 @@ function renderCommunity(head) {
 
   const card = (r) => {
     const i = r.idea;
-    const img = i.image || i.steps?.find((s) => s.place?.image)?.place.image;
+    const img = i.photos?.[0] || i.image || i.steps?.find((s) => s.place?.image)?.place.image;
     const mine = d.myRatings[r.id];
     return `
       <article class="community-card">
@@ -991,7 +993,8 @@ RENDER.teilen = (param) => {
   });
   $('#share-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const idea = { ...pub, title: $('#sh-title').value.trim() || pub.title, teaser: $('#sh-teaser').value.trim(), moods: [...draft.moods] };
+    const pubPhotos = kind === 'date' ? photoList(S().dates.find((x) => x.id === id) ?? {}).filter((ph) => ph.public && ph.url).map((ph) => ph.url) : [];
+    const idea = { ...pub, title: $('#sh-title').value.trim() || pub.title, teaser: $('#sh-teaser').value.trim(), moods: [...draft.moods], ...(pubPhotos.length ? { photos: pubPhotos } : {}) };
     const firstPlace = idea.steps.find((s) => s.place)?.place;
     const loc = firstPlace ?? center;
     await withBusy(e.submitter ?? $('#share-form button[type=submit]'), async () => {
@@ -1211,7 +1214,7 @@ RENDER.start = () => {
 
   root.innerHTML = `
     <header class="home-head">
-      <div class="brand">${icon('heart', 'brand-mark')}<span>Date-Ideen</span></div>
+      <div class="brand">${icon('heart', 'brand-mark')}<span>Dately</span></div>
       <div class="row gap">${syncChip()}${settingsButton()}</div>
     </header>
     <section class="hello">
@@ -1223,6 +1226,7 @@ RENDER.start = () => {
 
     ${inbox.length ? `<section class="stack"><h2 class="section-title">Für dich</h2>${inbox.join('')}</section>` : ''}
 
+    ${today().getMonth() === 11 || (today().getMonth() === 0 && today().getDate() <= 20) ? `<button class="book-teaser" data-go-book>${icon('book')}<span class="grow"><strong>Euer Jahresrückblick ist da</strong><br><small class="muted">Alle Dates ${today().getMonth() === 0 ? today().getFullYear() - 1 : today().getFullYear()} als Fotobuch</small></span>${icon('right')}</button>` : ''}
     ${recommendationsHTML()}
 
     <section class="rhythm ${r.due ? 'due' : ''}">
@@ -1372,6 +1376,7 @@ RENDER.start = () => {
 
   bindWhoAmI();
   on('[data-go]', 'click', (_, el) => go(el.dataset.go));
+  on('[data-go-book]', 'click', () => go('rueckblick', String(today().getMonth() === 0 ? today().getFullYear() - 1 : today().getFullYear())));
   on('[data-reco]', 'click', (_, el) => {
     const idea = ideaById(el.dataset.reco);
     if (idea) planIdeaNow(idea, el);
@@ -1705,6 +1710,7 @@ RENDER.date = (id) => {
       </section>
       ${plan.communityId && community.api ? communityRateHTML(plan.communityId) : ''}` : ''}
     ${costSummaryHTML(d)}
+    ${past || d.date === isoDate(today()) || Object.keys(d.photos ?? {}).length ? photosSectionHTML(d) : ''}
     ${timeline(plan)}
     ${mySurprise && (plan.todos.length || plan.recipe) ? `
       <section class="panel">
@@ -1777,6 +1783,7 @@ RENDER.date = (id) => {
   on('[data-go-cost]', 'click', (_, el) => go('kosten', `neu:${el.dataset.goCost}`));
   on('[data-share-date]', 'click', (_, el) => go('teilen', `date:${el.dataset.shareDate}`));
   bindCommunityRate();
+  bindPhotosSection(d);
   $('#reveal')?.addEventListener('click', () => {
     reveal(id);
     render();
@@ -2344,6 +2351,215 @@ RENDER.kosten = (param) => {
   });
 };
 
+/* ================================================================ Fotos & Erinnerung am Date */
+
+const photoList = (d) => Object.values(d.photos ?? {}).sort((a, b) => a.at - b.at);
+const photoImg = (ph, cls = '') => `<img class="${cls}" data-photo="${esc(JSON.stringify(ph))}" alt="" loading="lazy">`;
+let uploadVisibility = 'privat';
+
+function photosSectionHTML(d) {
+  const list = photoList(d);
+  const shareable = photos.canShare();
+  return `
+    <section class="panel stack" id="photos-sec">
+      <div class="panel-head">${icon('camera')}<h2>Fotos & Erinnerung</h2></div>
+      ${list.length ? `<div class="photo-grid">${list.map((ph) => `
+        <figure class="photo">
+          ${photoImg(ph)}
+          <span class="photo-badge">${ph.public ? 'Öffentlich' : 'Nur ihr'}</span>
+          ${ph.by === myRole() || !ph.by ? `<button class="photo-del" data-del-photo="${ph.id}" aria-label="Foto löschen">${icon('x')}</button>` : ''}
+        </figure>`).join('')}</div>` : '<p class="muted small">Haltet den Moment fest – die Fotos landen auch in eurem Jahresrückblick.</p>'}
+      ${shareable ? chips('phvis', [['privat', 'Nur wir zwei', 'lock'], ['public', 'Öffentlich', 'users']], uploadVisibility, 'seg') : '<p class="muted small">Fotos bleiben auf diesem Gerät. Mit Supabase seht ihr sie beide.</p>'}
+      <label class="btn soft" for="ph-input">${icon('camera')}Fotos hinzufügen</label>
+      <input type="file" id="ph-input" accept="image/*" multiple hidden>
+      ${uploadVisibility === 'public' && shareable ? '<p class="muted small">Öffentliche Fotos können andere Paare in der Community sehen.</p>' : ''}
+      <div class="field">
+        <label class="label" for="memory">Was war besonders?</label>
+        <textarea class="input" id="memory" rows="3" maxlength="600" placeholder="Ein Satz für euren Jahresrückblick …">${esc(d.memory ?? '')}</textarea>
+      </div>
+    </section>`;
+}
+
+function bindPhotosSection(d) {
+  const sec = $('#photos-sec');
+  if (!sec) return;
+  bindChips(sec, 'phvis', (v) => {
+    uploadVisibility = v;
+  });
+  photos.hydratePhotos(sec);
+  $('#ph-input').addEventListener('change', async (e) => {
+    const files = [...e.target.files].slice(0, 12);
+    e.target.value = '';
+    if (!files.length) return;
+    const label = sec.querySelector('label[for="ph-input"]');
+    label.classList.add('busy');
+    let done = 0;
+    for (const file of files) {
+      label.innerHTML = `<span class="spinner"></span> ${++done}/${files.length}`;
+      try {
+        const ph = await photos.savePhoto(file, { dateId: d.id, isPublic: uploadVisibility === 'public', by: myRole() });
+        store.update((s) => {
+          const x = s.dates.find((y) => y.id === d.id);
+          if (x) x.photos = { ...(x.photos ?? {}), [ph.id]: ph };
+        });
+        if (ph.public && d.sharedId && community.api) community.api.addPhoto(d.sharedId, ph.url).catch(() => {});
+      } catch (err) {
+        toast(err.message);
+      }
+    }
+    toast(`${done} Foto${done > 1 ? 's' : ''} gespeichert`);
+    render();
+  });
+  on('[data-del-photo]', 'click', async (_, el) => {
+    const ph = d.photos?.[el.dataset.delPhoto];
+    if (!ph) return;
+    if (!el.dataset.armed) {
+      el.dataset.armed = '1';
+      el.classList.add('armed');
+      return setTimeout(() => {
+        delete el.dataset.armed;
+        el.classList.remove('armed');
+      }, 3000);
+    }
+    await photos.deletePhoto(ph).catch(() => {});
+    store.update((s) => {
+      const x = s.dates.find((y) => y.id === d.id);
+      if (x?.photos) {
+        const { [ph.id]: _gone, ...rest } = x.photos;
+        x.photos = rest;
+      }
+    });
+    render();
+  });
+  $('#memory').addEventListener('change', (e) => {
+    store.update((s) => {
+      const x = s.dates.find((y) => y.id === d.id);
+      if (x) x.memory = e.target.value.trim();
+    });
+    toast('Erinnerung gespeichert');
+  });
+}
+
+/* ================================================================ Jahresrückblick (Fotobuch) */
+
+function yearDates(year) {
+  const t = isoDate(today());
+  return S().dates
+    .filter((d) => d.date.startsWith(String(year)) && d.date <= t && !isHiddenFromMe(d))
+    .map((d) => ({ d, plan: fullPlan(d) ?? d }))
+    .sort((a, b) => a.d.date.localeCompare(b.d.date));
+}
+
+function bookYears() {
+  const ys = new Set(S().dates.filter((d) => d.date <= isoDate(today())).map((d) => Number(d.date.slice(0, 4))));
+  ys.add(today().getFullYear());
+  return [...ys].sort((a, b) => b - a);
+}
+
+const avgRating = (d) => {
+  const v = Object.values(d.ratings ?? {}).filter(Boolean);
+  return v.length ? v.reduce((a, b) => a + b, 0) / v.length : 0;
+};
+
+function photoLayout(list) {
+  if (!list.length) return '';
+  const shown = list.slice(0, 4);
+  return `<div class="page-photos n${shown.length}">${shown.map((ph) => `<figure class="photo">${photoImg(ph)}</figure>`).join('')}</div>`;
+}
+
+RENDER.rueckblick = (param) => {
+  const year = Number(param) || bookYears()[0];
+  const entries = yearDates(year);
+  const names = `${nameOf('a')} & ${nameOf('b')}`;
+  const allPhotos = entries.flatMap(({ d }) => photoList(d));
+  const cover = [...allPhotos].sort(() => 0.5 - Math.random()).slice(0, 4);
+  const hours = Math.round(entries.reduce((a, { plan }) => a + (plan.duration ?? 0), 0) / 60);
+  const moodCount = {};
+  entries.forEach(({ plan }) => (plan.moods ?? []).forEach((m) => (moodCount[m] = (moodCount[m] ?? 0) + 1)));
+  const favMood = Object.entries(moodCount).sort((a, b) => b[1] - a[1])[0]?.[0];
+  const best = [...entries].sort((a, b) => avgRating(b.d) - avgRating(a.d))[0];
+  const places = new Set(entries.flatMap(({ plan }) => (plan.steps ?? []).filter((s) => s.place).map((s) => s.place.name)));
+  const spent = S().expenses.filter((e) => e.kind !== 'settle' && e.date.startsWith(String(year))).reduce((a, e) => a + e.amount, 0);
+  const months = new Set(entries.map(({ d }) => d.date.slice(5, 7)));
+  const canPrint = !store.inArtifact();
+
+  const datePage = ({ d, plan }, i) => {
+    const list = photoList(d);
+    const r = avgRating(d);
+    const stops = [...new Set((plan.steps ?? []).map((s) => s.place?.name ?? s.title).filter((x) => x && x !== plan.title))].slice(0, 4);
+    return `
+      <section class="page date-page ${list.length ? '' : 'nophoto'}">
+        <header class="page-head">
+          <span class="page-month">${MONTHS[Number(d.date.slice(5, 7)) - 1]}</span>
+          <span class="page-no">${String(i + 1).padStart(2, '0')}</span>
+        </header>
+        ${photoLayout(list) || `<div class="page-emoji" aria-hidden="true">${plan.emoji ?? '💞'}</div>`}
+        <div class="page-text">
+          <h2>${esc(plan.title ?? 'Unser Date')}</h2>
+          <p class="page-meta">${fmtDate(d.date, { weekday: 'long', day: 'numeric', month: 'long' })}${stops.length ? ` · ${stops.map(esc).join(' → ')}` : ''}</p>
+          ${d.memory ? `<blockquote>${esc(d.memory)}</blockquote>` : ''}
+          ${r ? `<p class="page-hearts" aria-label="${r.toFixed(1)} von 5">${'♥'.repeat(Math.round(r))}<span>${'♥'.repeat(5 - Math.round(r))}</span></p>` : ''}
+        </div>
+      </section>`;
+  };
+
+  root.innerHTML = `
+    <div class="no-print">
+      ${topbar({ title: 'Jahresrückblick', sub: 'Euer Fotobuch mit allen Dates des Jahres.', back: ['dates', '', 'Unsere Dates'] })}
+      ${chips('year', bookYears().map((y) => [y, String(y)]), year)}
+      ${entries.length ? `
+        <div class="row gap wrap">
+          ${canPrint ? `<button class="btn primary grow" id="print">${icon('download')}Als PDF speichern</button>` : ''}
+        </div>
+        <p class="muted small">${canPrint ? 'Im Druckdialog „Als PDF sichern“ wählen (iPhone: Teilen → Drucken → mit zwei Fingern aufziehen → Teilen).' : 'Als PDF speichern geht in der Webseiten-Version.'} ${allPhotos.length ? '' : 'Tipp: Ladet Fotos zu euren Dates hoch, dann wird das Buch noch schöner.'}</p>` : ''}
+    </div>
+
+    ${!entries.length ? `<div class="empty"><p>Für ${year} gibt es noch keine vergangenen Dates. Euer Buch füllt sich mit jedem Date.</p></div>` : `
+    <div class="book" id="book">
+      <section class="page cover">
+        <div class="cover-collage n${cover.length}">${cover.map((ph) => `<figure class="photo">${photoImg(ph)}</figure>`).join('')}</div>
+        <div class="cover-text">
+          <span class="cover-brand">Dately</span>
+          <h1>${year}</h1>
+          <p class="cover-names">${esc(names)}</p>
+          <p class="cover-tag">Your next favorite memory</p>
+        </div>
+      </section>
+
+      <section class="page stats-page">
+        <h2>Euer Jahr in Zahlen</h2>
+        <div class="stat-grid">
+          <div><strong>${entries.length}</strong><span>${entries.length === 1 ? 'Date' : 'Dates'}</span></div>
+          <div><strong>${hours}</strong><span>${hours === 1 ? 'Stunde' : 'Stunden'} zu zweit</span></div>
+          <div><strong>${months.size}</strong><span>${months.size === 1 ? 'Monat' : 'Monate'} mit Dates</span></div>
+          <div><strong>${places.size || allPhotos.length}</strong><span>${places.size ? 'besondere Orte' : 'Fotos'}</span></div>
+        </div>
+        ${favMood ? `<p class="stat-line">Eure Lieblingsstimmung: <strong>${esc(moodLabel(favMood))}</strong></p>` : ''}
+        ${best && avgRating(best.d) ? `<p class="stat-line">Euer Highlight: <strong>${esc(best.plan.title)}</strong> im ${MONTHS[Number(best.d.date.slice(5, 7)) - 1]}</p>` : ''}
+        ${spent ? `<p class="stat-line">Gemeinsam investiert: <strong>${euro(spent)}</strong> in schöne Momente</p>` : ''}
+      </section>
+
+      ${entries.map(datePage).join('')}
+
+      <section class="page end-page">
+        <p class="end-big">${entries.length === 1 ? 'Ein Date' : `${entries.length} Dates`}.<br>Unzählige Lieblingsmomente.</p>
+        <p class="cover-tag">Dately · Your next favorite memory</p>
+      </section>
+    </div>`}`;
+
+  bindBack();
+  bindChips(root, 'year', (v) => go('rueckblick', v));
+  const book = $('#book');
+  if (book) photos.hydratePhotos(book);
+  $('#print')?.addEventListener('click', async (e) => {
+    await withBusy(e.currentTarget, async () => {
+      await photos.hydratePhotos(book);
+      await Promise.all([...book.querySelectorAll('img')].map((img) => (img.complete ? null : new Promise((r) => { img.onload = img.onerror = r; }))));
+    });
+    window.print();
+  });
+};
+
 /* ================================================================ 6. Unsere Dates */
 
 RENDER.dates = () => {
@@ -2370,6 +2586,7 @@ RENDER.dates = () => {
   root.innerHTML = `
     ${topbar({ title: 'Unsere Dates' })}
     ${datesTabs('dates')}
+    <button class="book-teaser" data-go-book>${icon('book')}<span class="grow"><strong>Jahresrückblick ${today().getFullYear()}</strong><br><small class="muted">Euer Fotobuch mit allen Dates</small></span>${icon('right')}</button>
     <section class="stack">
       <h2 class="section-title">Geplant</h2>
       ${upcoming.length ? `<div class="list-card">${upcoming.map((d) => item(d, false)).join('')}</div>` : `
@@ -2381,6 +2598,7 @@ RENDER.dates = () => {
     </section>`;
   bindBack();
   bindDatesTabs();
+  on('[data-go-book]', 'click', () => go('rueckblick'));
   on('[data-open-date]', 'click', (_, el) => go('date', el.dataset.openDate));
 };
 
@@ -2552,12 +2770,12 @@ RENDER.mehr = () => {
       toast('Backup geladen');
       render();
     } catch {
-      toast('Diese Datei ist kein Date-Ideen-Backup');
+      toast('Diese Datei ist kein Dately-Backup');
     }
   });
   $('#export').addEventListener('click', () => {
     const { secrets, ...shared } = S();
-    saveFile(`date-ideen-backup-${isoDate(today())}.json`, JSON.stringify(shared, null, 2), 'application/json');
+    saveFile(`dately-backup-${isoDate(today())}.json`, JSON.stringify(shared, null, 2), 'application/json');
   });
   armed($('#reset'), () => {
     store.reset();

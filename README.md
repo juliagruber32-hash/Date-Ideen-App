@@ -1,4 +1,6 @@
-# Date-Ideen-App
+# Dately
+
+*Your next favorite memory.*
 
 Mobile Web-App für Paare: Budget und Tag eingeben, wettertaugliche Date-Vorschläge bekommen,
 einen fertigen Plan mit Uhrzeiten und Links erstellen – allein als Überraschung, auf Wunsch des Partners
@@ -107,6 +109,8 @@ Ideen werden nach drei Meldungen automatisch ausgeblendet; löschen kannst du si
 | **Entdecken → Community** | Dates anderer Paare: übernehmen, merken, bewerten, melden. Sortiert nach Bewertung, Nähe oder neu. Eigene Dates teilt ihr nach dem Date mit „Mit der Community teilen“ (ohne Namen und private Daten). |
 | **Entdecken → Eure Ideen** | Eigene Ideen mit Stimmung, gemerkte Orte und Community-Ideen. |
 | **Kosten** (im Tab Dates) | Ausgaben pro Monat, wer wie viel bezahlt hat, Ausgleich („Alex schuldet dir 32 €“). Aufteilung halbe-halbe oder eingeladen. Ausgaben lassen sich vor dem Partner verstecken – z. B. für Überraschungen. |
+| **Fotos & Erinnerung** | Zu jedem Date Fotos hochladen – nur für euch zwei oder öffentlich (erscheinen dann in der Community) – und einen Satz „Was war besonders?“. Fotos werden vor dem Hochladen verkleinert. Ohne Supabase bleiben sie auf dem Gerät. |
+| **Jahresrückblick** (im Tab Dates) | Digitales Fotobuch: Titelseite mit Collage, euer Jahr in Zahlen, eine Seite pro Date mit Fotos, Erinnerung und Bewertung. Als PDF speichern über den Druckdialog. |
 | **Empfehlungen** | Auf der Startseite: Ideen, die zu euren Bewertungen passen („Weil euch … gefallen hat“). Auch die normalen Vorschläge berücksichtigen eure Bewertungen und die Stimmung. |
 | **Kalender** | Monatsansicht mit Dates, Anfragen, Abstimmungen, festen Terminen, besonderen Tagen, eigenen Terminen, To-dos, Google-Terminen und den belegten Zeiten des Partners. |
 | **Listen** | To-do (mit Zuständigkeit und Fälligkeit) und Einkaufsliste. |
@@ -140,6 +144,7 @@ js/remote.js            Supabase-Anbindung (anonyme Anmeldung, Paar-Code, Live-U
 js/places.js            GPS, Ortsname, Overpass-Ortssuche, Öffnungszeiten
 js/gcal.js              Google Kalender (lesen, eintragen, Vorlage-Link)
 js/gplaces.js           Google-Bewertungen und Fotos (optional, eigener Schlüssel)
+js/photos.js            Fotos verkleinern, speichern (Supabase Storage oder Gerät), anzeigen
 js/config.js            Fester Supabase-Zugang für alle Nutzer (für die Community)
 js/engine.js            Vorschläge, Plan mit Uhrzeiten, .ics, Rhythmus
 js/weather.js           Open-Meteo
