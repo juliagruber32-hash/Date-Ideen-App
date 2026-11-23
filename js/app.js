@@ -62,6 +62,7 @@ function render(scrollTop = false) {
   }
   (RENDER[current.name] ?? RENDER.start)(current.param);
   hydrateMedia();
+  if (current.name === 'plan' || current.name === 'date') drawPlanMap(lastPlan ?? { steps: [] });
   if (scrollTop) {
     window.scrollTo(0, 0);
     // Sanftes Einblenden nur beim Bildschirmwechsel, nicht bei Live-Aktualisierungen
@@ -2986,9 +2987,14 @@ function timeline(plan, extra = () => '') {
 
 function planHead(plan, eyebrow = '') {
   const day = relDay(plan.date);
+  const stops = plan.steps.filter((x) => x.place?.lat != null);
+  const main = stops[0]?.place;
+  const t = topicFor(plan) ?? (plan.ideaId ? topicFor({ id: plan.ideaId }) : null);
+  const job = main ? { place: main, topic: t } : t ? { topic: t } : null;
+  const img = plan.image || main?.image;
   return `
     <header class="plan-head">
-      <span class="plan-emoji" aria-hidden="true">${glyph(plan.emoji)}</span>
+      ${img || job ? thumb(img, plan.emoji, 'hero', job, null) : `<span class="plan-emoji" aria-hidden="true">${glyph(plan.emoji)}</span>`}
       ${eyebrow ? `<p class="eyebrow">${eyebrow}</p>` : ''}
       <h1>${esc(plan.title)}</h1>
       <p class="sub">${day ? day + ', ' : ''}${fmtDate(plan.date)} · ${plan.start}–${plan.end} Uhr</p>
@@ -2997,7 +3003,51 @@ function planHead(plan, eyebrow = '') {
         <span class="pill">${icon('euro')}${fmtEuro(plan.cost)}</span>
         <span class="pill">${icon('clock')}${fmtDuration(plan.duration)}</span>
       </div>
-    </header>`;
+    </header>
+    ${stops.length ? `<div class="plan-map" id="plan-map" aria-label="Karte mit den Stationen"></div>` : ''}`;
+}
+
+/* --- Karte im Plan (Leaflet + OpenStreetMap) ------------------------------- */
+
+let leafletLoading = null;
+function loadLeaflet() {
+  if (window.L?.map) return Promise.resolve(window.L);
+  leafletLoading ??= new Promise((resolve, reject) => {
+    const css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css';
+    document.head.append(css);
+    const js = document.createElement('script');
+    js.src = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js';
+    js.onload = () => resolve(window.L);
+    js.onerror = () => reject(new Error('Karte konnte nicht geladen werden'));
+    document.head.append(js);
+  });
+  return leafletLoading;
+}
+
+let planMap = null;
+let lastPlan = null; // zuletzt gezeigter Plan (für die Karte)
+/** Stationen nummeriert auf der Karte zeigen, mit Linie in der Reihenfolge des Dates. */
+function drawPlanMap(plan) {
+  const el = document.getElementById('plan-map');
+  if (!el) return;
+  const stops = plan.steps.filter((x) => x.place?.lat != null).map((x) => x.place);
+  const seen = new Set();
+  const uniq = stops.filter((p) => !seen.has(`${p.lat},${p.lon}`) && seen.add(`${p.lat},${p.lon}`));
+  loadLeaflet().then((Lf) => {
+    if (!document.body.contains(el)) return;
+    planMap?.remove();
+    planMap = Lf.map(el, { zoomControl: false, attributionControl: true, scrollWheelZoom: false, dragging: !Lf.Browser.mobile, tap: false });
+    Lf.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(planMap);
+    const pts = uniq.map((p) => [p.lat, p.lon]);
+    uniq.forEach((p, i) => {
+      Lf.marker([p.lat, p.lon], { icon: Lf.divIcon({ className: 'map-pin', html: `<span>${i + 1}</span>`, iconSize: [28, 28], iconAnchor: [14, 14] }), title: p.name }).addTo(planMap);
+    });
+    if (pts.length > 1) Lf.polyline(pts, { color: '#562F37', weight: 3, opacity: 0.8, dashArray: '6 6' }).addTo(planMap);
+    if (pts.length === 1) planMap.setView(pts[0], 15);
+    else planMap.fitBounds(pts, { padding: [28, 28], maxZoom: 16 });
+  }).catch(() => el.remove());
 }
 
 
@@ -3108,6 +3158,7 @@ RENDER.plan = (ideaId) => {
   const variant = idea.variants?.[draft.variant ?? 0];
   const recipe = variant ? { name: variant.name, url: variant.url ?? '', ingredients: variant.materials } : idea.recipe;
   const plan = buildPlan({ ...idea, steps: timed.steps, recipe }, { ...ctx, start: draft.start }, S().settings, session.weather);
+  lastPlan = plan;
   if (variant) plan.title = `${idea.title}: ${variant.name}`;
   if (idea.generated && !idea.event) {
     const names = picked.map((x) => x.place?.name).filter(Boolean);
@@ -3443,10 +3494,12 @@ RENDER.date = (id) => {
       <div class="actions">${calendarButtons()}</div>`;
     bindBack();
     bindCalendarButtons({ ...d, title: `Überraschung von ${nameOf(d.plannedBy)}`, emoji: '🎁', steps: [] });
+    lastPlan = null;
     return;
   }
 
   const plan = fullPlan(d);
+  lastPlan = plan;
   if (!plan) {
     root.innerHTML = `${topbar({ title: 'Überraschung', back: ['dates', '', 'Unsere Dates'] })}<p class="muted">Die Details dieser Überraschung liegen auf dem Konto von ${esc(nameOf(d.plannedBy))}.</p>`;
     return bindBack();
