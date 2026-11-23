@@ -204,7 +204,8 @@
           "Rotwein",
           "Kerzen"
         ],
-        "step": "Candle-Light-Dinner zuhause"
+        "step": "Candle-Light-Dinner zuhause",
+        "url": "https://www.chefkoch.de/rs/s0/tagliatelle%20selbstgemacht%20tomatensauce/Rezepte.html"
       },
       {
         "name": "Ravioli mit Ricotta-Spinat",
@@ -219,7 +220,8 @@
           "Weißwein",
           "Kerzen"
         ],
-        "step": "Candle-Light-Dinner zuhause"
+        "step": "Candle-Light-Dinner zuhause",
+        "url": "https://www.chefkoch.de/rs/s0/ravioli%20ricotta%20spinat/Rezepte.html"
       },
       {
         "name": "Gnocchi mit Salbeibutter",
@@ -234,7 +236,8 @@
           "Weißwein",
           "Kerzen"
         ],
-        "step": "Candle-Light-Dinner zuhause"
+        "step": "Candle-Light-Dinner zuhause",
+        "url": "https://www.chefkoch.de/rs/s0/gnocchi%20salbeibutter/Rezepte.html"
       }
     ]
   },
@@ -287,7 +290,8 @@
           "Block & Stift für die Punkte",
           "Snacks & Getränke"
         ],
-        "step": "Spielerunde"
+        "step": "Spielerunde",
+        "url": "https://www.google.com/search?q=beste+Brettspiele+f%C3%BCr+2+Personen"
       },
       {
         "name": "Quiz über euch",
@@ -298,7 +302,8 @@
           "Kleiner Preis für den Gewinner",
           "Snacks & Getränke"
         ],
-        "step": "Spielerunde"
+        "step": "Spielerunde",
+        "url": "https://www.google.com/search?q=Paar+Quiz+Fragen"
       },
       {
         "name": "Puzzle & Musik",
@@ -310,7 +315,8 @@
           "Tee oder Wein",
           "Snacks"
         ],
-        "step": "Spielerunde"
+        "step": "Spielerunde",
+        "url": ""
       }
     ]
   },
@@ -637,7 +643,8 @@
           "Lichterkette",
           "Getränke"
         ],
-        "step": "Film-Abend"
+        "step": "Film-Abend",
+        "url": ""
       },
       {
         "name": "Blind-Auswahl",
@@ -649,7 +656,8 @@
           "Lichterkette",
           "Getränke"
         ],
-        "step": "Film-Abend"
+        "step": "Film-Abend",
+        "url": "https://www.google.com/search?q=beste+Filme+f%C3%BCr+P%C3%A4rchen"
       },
       {
         "name": "Themenabend",
@@ -660,7 +668,8 @@
           "Decken & Kissen",
           "Kerzen oder Lichterkette"
         ],
-        "step": "Film-Abend"
+        "step": "Film-Abend",
+        "url": "https://www.chefkoch.de/rs/s0/filmabend%20snacks/Rezepte.html"
       }
     ]
   },
@@ -726,7 +735,8 @@
           "Oregano",
           "Bewertungskarten & Stift"
         ],
-        "step": "Belegen, backen, bewerten"
+        "step": "Belegen, backen, bewerten",
+        "url": "https://www.chefkoch.de/rs/s0/pizzateig/Rezepte.html"
       },
       {
         "name": "Pizza aus vier Ländern",
@@ -741,7 +751,8 @@
           "Leberkäse oder Brezen-Brot",
           "Rucola"
         ],
-        "step": "Belegen, backen, bewerten"
+        "step": "Belegen, backen, bewerten",
+        "url": "https://www.chefkoch.de/rs/s0/pizza%20belag%20ideen/Rezepte.html"
       }
     ]
   },
@@ -797,7 +808,8 @@
           "Wasser & Weißbrot",
           "Block für Notizen"
         ],
-        "step": "Blind-Verkostung"
+        "step": "Blind-Verkostung",
+        "url": "https://www.google.com/search?q=Schokoladen+Tasting+zuhause+Anleitung"
       },
       {
         "name": "Schokolade aus aller Welt",
@@ -809,7 +821,8 @@
           "Weißbrot zum Neutralisieren",
           "Block & Stift"
         ],
-        "step": "Blind-Verkostung"
+        "step": "Blind-Verkostung",
+        "url": "https://www.google.com/search?q=Schokoladen+Tasting+zuhause+Anleitung"
       }
     ]
   },
@@ -1023,7 +1036,8 @@
           "Wein oder Saft",
           "Knabberzeug"
         ],
-        "step": "Malen & anstoßen"
+        "step": "Malen & anstoßen",
+        "url": "https://www.youtube.com/results?search_query=Acryl+Portr%C3%A4t+malen+Anf%C3%A4nger"
       },
       {
         "name": "Euer schönster Urlaubsort",
@@ -1037,7 +1051,8 @@
           "Ein Urlaubsfoto als Vorlage (optional)",
           "Wein oder Saft"
         ],
-        "step": "Malen & anstoßen"
+        "step": "Malen & anstoßen",
+        "url": "https://www.youtube.com/results?search_query=Acryl+Landschaft+malen+Anf%C3%A4nger"
       },
       {
         "name": "Sonnenuntergang nach Video",
@@ -1050,7 +1065,8 @@
           "Wasserglas & Küchenrolle",
           "Wein oder Saft"
         ],
-        "step": "Malen & anstoßen"
+        "step": "Malen & anstoßen",
+        "url": "https://www.youtube.com/results?search_query=Acryl+Sonnenuntergang+malen+Anf%C3%A4nger"
       },
       {
         "name": "Ein Bild, vier Hände",
@@ -1063,7 +1079,8 @@
           "Malunterlage",
           "Wein oder Saft"
         ],
-        "step": "Malen & anstoßen"
+        "step": "Malen & anstoßen",
+        "url": "https://www.youtube.com/results?search_query=abstrakte+Acrylmalerei+Anf%C3%A4nger"
       }
     ]
   },
@@ -1426,7 +1443,8 @@
           "Stifte zum Beschriften",
           "Tee oder Wein"
         ],
-        "step": "Album gestalten & erzählen"
+        "step": "Album gestalten & erzählen",
+        "url": ""
       },
       {
         "name": "Glas der Erinnerungen",
@@ -1438,7 +1456,8 @@
           "Schleife oder Band",
           "Ein paar Fotos"
         ],
-        "step": "Album gestalten & erzählen"
+        "step": "Album gestalten & erzählen",
+        "url": "https://www.google.com/search?q=Erinnerungsglas+basteln"
       }
     ]
   },
@@ -1498,7 +1517,8 @@
           "Beeren",
           "Tablett"
         ],
-        "step": "Frühstück im Bett"
+        "step": "Frühstück im Bett",
+        "url": "https://www.chefkoch.de/rs/s0/croissants%20caf%C3%A9%20au%20lait/Rezepte.html"
       },
       {
         "name": "Pancakes im Bett",
@@ -1510,7 +1530,8 @@
           "Kaffee",
           "Tablett"
         ],
-        "step": "Frühstück im Bett"
+        "step": "Frühstück im Bett",
+        "url": "https://www.chefkoch.de/rs/s0/pancakes/Rezepte.html"
       }
     ]
   },
@@ -1569,7 +1590,8 @@
           "1 Baguette",
           "Fonduetopf & Gabeln"
         ],
-        "step": "Fondue genießen"
+        "step": "Fondue genießen",
+        "url": "https://www.chefkoch.de/rs/s0/k%C3%A4sefondue/Rezepte.html"
       },
       {
         "name": "Schokofondue",
@@ -1583,7 +1605,8 @@
           "Marshmallows",
           "Fonduetopf & Gabeln"
         ],
-        "step": "Fondue genießen"
+        "step": "Fondue genießen",
+        "url": "https://www.chefkoch.de/rs/s0/schokofondue/Rezepte.html"
       }
     ]
   },
@@ -1641,7 +1664,8 @@
           "Große Handtücher",
           "Entspannungs-Playlist"
         ],
-        "step": "Gegenseitige Massage"
+        "step": "Gegenseitige Massage",
+        "url": "https://www.google.com/search?q=Massage+Anleitung+Partner"
       },
       {
         "name": "Fußbad & Handpflege",
@@ -1654,7 +1678,8 @@
           "Kuschelsocken",
           "Kräutertee"
         ],
-        "step": "Gegenseitige Massage"
+        "step": "Gegenseitige Massage",
+        "url": "https://www.google.com/search?q=Fu%C3%9Fbad+selber+machen"
       }
     ]
   },
@@ -1777,7 +1802,8 @@
           "Sojasauce, Wasabi & Ingwer",
           "Bambusmatte & Frischhaltefolie"
         ],
-        "step": "Rollen & essen"
+        "step": "Rollen & essen",
+        "url": "https://www.chefkoch.de/rs/s0/inside%20out%20sushi/Rezepte.html"
       },
       {
         "name": "Veggie-Sushi-Abend",
@@ -1794,7 +1820,8 @@
           "Sojasauce",
           "Bambusmatte"
         ],
-        "step": "Rollen & essen"
+        "step": "Rollen & essen",
+        "url": "https://www.chefkoch.de/rs/s0/vegetarisches%20sushi/Rezepte.html"
       }
     ]
   },

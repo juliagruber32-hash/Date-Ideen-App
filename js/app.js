@@ -2985,7 +2985,7 @@ RENDER.plan = (ideaId) => {
   });
   const timed = timedSteps(picked, draft, ctx.reach !== 0 ? center : null);
   const variant = idea.variants?.[draft.variant ?? 0];
-  const recipe = variant ? { name: variant.name, url: idea.recipe?.url ?? '', ingredients: variant.materials } : idea.recipe;
+  const recipe = variant ? { name: variant.name, url: variant.url ?? '', ingredients: variant.materials } : idea.recipe;
   const plan = buildPlan({ ...idea, steps: timed.steps, recipe }, { ...ctx, start: draft.start }, S().settings, session.weather);
   if (variant) plan.title = `${idea.title}: ${variant.name}`;
   if (idea.generated && !idea.event) {
@@ -3054,7 +3054,7 @@ RENDER.plan = (ideaId) => {
     <section class="panel">
       <div class="panel-head">${icon('cart')}<h2>Das braucht ihr</h2></div>
       <ul class="needs">${plan.recipe.ingredients.map((x) => `<li>${icon('check')}<span>${esc(x)}</span></li>`).join('')}</ul>
-      ${plan.recipe.url ? `<a class="link" href="${esc(plan.recipe.url)}" target="_blank" rel="noopener">${/youtube/.test(plan.recipe.url) ? 'Anleitungen ansehen' : 'Rezepte ansehen'}${icon('external')}</a>` : ''}
+      ${plan.recipe.url ? `<a class="link" href="${esc(plan.recipe.url)}" target="_blank" rel="noopener">${/youtube/.test(plan.recipe.url) ? `Anleitung: ${esc(plan.recipe.name)}` : /chefkoch/.test(plan.recipe.url) ? `Rezept: ${esc(plan.recipe.name)}` : 'Mehr dazu'}${icon('external')}</a>` : ''}
     </section>` : ''}
     ${timeline(plan, stepExtra)}
     ${plan.todos.length ? `<p class="hint">${icon('bell')} Vorher erledigen: ${plan.todos.map(esc).join(', ')}</p>` : ''}
