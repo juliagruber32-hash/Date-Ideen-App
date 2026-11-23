@@ -10,7 +10,7 @@
 
 const KEY = 'date-ideen.v1';
 const LOCAL_KEY = 'date-ideen.local.v1';
-export const COLLECTIONS = ['dates', 'events', 'todos', 'shopping', 'polls', 'requests'];
+export const COLLECTIONS = ['dates', 'events', 'todos', 'shopping', 'polls', 'requests', 'ideas', 'busy'];
 
 const defaultSettings = () => ({
   nameA: '',
@@ -24,6 +24,7 @@ const defaultSettings = () => ({
   fixed: [],
   vegan: false,
   members: { a: null, b: null }, // Nutzer-IDs im gemeinsamen Modus
+  googleClientId: '',
 });
 
 const defaults = () => ({
@@ -34,11 +35,15 @@ const defaults = () => ({
   shopping: [],
   polls: [],
   requests: [],
+  ideas: [], // eigene Date-Ideen
+  busy: [], // belegte Zeiten aus Google Kalender, ohne Titel: { id: 'a'|'b', items: [...] }
   secrets: {}, // dateId -> vollständiger Plan einer eigenen Überraschung (privat)
 });
 
 const defaultLocal = () => ({
   role: null, // im lokalen Modus: wer benutzt dieses Gerät ('a' | 'b')
+  gcal: { events: [], fetchedAt: 0 }, // eigene Google-Termine (bleiben auf diesem Gerät)
+  geo: null, // letzter GPS-Standort { lat, lon, name, at }
   lastSearch: { when: 'tonight', date: '', daytime: 'abend', budget: 40, reach: 1, planner: 'me' },
 });
 
@@ -88,6 +93,7 @@ export const saveLocal = () => writeJSON(LOCAL_KEY, local);
 
 const sync = {
   mode: 'local', // 'local' | 'shared'
+  backend: null, // 'claude' | 'supabase'
   db: null,
   uid: null,
   ready: false, // erste bestätigte Daten aus der DB da
@@ -218,25 +224,42 @@ function handleWriteError(e) {
 
 /* ------------------------------------------------------------ Gemeinsamer Modus */
 
+/** Claude-Artifact: geteilte Datenbank des Artifacts verwenden, falls vorhanden. */
 export async function connect() {
   const claude = window.claude;
-  if (!claude?.use) return;
+  if (!claude?.use) return false;
   let db, user;
   try {
     [db, user] = await Promise.all([claude.use('db'), claude.use('user')]);
   } catch {
-    return;
+    return false;
   }
-  if (!db) return;
-  sync.db = db;
-  sync.mode = 'shared';
-  sync.uid = user ? await user.id() : null;
+  if (!db) return false;
+  const uid = user ? await user.id() : null;
+  let canWrite = true;
   try {
-    const can = user ? await user.can('data.write') : null;
-    if (can === false) sync.canWrite = false;
+    if ((user ? await user.can('data.write') : null) === false) canWrite = false;
   } catch {
     /* unbekannt: Schreiben versuchen und Fehler abfangen */
   }
+  attach(db, uid, { backend: 'claude', canWrite });
+  return true;
+}
+
+export function inArtifact() {
+  return !!window.claude?.use;
+}
+
+/** Beliebigen Dokument-Speicher anschließen (Claude-DB oder Supabase-Adapter). */
+export function attach(db, uid, { backend, canWrite = true }) {
+  sync.db = db;
+  sync.mode = 'shared';
+  sync.backend = backend;
+  sync.uid = uid;
+  sync.canWrite = canWrite;
+  sync.ready = false;
+  sync.stale = false;
+  sync.writeError = null;
 
   const localHadData = state.dates.length || state.todos.length || state.shopping.length || state.events.length || state.settings.city || state.settings.nameA;
   const confirmed = new Set();

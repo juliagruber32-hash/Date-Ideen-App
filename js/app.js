@@ -1,7 +1,10 @@
 import * as store from './store.js';
 import { isHiddenFromMe, myRole, nameOf, other } from './store.js';
 import { geocode, getWeather, manualWeather } from './weather.js';
-import { buildPlan, defaultStart, ideaDuration, loadIdeas, REACH, rhythmStatus, suggest, toICS } from './engine.js';
+import { allIdeas, buildPlan, defaultStart, ideaDuration, loadIdeas, REACH, rhythmStatus, setExtraIdeas, suggest, toICS } from './engine.js';
+import { CATEGORIES, categoryById, fmtKm, formatHours, hoursOn, isOpenAt, locate, mapLink, placeName, routeLink, searchNearby } from './places.js';
+import * as gcal from './gcal.js';
+import { connectSupabase, getConfig, inviteLink, readInvite, saveConfig } from './remote.js';
 import { nearSpecial, specialsOn, upcomingSpecials } from './special.js';
 import { icon } from './icons.js';
 import {
@@ -12,8 +15,9 @@ import {
 const S = () => store.get();
 const L = () => store.getLocal();
 const root = $('#view');
-let IDEAS = [];
-const ideaById = (id) => IDEAS.find((i) => i.id === id);
+const tempIdeas = new Map(); // Ideen aus der Ortssuche, die noch nicht gespeichert sind
+const ideaById = (id) => tempIdeas.get(id) ?? allIdeas().find((i) => i.id === id);
+let remoteError = null;
 
 // Sitzungszustand des aktuellen Planungsablaufs (wird nicht gespeichert).
 const session = { ctx: null, weather: null, shown: new Set(), current: [], exhausted: false, requestId: null, pollId: null };
@@ -21,7 +25,7 @@ const drafts = {}; // ungespeicherte Eingaben auf dem Plan-Bildschirm, pro Idee
 
 /* ================================================================ Navigation */
 
-const TAB_OF = { start: 'start', suggest: 'start', plan: 'start', poll: 'start', kalender: 'kalender', listen: 'listen', dates: 'dates', date: 'dates', mehr: 'mehr' };
+const TAB_OF = { start: 'start', suggest: 'start', plan: 'start', poll: 'start', entdecken: 'entdecken', idee: 'entdecken', kalender: 'kalender', listen: 'listen', dates: 'dates', date: 'dates', mehr: 'mehr' };
 const RENDER = {};
 let current = { name: 'start', param: null };
 
@@ -31,6 +35,7 @@ function go(name, param = null) {
 }
 
 function render(scrollTop = false) {
+  setExtraIdeas(S().ideas);
   $$('.tabbar button').forEach((b) => b.toggleAttribute('aria-current', b.dataset.tab === TAB_OF[current.name]));
   (RENDER[current.name] ?? RENDER.start)(current.param);
   if (scrollTop) window.scrollTo(0, 0);
@@ -202,7 +207,7 @@ function whoAmICard() {
   if (role) return '';
   const st = S().settings;
   const taken = st.members ?? {};
-  const shared = store.syncInfo().mode === 'shared';
+  const shared = store.syncInfo().backend === 'claude';
   return `
     <section class="panel who">
       <div class="panel-head">${icon('user')}<h2>Wer bist du?</h2></div>
@@ -226,6 +231,520 @@ function syncChip() {
   if (s.stale) return `<span class="sync warn">${icon('cloud')}Verbindung fehlt</span>`;
   return `<span class="sync ok">${icon('users')}Gemeinsam</span>`;
 }
+const settingsButton = () => `<button class="icon-btn" data-go="mehr" aria-label="Einstellungen">${icon('more')}</button>`;
+
+/* ================================================================ Standort */
+
+function currentPlaceName() {
+  const g = L().geo;
+  if (g && Date.now() - g.at < 6 * 3600 * 1000 && g.name) return g.name;
+  return S().settings.city;
+}
+
+async function useGps() {
+  const pos = await locate();
+  let name = '';
+  try {
+    name = await placeName(pos.lat, pos.lon);
+  } catch {
+    /* Name optional */
+  }
+  L().geo = { lat: pos.lat, lon: pos.lon, name: name || 'Mein Standort', at: Date.now() };
+  store.saveLocal();
+  return L().geo;
+}
+
+/** Standort still aktualisieren, wenn die Erlaubnis schon erteilt ist. */
+async function refreshGpsSilently() {
+  try {
+    const p = await navigator.permissions?.query({ name: 'geolocation' });
+    if (p?.state !== 'granted') return;
+    const g = L().geo;
+    if (g && Date.now() - g.at < 30 * 60 * 1000) return;
+    await useGps();
+    if (current.name === 'start' && !isTyping()) render();
+  } catch {
+    /* kein GPS: Stadt bleibt */
+  }
+}
+
+/* ================================================================ Kalender-Verbindung */
+
+function partnerBusy(iso) {
+  const partner = other(myRole());
+  const doc = S().busy.find((b) => b.id === partner);
+  return (doc?.items ?? []).filter((x) => x.date === iso);
+}
+
+/** Hinweis, wenn an dem Tag schon Termine stehen. */
+function conflictsHTML(iso) {
+  const mine = L().gcal.events.filter((e) => e.date === iso);
+  const own = S().events.filter((e) => e.date === iso);
+  const dates = S().dates.filter((d) => d.date === iso);
+  const theirs = partnerBusy(iso);
+  const lines = [
+    ...dates.map((d) => `${d.start} ${esc(dateTitle(d))}`),
+    ...mine.map((e) => `${e.allDay ? 'ganztägig' : e.start} ${esc(e.title)}`),
+    ...own.map((e) => `${e.time} ${esc(e.title)}`),
+    ...theirs.map((b) => `${b.allDay ? 'ganztägig' : `${b.start}–${b.end}`} ${esc(nameOf(other(myRole())))} hat einen Termin`),
+  ];
+  if (!lines.length) return '';
+  return `<div class="conflicts">${icon('calendar')}<div><strong>${relDay(iso) ?? fmtShort(iso)} habt ihr schon:</strong><br>${lines.join('<br>')}</div></div>`;
+}
+
+function calendarEvent(plan) {
+  const desc = (plan.steps ?? []).map((s) => `${s.time} ${s.title}${s.links?.[0] ? ` – ${s.links[0].href}` : ''}`).join('\n');
+  const loc = (plan.steps ?? []).find((s) => s.place)?.place;
+  return { title: plan.title.startsWith('Überraschung') ? plan.title : `Date: ${plan.title}`, description: desc, location: loc ? `${loc.name}${loc.street ? ', ' + loc.street : ''}` : '', date: plan.date, start: plan.start, end: plan.end };
+}
+
+function calendarButtons() {
+  return `
+    <div class="cal-actions">
+      <button class="btn primary" id="cal-google">${icon('calendar')}${gcal.isConnected() ? 'In Google Kalender eintragen' : 'Zu Google Kalender'}</button>
+      <button class="btn" id="cal-ics">${icon('download')}Handy-Kalender (.ics)</button>
+    </div>`;
+}
+
+function bindCalendarButtons(plan) {
+  const evt = calendarEvent(plan);
+  $('#cal-google').addEventListener('click', async (e) => {
+    if (gcal.isConnected()) {
+      await withBusy(e.currentTarget, async () => {
+        try {
+          await gcal.createEvent(evt);
+          toast('In Google Kalender eingetragen');
+        } catch (err) {
+          toast(err.message);
+        }
+      });
+    } else {
+      window.open(gcal.templateLink(evt), '_blank', 'noopener');
+    }
+  });
+  $('#cal-ics').addEventListener('click', () => saveFile(`date-${plan.date}.ics`, toICS(plan), 'text/calendar'));
+}
+
+function gcalBar() {
+  if (store.inArtifact()) return '';
+  const id = S().settings.googleClientId;
+  const fetched = L().gcal.fetchedAt;
+  if (!id) return `<button class="banner neutral-row" data-go="mehr">${icon('calendar')}<span class="grow"><strong>Google Kalender verbinden</strong><br><small class="muted">Dann seht ihr hier eure Termine.</small></span>${icon('right')}</button>`;
+  if (!gcal.isConnected()) return `<div class="banner neutral-row">${icon('calendar')}<span class="grow"><strong>Google Kalender</strong><br><small class="muted">${fetched ? `Stand ${new Date(fetched).toLocaleString('de-DE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}` : 'Noch nicht verbunden'}</small></span><button class="btn sm primary" id="gcal-connect">Verbinden</button></div>`;
+  return `<div class="banner neutral-row">${icon('check')}<span class="grow"><strong>Google Kalender verbunden</strong><br><small class="muted">${L().gcal.events.length} Termine geladen</small></span><button class="btn sm" id="gcal-refresh">Aktualisieren</button></div>`;
+}
+
+function bindGcalBar() {
+  on('[data-go]', 'click', (_, el) => go(el.dataset.go));
+  $('#gcal-connect')?.addEventListener('click', (e) => withBusy(e.currentTarget, connectGcal));
+  $('#gcal-refresh')?.addEventListener('click', (e) => withBusy(e.currentTarget, syncGcal));
+}
+
+async function connectGcal() {
+  try {
+    await gcal.connect(S().settings.googleClientId);
+    await syncGcal();
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+/** Eigene Google-Termine laden; belegte Zeiten (ohne Titel) für den Partner teilen. */
+async function syncGcal() {
+  try {
+    const from = isoDate(addDays(today(), -7));
+    const to = isoDate(addDays(today(), 120));
+    const events = await gcal.listEvents(from, to);
+    L().gcal = { events, fetchedAt: Date.now() };
+    store.saveLocal();
+    const role = myRole();
+    if (role) {
+      const items = events.map(({ date, start, end, allDay }) => ({ date, start, end, allDay }));
+      store.update((s) => {
+        const doc = s.busy.find((b) => b.id === role);
+        if (doc) Object.assign(doc, { items, updatedAt: Date.now() });
+        else s.busy.push({ id: role, items, updatedAt: Date.now() });
+      });
+    }
+    toast(`${events.length} Termine aus Google geladen`);
+    render();
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+/* ================================================================ Einstellungen: Verbindungen */
+
+async function connectRemote(cfg, announce = false) {
+  remoteError = null;
+  try {
+    const { db, uid } = await connectSupabase(cfg);
+    store.attach(db, uid, { backend: 'supabase' });
+    if (announce) toast('Verbunden! Wähle jetzt, wer du bist.');
+  } catch (e) {
+    remoteError = e.message;
+  }
+  render();
+}
+
+function sharingHTML() {
+  const sync = store.syncInfo();
+  if (sync.backend === 'claude') {
+    return `
+      <p>${sync.stale ? 'Die Verbindung zum gemeinsamen Speicher fehlt gerade.' : 'Dates, Kalender, Listen und Abstimmungen werden für euch beide gespeichert.'}</p>
+      <ol class="steps-list">
+        <li>Oben rechts auf <strong>Teilen</strong> tippen.</li>
+        <li>Die E-Mail-Adresse deines Partners eintragen und als <strong>Editor</strong> einladen.</li>
+        <li>Dein Partner öffnet den Link und wählt unter „Ich bin“ seinen Namen.</li>
+      </ol>
+      ${!sync.canWrite || sync.writeError ? `<p class="warn-text">${esc(sync.writeError ?? 'Du kannst hier nur lesen.')}</p>` : ''}
+      <p class="muted small">Standort, Wetter und Ortssuche funktionieren nur in der Webseiten-Version der App.</p>`;
+  }
+  const cfg = getConfig();
+  if (sync.backend === 'supabase' && cfg?.code) {
+    return `
+      <p>Verbunden. Alles, was ihr eintragt, seht ihr beide live.</p>
+      <div class="field">
+        <span class="label">Einladungslink für deinen Partner</span>
+        <div class="copy-row"><input class="input" id="invite" readonly value="${esc(inviteLink(cfg))}"><button class="btn" id="copy-invite" type="button">Kopieren</button></div>
+        <small class="muted">Schick den Link per WhatsApp oder Mail. Wer ihn öffnet, ist mit euch verbunden – also nur an deinen Partner schicken.</small>
+      </div>
+      ${sync.writeError ? `<p class="warn-text">${esc(sync.writeError)}</p>` : ''}
+      <button class="btn ghost danger" id="disconnect" type="button">Auf diesem Gerät trennen</button>`;
+  }
+  return `
+    <p>Gerade liegen die Daten nur auf diesem Gerät. Mit einem kostenlosen Supabase-Projekt seht ihr beide dieselben Dates, Listen und Abstimmungen.</p>
+    ${remoteError ? `<p class="warn-text">${esc(remoteError)}</p>` : ''}
+    <div class="field"><label class="label" for="sb-url">Project URL</label><input class="input" id="sb-url" placeholder="https://xxxx.supabase.co" value="${esc(cfg?.url ?? '')}" autocomplete="off"></div>
+    <div class="field"><label class="label" for="sb-key">Publishable / anon key</label><input class="input" id="sb-key" placeholder="eyJ… oder sb_publishable_…" value="${esc(cfg?.key ?? '')}" autocomplete="off"></div>
+    <div class="field"><label class="label" for="sb-code">Einladungscode (nur wenn dein Partner schon verbunden ist)</label><input class="input" id="sb-code" placeholder="leer lassen beim ersten Einrichten" value="${esc(cfg?.code ?? '')}" autocomplete="off"></div>
+    <button class="btn primary" id="sb-connect" type="button">${icon('users')}Verbinden</button>
+    <p class="muted small">Die Einrichtung steht Schritt für Schritt in der Anleitung im Projekt (README).</p>`;
+}
+
+function bindSharing() {
+  $('#copy-invite')?.addEventListener('click', async () => {
+    const input = $('#invite');
+    try {
+      await navigator.clipboard.writeText(input.value);
+      toast('Link kopiert');
+    } catch {
+      input.select();
+      toast('Link markiert – jetzt kopieren');
+    }
+  });
+  $('#disconnect')?.addEventListener('click', () => {
+    saveConfig(null);
+    location.reload();
+  });
+  $('#sb-connect')?.addEventListener('click', async (e) => {
+    const url = $('#sb-url').value.trim().replace(/\/+$/, '');
+    const key = $('#sb-key').value.trim();
+    const code = $('#sb-code').value.trim();
+    if (!/^https:\/\/.+/.test(url) || key.length < 20) {
+      remoteError = 'Bitte Project URL und Schlüssel aus Supabase eintragen.';
+      return render();
+    }
+    await withBusy(e.currentTarget, () => connectRemote({ url, key, code: code || null, coupleId: null }, true));
+  });
+}
+
+function googleSettingsHTML() {
+  if (store.inArtifact()) {
+    return '<p>In der Claude-Version könnt ihr Dates über „Zu Google Kalender“ oder die .ics-Datei eintragen. Termine auslesen geht in der Webseiten-Version.</p>';
+  }
+  const id = S().settings.googleClientId ?? '';
+  return `
+    <p>Dates landen direkt in deinem Google Kalender, und die App zeigt, wann ihr schon etwas vorhabt. Dein Partner sieht von deinen Terminen nur „belegt“, keine Titel.</p>
+    <div class="field">
+      <label class="label" for="g-client">OAuth-Client-ID</label>
+      <input class="input" id="g-client" data-set="googleClientId" placeholder="…apps.googleusercontent.com" value="${esc(id)}" autocomplete="off">
+      <small class="muted">Einmalig für euch beide. Wie du sie bekommst, steht in der Anleitung (README).</small>
+    </div>
+    ${id ? (gcal.isConnected()
+      ? `<div class="row gap wrap"><span class="tag ok">${icon('check')}Verbunden</span><button class="btn" id="g-sync" type="button">Termine laden</button><button class="btn ghost" id="g-off" type="button">Trennen</button></div>`
+      : `<button class="btn primary" id="g-connect" type="button">${icon('calendar')}Mit Google verbinden</button>`) : ''}
+    <p class="muted small">Ohne Einrichtung funktioniert immer: beim Date auf „Zu Google Kalender“ tippen.</p>`;
+}
+
+function bindGoogleSettings() {
+  $('#g-connect')?.addEventListener('click', (e) => withBusy(e.currentTarget, connectGcal));
+  $('#g-sync')?.addEventListener('click', (e) => withBusy(e.currentTarget, syncGcal));
+  $('#g-off')?.addEventListener('click', () => {
+    gcal.disconnect();
+    L().gcal = { events: [], fetchedAt: 0 };
+    store.saveLocal();
+    const role = myRole();
+    if (role) store.update((s) => (s.busy = s.busy.filter((b) => b.id !== role)));
+    render();
+  });
+}
+
+/* ================================================================ Entdecken */
+
+const discover = { cat: 'museum', radius: 5000, results: null, error: null, loading: false, center: null };
+
+function discoverCenter() {
+  const g = L().geo;
+  if (g && Date.now() - g.at < 6 * 3600 * 1000) return { lat: g.lat, lon: g.lon, name: g.name, gps: true };
+  const sg = S().settings.geo;
+  if (sg) return { lat: sg.lat, lon: sg.lon, name: sg.name, gps: false };
+  return null;
+}
+
+function placeLine(p, dateIso, time) {
+  const when = new Date(`${dateIso}T${time}:00`);
+  const open = isOpenAt(p.hours, when);
+  const day = hoursOn(p.hours, when);
+  const parts = [];
+  if (day) parts.push(`${when.toLocaleDateString('de-DE', { weekday: 'short' })}: ${day}`);
+  else if (p.hours) parts.push(formatHours(p.hours));
+  if (p.price) parts.push(p.price);
+  return `
+    <p class="place-line">${parts.map(esc).join(' · ') || 'Öffnungszeiten auf der Webseite prüfen'}</p>
+    ${open === false ? `<p class="warn-text small">${icon('clock')} Um ${time} laut Öffnungszeiten geschlossen</p>` : ''}`;
+}
+
+function placeCard(p) {
+  const cat = categoryById(p.category);
+  const now = new Date();
+  const open = isOpenAt(p.hours, now);
+  const todayHours = hoursOn(p.hours, now);
+  return `
+    <article class="place">
+      <div class="place-top">
+        <span class="idea-emoji" aria-hidden="true">${cat.emoji}</span>
+        <div class="grow">
+          <h3>${esc(p.name)}</h3>
+          <p class="muted small">${fmtKm(p.km)}${p.street ? ` · ${esc(p.street)}` : ''}${p.cuisine ? ` · ${esc(p.cuisine)}` : ''}</p>
+        </div>
+      </div>
+      <dl class="place-facts">
+        <div><dt>${icon('clock')}</dt><dd>
+          ${open === true ? '<span class="tag ok">Jetzt geöffnet</span> ' : open === false ? '<span class="tag">Jetzt geschlossen</span> ' : ''}
+          ${todayHours ? `Heute ${esc(todayHours)}` : p.hours ? esc(formatHours(p.hours)) : '<span class="muted">Öffnungszeiten unbekannt</span>'}
+          ${todayHours && p.hours ? `<details class="hours"><summary>Alle Zeiten</summary>${esc(formatHours(p.hours))}</details>` : ''}
+        </dd></div>
+        <div><dt>${icon('euro')}</dt><dd>${p.price ? esc(p.price.text) : '<span class="muted">Preis auf der Webseite</span>'}</dd></div>
+        ${p.vegan || p.vegetarian ? `<div><dt>${icon('sparkle')}</dt><dd>${p.vegan ? 'Vegane Gerichte' : 'Vegetarische Gerichte'}</dd></div>` : ''}
+      </dl>
+      <div class="links">
+        ${p.website ? `<a class="link" href="${esc(p.website)}" target="_blank" rel="noopener">Webseite${icon('external')}</a>` : `<a class="link" href="${esc(mapLink(p))}" target="_blank" rel="noopener">Auf der Karte${icon('external')}</a>`}
+        <a class="link" href="${esc(routeLink(p))}" target="_blank" rel="noopener">Route${icon('external')}</a>
+      </div>
+      <div class="row gap">
+        <button class="btn primary grow" data-place-plan="${p.id}">${icon('sparkle')}Als Date planen</button>
+        <button class="btn" data-place-save="${p.id}" aria-label="Als eigene Idee merken">${icon('bookmark')}Merken</button>
+      </div>
+    </article>`;
+}
+
+/** Aus einem Ort eine Date-Idee machen (Vorlage der Kategorie). */
+function ideaFromPlace(p) {
+  const cat = categoryById(p.category);
+  const [first, ...rest] = cat.plan;
+  const placeRef = { name: p.name, street: p.street, lat: p.lat, lon: p.lon, website: p.website, hours: p.hours, price: p.price };
+  const cost = p.price?.amount != null ? Math.round(p.price.amount * 2 + (rest.length ? 15 : 0)) : cat.cost;
+  return {
+    id: `ort-${p.id}`,
+    title: p.name,
+    emoji: cat.emoji,
+    teaser: `${cat.label.replace(/e?n$/, '')} · ${fmtKm(p.km)} entfernt${p.street ? ` · ${p.street}` : ''}`,
+    place: cat.place,
+    cost,
+    reach: p.km > 15 ? 2 : 1,
+    times: cat.times,
+    steps: [
+      { t: `${first[0]}: ${p.name}`, min: first[1], place: placeRef, food: !!cat.food },
+      ...rest.map(([t, min, q]) => ({ t, min, q, food: !!q && /Café|Restaurant|Eisdiele/.test(q) })),
+    ],
+    custom: true,
+    fromPlace: true,
+  };
+}
+
+RENDER.entdecken = () => {
+  const center = discoverCenter();
+  const d = discover;
+  const custom = S().ideas;
+
+  root.innerHTML = `
+    ${topbar({ title: 'Entdecken', sub: 'Orte für Dates in eurer Nähe – mit Öffnungszeiten und, wo bekannt, Eintritt.' })}
+    <section class="panel locbar">
+      <div class="row gap">
+        ${icon('pin')}
+        <div class="grow"><strong>${center ? esc(center.name) : 'Kein Standort'}</strong><br><small class="muted">${center ? (center.gps ? 'Aktueller Standort' : 'Stadt aus den Einstellungen') : 'Erlaube den Standort oder trag eine Stadt ein'}</small></div>
+        <button class="btn sm" id="d-gps">${icon('locate')}Standort</button>
+      </div>
+      ${chips('radius', [[2000, '2 km'], [5000, '5 km'], [15000, '15 km'], [40000, '40 km']], d.radius)}
+    </section>
+    <div class="cat-scroll">${chips('cat', CATEGORIES.map((c) => [c.id, `${c.emoji} ${c.label}`]), d.cat)}</div>
+    <section class="stack" id="results">
+      ${d.loading ? '<div class="loading"><span class="spinner"></span>Suche Orte …</div>'
+        : d.error ? `<div class="empty"><p>${esc(d.error)}</p></div>`
+          : !center ? '<div class="empty"><p>Tippe auf „Standort“, damit die App Orte in deiner Nähe findet.</p></div>'
+            : d.results ? (d.results.length ? d.results.map(placeCard).join('') : '<div class="empty"><p>Nichts im Umkreis gefunden. Vergrößere den Umkreis.</p></div>')
+              : ''}
+      ${d.results?.length ? '<p class="muted small center">Daten von OpenStreetMap. Preise und Zeiten vor dem Besuch auf der Webseite prüfen.</p>' : ''}
+    </section>
+
+    <section class="stack">
+      <div class="row between"><h2 class="section-title">Eure eigenen Ideen</h2><button class="btn sm soft" data-go="idee">${icon('plus')}Neue Idee</button></div>
+      ${custom.length ? `<div class="list-card">${custom.map((i) => `
+        <div class="date-item static">
+          <span class="idea-emoji" aria-hidden="true">${esc(i.emoji)}</span>
+          <span class="grow"><strong>${esc(i.title)}</strong><small class="muted">${i.place === 'drinnen' ? 'Drinnen' : 'Draußen'} · ${fmtEuro(i.cost)} · ${fmtDuration(ideaDuration(i))}</small></span>
+          <button class="icon-btn small" data-plan-custom="${i.id}" aria-label="Planen">${icon('sparkle')}</button>
+          <button class="icon-btn small" data-del-idea="${i.id}" aria-label="Löschen">${icon('trash')}</button>
+        </div>`).join('')}</div>` : '<p class="muted">Eigene Ideen erscheinen auch bei den Vorschlägen, wenn sie zu Budget und Wetter passen.</p>'}
+    </section>`;
+
+  const load = async () => {
+    const c = discoverCenter();
+    if (!c) return;
+    d.loading = true;
+    d.error = null;
+    render();
+    try {
+      d.results = await searchNearby(d.cat, c, d.radius);
+    } catch (e) {
+      d.results = null;
+      d.error = store.inArtifact() ? 'Die Ortssuche funktioniert nur in der Webseiten-Version der App.' : e.message === 'Failed to fetch' ? 'Keine Verbindung zur Ortssuche.' : e.message;
+    }
+    d.loading = false;
+    if (current.name === 'entdecken') render();
+  };
+
+  on('[data-go]', 'click', (_, el) => go(el.dataset.go));
+  bindChips(root, 'radius', (v) => {
+    d.radius = Number(v);
+    load();
+  });
+  bindChips(root, 'cat', (v) => {
+    d.cat = v;
+    load();
+  });
+  $('#d-gps').addEventListener('click', async (e) => {
+    await withBusy(e.currentTarget, async () => {
+      try {
+        await useGps();
+        await load();
+      } catch (err) {
+        d.error = store.inArtifact() ? 'Den Standort kann die App nur in der Webseiten-Version abfragen.' : err.message;
+        render();
+      }
+    });
+  });
+  const findPlace = (id) => d.results?.find((p) => p.id === id);
+  on('[data-place-plan]', 'click', async (_, el) => {
+    const p = findPlace(el.dataset.placePlan);
+    if (!p || !myRole()) return toast(myRole() ? 'Ort nicht gefunden' : 'Wähle zuerst auf „Planen“, wer du bist');
+    const idea = ideaFromPlace(p);
+    tempIdeas.set(idea.id, idea);
+    const ls = L().lastSearch;
+    await withBusy(el, async () => {
+      await prepareSession({ date: resolveDate(ls), daytime: idea.times.includes(ls.daytime) ? ls.daytime : idea.times[0], budget: Math.max(ls.budget, idea.cost), reach: 2 }, null);
+      session.backTo = ['entdecken', '', 'Entdecken'];
+      go('plan', idea.id);
+    });
+  });
+  on('[data-place-save]', 'click', (_, el) => {
+    const p = findPlace(el.dataset.placeSave);
+    if (!p) return;
+    const idea = { ...ideaFromPlace(p), id: `eigen-${uid()}`, createdBy: myRole(), createdAt: Date.now() };
+    store.update((s) => s.ideas.push(idea));
+    toast(`„${p.name}“ bei euren Ideen gespeichert`);
+    render();
+  });
+  on('[data-del-idea]', 'click', (_, el) => {
+    store.update((s) => (s.ideas = s.ideas.filter((i) => i.id !== el.dataset.delIdea)));
+    render();
+  });
+  on('[data-plan-custom]', 'click', async (_, el) => {
+    const idea = ideaById(el.dataset.planCustom);
+    if (!idea || !myRole()) return toast('Wähle zuerst auf „Planen“, wer du bist');
+    const ls = L().lastSearch;
+    await withBusy(el, async () => {
+      await prepareSession({ date: resolveDate(ls), daytime: idea.times.includes(ls.daytime) ? ls.daytime : idea.times[0], budget: Math.max(ls.budget, idea.cost), reach: 2 }, null);
+      session.backTo = ['entdecken', '', 'Entdecken'];
+      go('plan', idea.id);
+    });
+  });
+
+  if (center && !d.results && !d.loading && !d.error) load();
+};
+
+/* ================================================================ Eigene Idee */
+
+const EMOJIS = ['💡', '🍷', '🎶', '🌲', '🏖️', '🎡', '🧁', '🛶', '🎤', '🏛️', '🧘', '🎮', '🍜', '🌃', '🚴', '🎁'];
+
+RENDER.idee = () => {
+  const draft = { emoji: '💡', place: 'drinnen', times: 'beides', reach: 1 };
+  root.innerHTML = `
+    ${topbar({ title: 'Eigene Idee', sub: 'Erscheint bei euren Vorschlägen, wenn Budget, Wetter und Tageszeit passen.', back: ['entdecken', '', 'Entdecken'] })}
+    <form class="panel form" id="idea-form" novalidate>
+      <div class="field"><label class="label" for="i-title">Titel</label><input class="input" id="i-title" required maxlength="60" placeholder="z. B. Picknick am Lieblingssee"></div>
+      <div class="field"><span class="label">Symbol</span>${chips('emoji', EMOJIS.map((e) => [e, e]), draft.emoji, 'emoji-chips')}</div>
+      <div class="field"><label class="label" for="i-teaser">Beschreibung</label><input class="input" id="i-teaser" maxlength="120" placeholder="Ein Satz, worum es geht"></div>
+      <div class="field"><span class="label">Wo?</span>${chips('place', [['drinnen', 'Drinnen', 'home'], ['draußen', 'Draußen', 'sun']], draft.place, 'seg')}</div>
+      <div class="field"><span class="label">Tageszeit</span>${chips('times', [['tag', 'Tagsüber'], ['abend', 'Abends'], ['beides', 'Beides']], draft.times, 'seg')}</div>
+      <div class="field"><span class="label">Wie weit?</span>${chips('reach', [[0, 'Zuhause'], [1, 'In der Stadt'], [2, 'Ausflug']], draft.reach, 'seg')}</div>
+      <div class="row gap">
+        <div class="field grow"><label class="label" for="i-cost">Kosten für beide (€)</label><input class="input" id="i-cost" type="number" min="0" max="999" inputmode="numeric" value="20"></div>
+        <div class="field grow"><label class="label" for="i-start">Startzeit (optional)</label><input class="input" id="i-start" type="time"></div>
+      </div>
+      <div class="field">
+        <label class="label" for="i-steps">Ablauf</label>
+        <textarea class="input" id="i-steps" rows="4" placeholder="Eine Station pro Zeile, mit Minuten:&#10;Picknick am See 120&#10;Sonnenuntergang 45"></textarea>
+        <small class="muted">Ohne Minutenangabe rechnet die App mit 60 Minuten.</small>
+      </div>
+      <div class="field"><label class="label" for="i-link">Link oder Ort (optional)</label><input class="input" id="i-link" placeholder="https://… oder Suchbegriff für die Karte"></div>
+      <button class="btn primary big" type="submit">${icon('check')}Idee speichern</button>
+    </form>`;
+
+  bindBack();
+  const form = $('#idea-form');
+  bindChips(form, 'emoji', (v) => (draft.emoji = v));
+  bindChips(form, 'place', (v) => (draft.place = v));
+  bindChips(form, 'times', (v) => (draft.times = v));
+  bindChips(form, 'reach', (v) => (draft.reach = Number(v)));
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const title = $('#i-title').value.trim();
+    if (!title) {
+      toast('Bitte einen Titel eintragen');
+      return $('#i-title').focus();
+    }
+    const link = $('#i-link').value.trim();
+    const isUrl = /^https?:\/\//.test(link);
+    let steps = $('#i-steps').value.split('\n').map((l) => l.trim()).filter(Boolean).map((l) => {
+      const m = l.match(/^(.*?)[\s,–-]*(\d{1,3})\s*(min\.?|minuten)?$/i);
+      return m && m[1] ? { t: m[1].trim(), min: Math.max(10, Number(m[2])) } : { t: l, min: 60 };
+    });
+    if (!steps.length) steps = [{ t: title, min: 120 }];
+    if (link) steps[0] = { ...steps[0], ...(isUrl ? { url: link } : { q: link }) };
+    const times = draft.times === 'beides' ? ['tag', 'abend'] : [draft.times];
+    const start = $('#i-start').value;
+    const idea = {
+      id: `eigen-${uid()}`,
+      title,
+      emoji: draft.emoji,
+      teaser: $('#i-teaser').value.trim() || 'Eure eigene Idee',
+      place: draft.place,
+      cost: Math.max(0, Math.round(Number($('#i-cost').value) || 0)),
+      reach: draft.reach,
+      times,
+      steps,
+      ...(start ? { start: Object.fromEntries(times.map((t) => [t, start])) } : {}),
+      custom: true,
+      createdBy: myRole(),
+      createdAt: Date.now(),
+    };
+    store.update((s) => s.ideas.push(idea));
+    toast('Idee gespeichert');
+    go('entdecken');
+  });
+};
 
 /* ================================================================ 1. Start */
 
@@ -319,7 +838,7 @@ RENDER.start = () => {
   root.innerHTML = `
     <header class="home-head">
       <div class="brand">${icon('heart', 'brand-mark')}<span>Date-Ideen</span></div>
-      ${syncChip()}
+      <div class="row gap">${syncChip()}${settingsButton()}</div>
     </header>
     <section class="hello">
       <p class="eyebrow">${hasNames ? `${esc(nameOf('a'))} & ${esc(nameOf('b'))}` : 'Zeit zu zweit'}</p>
@@ -360,6 +879,7 @@ RENDER.start = () => {
         <span class="label">Wann?</span>
         ${chips('when', [['tonight', 'Heute Abend'], ['weekend', 'Wochenende'], ['date', 'Datum wählen']], f.when)}
         <input type="date" id="f-date" class="input" value="${esc(f.date && f.date >= isoDate(today()) ? f.date : isoDate(addDays(today(), 1)))}" min="${isoDate(today())}" ${f.when === 'date' ? '' : 'hidden'}>
+        <div id="conflicts"></div>
       </div>
       <div class="field" id="daytime-field" ${f.when === 'tonight' ? 'hidden' : ''}>
         <span class="label">Tageszeit</span>
@@ -376,7 +896,11 @@ RENDER.start = () => {
       </div>
       <div class="field" id="city-field">
         <label class="label" for="f-city">Stadt</label>
-        <div class="input-ico">${icon('pin')}<input id="f-city" class="input" placeholder="z. B. München" value="${esc(s.settings.city)}" autocomplete="address-level2"></div>
+        <div class="row gap">
+          <div class="input-ico grow">${icon('pin')}<input id="f-city" class="input" placeholder="z. B. München" value="${esc(currentPlaceName())}" autocomplete="address-level2"></div>
+          <button type="button" class="btn square" id="f-gps" aria-label="Meinen Standort verwenden" title="Meinen Standort verwenden">${icon('locate')}</button>
+        </div>
+        <small class="muted" id="gps-info">${L().geo && L().geo.name === currentPlaceName() ? 'Aktueller Standort · Wetter wird automatisch geprüft' : ''}</small>
       </div>
       <div class="field" id="note-field" hidden>
         <label class="label" for="f-note">Wunsch oder Hinweis (optional)</label>
@@ -397,6 +921,24 @@ RENDER.start = () => {
     $('#note-field').hidden = p !== 'partner';
   };
   updatePlanner();
+  const showConflicts = () => {
+    const iso = resolveDate({ ...f, date: $('#f-date').value });
+    $('#conflicts').innerHTML = conflictsHTML(iso);
+  };
+  showConflicts();
+  $('#f-date').addEventListener('change', showConflicts);
+  $('#f-gps').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    await withBusy(btn, async () => {
+      try {
+        const g = await useGps();
+        $('#f-city').value = g.name;
+        $('#gps-info').textContent = 'Aktueller Standort · Wetter wird automatisch geprüft';
+      } catch (err) {
+        $('#gps-info').textContent = err.message;
+      }
+    });
+  });
 
   $('#f-budget').addEventListener('input', (e) => {
     f.budget = Number(e.target.value);
@@ -408,6 +950,7 @@ RENDER.start = () => {
   });
   bindChips(form, 'when', (v) => {
     f.when = v;
+    setTimeout(showConflicts);
     $('#f-date').hidden = v !== 'date';
     $('#daytime-field').hidden = v === 'tonight';
   });
@@ -447,6 +990,7 @@ RENDER.start = () => {
   });
 
   bindWhoAmI();
+  on('[data-go]', 'click', (_, el) => go(el.dataset.go));
   on('[data-plan-request]', 'click', async (_, el) => {
     const req = S().requests.find((x) => x.id === el.dataset.planRequest);
     if (!req) return;
@@ -508,12 +1052,17 @@ async function ensureGeo(cityInput) {
 
 async function prepareSession(ctx, city) {
   const special = ctx.special ?? !!nearSpecial(S().settings, parseISO(ctx.date));
-  const geo = await ensureGeo(city);
+  const gps = L().geo;
+  let geo;
+  if (gps && (!city || city === gps.name)) geo = gps;
+  else if (!city && !S().settings.city) geo = await useGps().catch(() => null);
+  else geo = await ensureGeo(city);
   session.ctx = { ...ctx, special };
   session.weather = await getWeather(geo, ctx.date, ctx.daytime);
   session.shown = new Set();
   session.requestId = null;
   session.pollId = null;
+  session.backTo = null;
   await reroll();
 }
 
@@ -615,6 +1164,7 @@ function timeline(plan) {
           <div class="tl-body">
             <strong>${esc(s.title)}</strong>
             ${s.note ? `<p class="note-text">${esc(s.note)}</p>` : ''}
+            ${s.place ? placeLine(s.place, plan.date, s.time) : ''}
             ${s.links?.length ? `<div class="links">${s.links.map((l) => `<a class="link" href="${esc(l.href)}" target="_blank" rel="noopener">${esc(l.label)}${icon('external')}</a>`).join('')}</div>` : ''}
           </div>
         </li>`).join('')}
@@ -649,8 +1199,9 @@ RENDER.plan = (ideaId) => {
   const plan = buildPlan(idea, { ...ctx, start: draft.start }, S().settings, session.weather);
 
   root.innerHTML = `
-    ${topbar({ title: '', back: fromPoll ? ['poll', session.pollId, 'Abstimmung'] : ['suggest', '', 'Vorschläge'] })}
+    ${topbar({ title: '', back: fromPoll ? ['poll', session.pollId, 'Abstimmung'] : session.backTo ?? ['suggest', '', 'Vorschläge'] })}
     ${planHead(plan)}
+    ${conflictsHTML(plan.date)}
     <div class="panel row between slim">
       <label for="p-start" class="label">Startzeit</label>
       <input type="time" id="p-start" class="input narrow" value="${plan.start}">
@@ -705,6 +1256,11 @@ RENDER.plan = (ideaId) => {
     session.requestId = null;
     session.pollId = null;
     toast(surprise ? `Überraschung eingetragen – ${nameOf(partner)} sieht nur das Datum` : 'Im Kalender eingetragen');
+    if (gcal.isConnected()) {
+      gcal.createEvent(calendarEvent(surprise ? { ...plan, title: `Überraschung für ${nameOf(partner)}: ${plan.title}` } : plan))
+        .then(() => toast('Auch in Google Kalender eingetragen'))
+        .catch((e) => toast(e.message));
+    }
     go('date', id);
   });
 };
@@ -729,9 +1285,9 @@ RENDER.date = (id) => {
         ${d.hint ? `<div class="hint-box"><span class="kicker">Hinweis</span><p>${esc(d.hint)}</p></div>` : ''}
         <p class="muted small">Was ihr macht, erfährst du ${past ? 'gleich' : 'nach dem Date'}.</p>
       </section>
-      <div class="actions"><button class="btn" id="ics">${icon('download')}In Handy-Kalender</button></div>`;
+      <div class="actions">${calendarButtons()}</div>`;
     bindBack();
-    $('#ics').addEventListener('click', () => saveFile(`date-${d.date}.ics`, toICS({ ...d, title: `Überraschung von ${nameOf(d.plannedBy)}`, emoji: '🎁', steps: [] }), 'text/calendar'));
+    bindCalendarButtons({ ...d, title: `Überraschung von ${nameOf(d.plannedBy)}`, emoji: '🎁', steps: [] });
     return;
   }
 
@@ -770,7 +1326,7 @@ RENDER.date = (id) => {
         </ul>
       </section>` : ''}
     <div class="actions">
-      <button class="btn primary" id="ics">${icon('download')}In Handy-Kalender</button>
+      ${calendarButtons()}
       ${!d.surprise && plan.recipe ? `<button class="btn" id="shop">${icon('cart')}Zutaten auf Einkaufsliste</button>` : ''}
       ${!d.surprise && plan.todos.length ? `<button class="btn" id="todos">${icon('check')}To-dos übernehmen</button>` : ''}
       ${mySurprise ? `<button class="btn" id="reveal">${icon('eye')}Überraschung jetzt auflösen</button>` : ''}
@@ -799,7 +1355,7 @@ RENDER.date = (id) => {
     });
     el.closest('.item').classList.toggle('done', e.target.checked);
   });
-  $('#ics').addEventListener('click', () => saveFile(`date-${plan.date}.ics`, toICS(plan), 'text/calendar'));
+  bindCalendarButtons(mySurprise ? { ...plan, title: `Überraschung für ${nameOf(other(role))}: ${plan.title}` } : plan);
   $('#shop')?.addEventListener('click', () => {
     let added = 0;
     store.update((s) => {
@@ -997,6 +1553,9 @@ function entriesFor(date) {
   for (const sp of specialsOn(s.settings, date)) list.push({ type: 'special', time: '', title: `${sp.icon} ${sp.label}` });
   for (const e of s.events.filter((x) => x.date === iso)) list.push({ type: 'event', time: e.time, title: e.title, who: e.who, id: e.id });
   for (const t of s.todos.filter((x) => x.due === iso && !x.done)) list.push({ type: 'todo', time: '', title: t.text });
+  for (const e of L().gcal.events.filter((x) => x.date === iso)) list.push({ type: 'gcal', time: e.start, title: e.allDay ? `${e.title} (ganztägig)` : `${e.title}${e.end ? ` bis ${e.end}` : ''}` });
+  const partner = other(myRole());
+  for (const b of partnerBusy(iso)) list.push({ type: 'busy', time: b.start, title: `${nameOf(partner)}: ${b.allDay ? 'ganztägig belegt' : `belegt bis ${b.end}`}` });
   return list.sort((a, b) => (a.time || '00:00').localeCompare(b.time || '00:00'));
 }
 
@@ -1031,6 +1590,7 @@ RENDER.kalender = () => {
 
   root.innerHTML = `
     ${topbar({ title: 'Kalender' })}
+    ${gcalBar()}
     <section class="panel cal">
       <div class="cal-nav">
         <button class="icon-btn" id="prev" aria-label="Vorheriger Monat">${icon('left')}</button>
@@ -1041,7 +1601,7 @@ RENDER.kalender = () => {
       <div class="cal-grid">${cells.join('')}</div>
       <div class="legend">
         <span><i class="dot date"></i>Date</span><span><i class="dot pending"></i>In Planung</span><span><i class="dot fixed"></i>Fest</span>
-        <span><i class="dot special"></i>Besonderer Tag</span><span><i class="dot event"></i>Termin</span>
+        <span><i class="dot special"></i>Besonderer Tag</span><span><i class="dot event"></i>Termin</span><span><i class="dot gcal"></i>Google</span>
       </div>
     </section>
 
@@ -1066,6 +1626,7 @@ RENDER.kalender = () => {
       ${cal.sel >= todayIso ? `<button class="btn soft big" id="plan-here">${icon('sparkle')}Date für diesen Tag planen</button>` : ''}
     </section>`;
 
+  bindGcalBar();
   $('#prev').addEventListener('click', () => {
     cal.month = new Date(m.getFullYear(), m.getMonth() - 1, 1);
     render();
@@ -1231,7 +1792,7 @@ RENDER.mehr = () => {
   const role = myRole();
 
   root.innerHTML = `
-    ${topbar({ title: 'Einstellungen', sub: 'Einmal eintragen, die App erinnert euch.' })}
+    ${topbar({ title: 'Einstellungen', sub: 'Einmal eintragen, die App erinnert euch.', back: ['start', '', 'Start'] })}
 
     <section class="panel form">
       <div class="panel-head">${icon('users')}<h2>Ihr zwei</h2></div>
@@ -1247,17 +1808,7 @@ RENDER.mehr = () => {
 
     <section class="panel form">
       <div class="panel-head">${icon(sync.mode === 'shared' ? 'users' : 'lock')}<h2>Gemeinsam nutzen</h2></div>
-      ${sync.mode === 'shared' ? `
-        <p>${sync.stale ? 'Die Verbindung zum gemeinsamen Speicher fehlt gerade.' : 'Dates, Kalender, Listen und Abstimmungen werden für euch beide gespeichert.'}</p>
-        <ol class="steps-list">
-          <li>Oben rechts auf <strong>Teilen</strong> tippen.</li>
-          <li>Die E-Mail-Adresse deines Partners eintragen und als <strong>Editor</strong> einladen.</li>
-          <li>Dein Partner öffnet den Link und wählt unter „Ich bin“ seinen Namen.</li>
-        </ol>
-        ${!sync.canWrite || sync.writeError ? `<p class="warn-text">${esc(sync.writeError ?? 'Du kannst hier nur lesen.')}</p>` : ''}
-        <p class="muted small">Überraschungen liegen im privaten Bereich der planenden Person. Die andere Person sieht nur Datum, Uhrzeit und Hinweis.</p>
-      ` : `
-        <p>Diese Daten liegen nur auf diesem Gerät. Öffnet die App über den gemeinsamen Claude-Link, damit ihr beide dieselben Dates und Listen seht.</p>`}
+      ${sharingHTML()}
     </section>
 
     <section class="panel form">
@@ -1313,9 +1864,16 @@ RENDER.mehr = () => {
     </section>
 
     <section class="panel form">
+      <div class="panel-head">${icon('calendar')}<h2>Google Kalender</h2></div>
+      ${googleSettingsHTML()}
+    </section>
+
+    <section class="panel form">
       <div class="panel-head">${icon('download')}<h2>Daten</h2></div>
       <div class="row gap wrap">
         <button class="btn" id="export" type="button">${icon('download')}Backup speichern</button>
+        <label class="btn" for="import">${icon('repeat')}Backup laden</label>
+        <input type="file" id="import" accept="application/json,.json" hidden>
         <button class="btn ghost danger" id="reset" type="button">${icon('trash')}Alles löschen</button>
       </div>
     </section>`;
@@ -1329,7 +1887,7 @@ RENDER.mehr = () => {
     const k = el.dataset.set;
     store.update((s) => (s.settings[k] = el.type === 'checkbox' ? el.checked : el.value.trim()));
     toast('Gespeichert');
-    if (k === 'nameA' || k === 'nameB') render();
+    if (k === 'nameA' || k === 'nameB' || k === 'googleClientId') render();
   });
   const checkCity = async () => {
     const name = $('#s-city').value.trim();
@@ -1369,6 +1927,28 @@ RENDER.mehr = () => {
     store.update((s) => (s.settings.fixed = s.settings.fixed.filter((f) => f.id !== el.dataset.delFixed)));
     render();
   });
+  bindBack();
+  bindSharing();
+  bindGoogleSettings();
+  $('#import').addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const data = JSON.parse(await file.text());
+      if (!data.settings || !Array.isArray(data.dates)) throw new Error();
+      store.update((st) => {
+        st.settings = { ...st.settings, ...data.settings, members: st.settings.members };
+        for (const c of store.COLLECTIONS) if (Array.isArray(data[c])) {
+          const have = new Set(st[c].map((x) => x.id));
+          st[c] = [...st[c], ...data[c].filter((x) => x?.id && !have.has(x.id))];
+        }
+      });
+      toast('Backup geladen');
+      render();
+    } catch {
+      toast('Diese Datei ist kein Date-Ideen-Backup');
+    }
+  });
   $('#export').addEventListener('click', () => {
     const { secrets, ...shared } = S();
     saveFile(`date-ideen-backup-${isoDate(today())}.json`, JSON.stringify(shared, null, 2), 'application/json');
@@ -1384,13 +1964,22 @@ RENDER.mehr = () => {
 
 (async function boot() {
   const initial = location.hash.replace('#', '');
-  if (TAB_OF[initial] && ['kalender', 'listen', 'dates', 'mehr'].includes(initial)) current = { name: initial, param: null };
+  if (['kalender', 'listen', 'dates', 'mehr', 'entdecken'].includes(initial)) current = { name: initial, param: null };
   try {
-    IDEAS = await loadIdeas();
+    await loadIdeas();
   } catch {
-    IDEAS = [];
+    /* ohne Ideenliste weiter */
+  }
+  const invite = readInvite();
+  if (invite) {
+    history.replaceState(null, '', location.pathname);
+    saveConfig({ ...invite, coupleId: null });
+    current = { name: 'mehr', param: null };
   }
   render();
   autoReveal();
-  store.connect().then(() => render());
+  if (await store.connect()) return render();
+  const cfg = getConfig();
+  if (cfg?.url && cfg?.key) await connectRemote(cfg, !!invite);
+  refreshGpsSilently();
 })();

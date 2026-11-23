@@ -3,7 +3,9 @@
 import { addMinutes, daysBetween, parseISO, today } from './util.js';
 
 let ideasCache = null;
+let extraIdeas = [];
 
+/** Eingebaute Ideen aus data/ideas.json. */
 export async function loadIdeas() {
   if (!ideasCache) {
     const res = await fetch('data/ideas.json');
@@ -11,6 +13,12 @@ export async function loadIdeas() {
   }
   return ideasCache;
 }
+
+/** Eigene Ideen des Paares, die bei Vorschlägen mitzählen. */
+export function setExtraIdeas(list) {
+  extraIdeas = list.filter((i) => i && i.id && Array.isArray(i.steps) && i.steps.length);
+}
+export const allIdeas = () => [...(ideasCache ?? []), ...extraIdeas];
 
 export const ideaDuration = (idea) => idea.steps.reduce((sum, s) => sum + s.min, 0);
 
@@ -39,6 +47,7 @@ function score(idea, ctx, weather, recent) {
   }
   if (ctx.budget > 0) s += 0.3 * (idea.cost / ctx.budget); // Budget sinnvoll nutzen
   if (recent.has(idea.id)) s -= 1.2; // Wiederholungen vermeiden
+  if (idea.custom) s += 0.35; // eigene Ideen etwas bevorzugen
   return s;
 }
 
@@ -47,7 +56,8 @@ function score(idea, ctx, weather, recent) {
  * Gibt { ideas, exhausted } zurück; exhausted = alle passenden schon gezeigt.
  */
 export async function suggest(ctx, weather, { exclude = new Set(), recentIds = [], count = 3 } = {}) {
-  const all = await loadIdeas();
+  await loadIdeas();
+  const all = allIdeas();
   const recent = new Set(recentIds);
   const pool = all.filter((i) => fits(i, ctx, weather));
   let fresh = pool.filter((i) => !exclude.has(i.id));
@@ -71,6 +81,11 @@ const mapsSearch = (q) => `https://www.google.com/maps/search/?api=1&query=${enc
 /** Links für eine Station (Ortssuche und/oder Webseite). */
 export function stepLinks(step, idea, { city, vegan }) {
   const links = [];
+  if (step.place) {
+    links.push({ href: step.place.website || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(step.place.name + ' ' + (step.place.street ?? ''))}`, label: step.place.website ? 'Webseite' : 'Auf der Karte' });
+    links.push({ href: `https://www.google.com/maps/dir/?api=1&destination=${step.place.lat},${step.place.lon}`, label: 'Route' });
+    return links;
+  }
   if (step.q) {
     const q = `${vegan && step.food ? 'vegan ' : ''}${step.q}${city ? ' ' + city : ''}`;
     links.push({ href: mapsSearch(q), label: step.book ? 'Orte & buchen' : 'Orte finden' });
@@ -91,6 +106,7 @@ export function buildPlan(idea, { date, daytime, start }, settings, weather) {
   let t = start || defaultStart(idea, daytime);
   const steps = idea.steps.map((s) => {
     const step = { time: t, title: s.t, min: s.min, note: s.note ?? '', links: stepLinks(s, idea, opts) };
+    if (s.place) step.place = { name: s.place.name, hours: s.place.hours ?? '', price: s.place.price?.text ?? '', street: s.place.street ?? '' };
     t = addMinutes(t, s.min);
     return step;
   });

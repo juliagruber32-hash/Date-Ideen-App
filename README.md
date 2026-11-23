@@ -1,86 +1,120 @@
 # Date-Ideen-App
 
 Mobile Web-App für Paare: Budget und Tag eingeben, wettertaugliche Date-Vorschläge bekommen,
-mit einem Tipp einen fertigen Plan mit Uhrzeiten und Links erstellen und in den Kalender eintragen.
-Dazu gibt es einen gemeinsamen Kalender, eine To-do- und eine Einkaufsliste.
+einen fertigen Plan mit Uhrzeiten und Links erstellen – allein als Überraschung, auf Wunsch des Partners
+oder gemeinsam per Abstimmung. Dazu: Orte in der Nähe entdecken, eigene Ideen, gemeinsamer Kalender
+mit Google-Anbindung, To-do- und Einkaufsliste.
 
-Prototyp nach dem Konzept: kein Login, alle Daten bleiben im Browser (localStorage),
-Wetter kommt von [Open-Meteo](https://open-meteo.com) (kostenlos, ohne Anmeldung),
-die Date-Ideen stehen in `data/ideas.json`.
+## Einrichtung (einmalig)
 
-## Starten
+Die App läuft ohne Einrichtung auf einem Gerät. Für alles andere gibt es drei Schritte. Nur Schritt 1 ist nötig,
+damit Standort, Wetter und Ortssuche funktionieren.
 
-Die App braucht keinen Build-Schritt, muss aber über einen Webserver laufen (nicht per Doppelklick auf `index.html`):
+### 1. Webseite veröffentlichen (GitHub Pages, ca. 3 Minuten)
+
+GitHub Pages ist für private Repositories kostenpflichtig. Deshalb das Repository öffentlich machen
+(der Code enthält keine persönlichen Daten – eure Dates liegen auf den Handys bzw. in Supabase):
+
+1. Auf github.com dein Repository **Date-Ideen-App** öffnen.
+2. Oben rechts auf **Settings** (Zahnrad) tippen. Am Handy ggf. erst auf „…“ tippen.
+3. Ganz nach unten scrollen zu **Danger Zone** → **Change visibility** → **Change to public** → bestätigen.
+4. Links im Menü **Pages** wählen.
+5. Unter **Build and deployment** → **Source**: „Deploy from a branch“.
+6. Unter **Branch**: `claude/new-session-8eur1k` und Ordner `/ (root)` wählen → **Save**.
+7. Nach 1–2 Minuten ist die App erreichbar unter
+   **https://juliagruber32-hash.github.io/Date-Ideen-App/**
+
+Am Handy öffnen und über **Teilen → Zum Home-Bildschirm** (iPhone) bzw. **⋮ → App installieren** (Android)
+wie eine echte App installieren.
+
+### 2. Gemeinsam nutzen (Supabase, kostenlos, ca. 10 Minuten)
+
+Damit ihr beide dieselben Dates, Listen und Abstimmungen seht und Überraschungen geheim bleiben:
+
+1. Auf **supabase.com** ein kostenloses Konto anlegen (z. B. mit GitHub anmelden).
+2. **New project**: Name `date-ideen`, ein Datenbank-Passwort ausdenken (wird nicht weiter gebraucht),
+   Region **Central EU (Frankfurt)** → **Create new project**. Kurz warten.
+3. Links **SQL Editor** → **New query**. Den kompletten Inhalt der Datei
+   [`supabase/setup.sql`](supabase/setup.sql) hineinkopieren → **Run**. Es sollte „Success“ erscheinen.
+4. Links **Authentication** → **Sign In / Providers** (manchmal „Providers“) → **Allow anonymous sign-ins**
+   einschalten → **Save**.
+5. Oben auf **Connect** tippen (oder **Project Settings → API Keys**). Kopiere:
+   - **Project URL** (sieht aus wie `https://abcd1234.supabase.co`)
+   - **Publishable key** bzw. **anon public** key
+6. In der App: **Planen → Zahnrad oben rechts → Gemeinsam nutzen** – beide Werte einfügen → **Verbinden**.
+7. Unter „Ich bin“ deinen Namen wählen.
+8. Den **Einladungslink** kopieren und deinem Partner schicken. Wer ihn öffnet, ist mit euch verbunden
+   und wählt dann unter „Ich bin“ seinen Namen.
+
+Gut zu wissen: Kostenlose Supabase-Projekte pausieren nach etwa einer Woche ohne Nutzung. Dann im
+Supabase-Dashboard auf **Restore** tippen – die Daten bleiben erhalten.
+
+### 3. Google Kalender (optional, ca. 10 Minuten)
+
+Ohne Einrichtung funktioniert immer der Knopf **„Zu Google Kalender“** beim Date (öffnet Google Kalender mit
+vorausgefülltem Termin) sowie **„Handy-Kalender (.ics)“** für iPhone und Android.
+
+Damit die App eure Termine **lesen** kann (zeigt, wann ihr schon etwas vorhabt) und Dates **automatisch**
+einträgt, braucht sie eine Client-ID von Google:
+
+1. **console.cloud.google.com** öffnen, mit deinem Google-Konto anmelden, oben **Projekt auswählen → Neues Projekt**
+   (Name `Date-Ideen`) → **Erstellen**.
+2. Suchfeld oben: **Google Calendar API** → öffnen → **Aktivieren**.
+3. Suchfeld: **Google Auth Platform** (früher „OAuth-Zustimmungsbildschirm“) → **Jetzt starten**:
+   App-Name `Date-Ideen`, deine E-Mail, Zielgruppe **Extern** → fertigstellen.
+4. Unter **Zielgruppe** → **Testnutzer** → beide Gmail-Adressen (deine und die deines Partners) hinzufügen.
+5. Unter **Datenzugriff** → **Bereiche hinzufügen** → `.../auth/calendar.events` auswählen → speichern.
+6. Unter **Clients** → **Client erstellen** → Typ **Webanwendung** →
+   **Autorisierte JavaScript-Quellen**: `https://juliagruber32-hash.github.io` → **Erstellen**.
+7. Die **Client-ID** (endet auf `.apps.googleusercontent.com`) kopieren.
+8. In der App: **Zahnrad → Google Kalender** → Client-ID einfügen → **Mit Google verbinden**.
+   Google zeigt einen Hinweis „App nicht überprüft“ – das ist bei privaten Apps normal: **Weiter**.
+
+Jeder verbindet seinen eigenen Google Kalender. Der Partner sieht von deinen Terminen nur „belegt“, keine Titel.
+Die Google-Verbindung hält etwa eine Stunde; danach im Kalender-Tab auf **Verbinden** tippen.
+
+## Funktionen
+
+| Bereich | Inhalt |
+| --- | --- |
+| **Planen** | „Wer plant?“: *Ich* (optional als Überraschung mit Hinweis), *Partner* (Anfrage senden) oder *Zusammen* (Abstimmung mit Match). Wann, Budget, Entfernung, Standort per GPS. Warnung, wenn an dem Tag schon Termine stehen. „Für dich“-Postfach mit Anfragen, Abstimmungen und Überraschungen. Date-Rhythmus und wer als Nächstes plant. |
+| **Entdecken** | Orte in der Nähe aus OpenStreetMap: Museen, Kinos, Theater, Restaurants, Cafés, Bars, Bowling, Bouldern, Escape Rooms, Minigolf, Zoo, Parks, Aussichtspunkte, Therme, Eislaufen – mit Entfernung, Öffnungszeiten („Jetzt geöffnet“) und Eintritt, wo bekannt. „Als Date planen“ oder „Merken“. Eigene Ideen anlegen. |
+| **Kalender** | Monatsansicht mit Dates, Anfragen, Abstimmungen, festen Terminen, besonderen Tagen, eigenen Terminen, To-dos, Google-Terminen und den belegten Zeiten des Partners. |
+| **Listen** | To-do (mit Zuständigkeit und Fälligkeit) und Einkaufsliste. |
+| **Dates** | Geplante Dates und Erinnerungen mit Bewertung von beiden. |
+| **Einstellungen** (Zahnrad) | Namen, „Ich bin“, Gemeinsam nutzen, Stadt, vegan, Rhythmus, feste Termine, besondere Tage, Google Kalender, Backup speichern/laden. |
+
+**Wetter** kommt automatisch von [Open-Meteo](https://open-meteo.com) für den Standort bzw. die Stadt. Bei Regen
+gibt es nur Drinnen-Ideen. **Preise** sind in OpenStreetMap oft nicht eingetragen – dann zeigt die App
+„Preis auf der Webseite“ und verlinkt die Webseite des Ortes.
+
+### Die Claude-Version
+
+Die App läuft auch als Claude-Artifact (geteilter Link aus Claude). Dort funktioniert gemeinsames Planen über
+Claude, aber Claude erlaubt dort keinen Standort, kein automatisches Wetter und keine Ortssuche. Mit
+**Backup speichern** (Claude-Version) und **Backup laden** (Webseite) lassen sich Daten umziehen.
+
+## Technik
+
+Kein Build-Schritt. Lokal testen:
 
 ```bash
-python3 -m http.server 8000
-# dann http://localhost:8000 öffnen
+python3 -m http.server 8000   # dann http://localhost:8000
 ```
 
-**Auf dem Handy:** Ordner auf einen statischen Host legen (z. B. GitHub Pages: Settings → Pages → Branch wählen)
-und die Seite im Handy-Browser öffnen. Über „Teilen → Zum Home-Bildschirm“ (iPhone) bzw. „App installieren“ (Android)
-wird sie wie eine echte App installiert und funktioniert danach auch offline (Wetter braucht Internet).
-
-## Bildschirme
-
-| Tab | Inhalt |
-| --- | --- |
-| **Finden** | Wann (heute Abend / Wochenende / Datum), Tageszeit, Budget, Entfernung, Stadt. Erinnerungen an Jahrestag & Co. sowie euren Date-Rhythmus. |
-| → Vorschläge | 1–3 Karten mit Wetter, Kosten, Dauer und Ablauf. „Andere Ideen“ würfelt neu. Bei Regen nur Drinnen-Ideen. |
-| → Date-Plan | Ablauf mit Uhrzeiten (Startzeit anpassbar), pro Station Links zu Orten (Google Maps), Webseiten oder Rezepten. „In Kalender eintragen“. |
-| **Kalender** | Monatsansicht mit Dates, festen Terminen, besonderen Tagen, eigenen Terminen und fälligen To-dos. Fortschritt zum Monatsziel. |
-| **Listen** | To-do (mit Zuständigkeit und Fälligkeit) und Einkaufsliste. Zutaten und Reservierungs-To-dos lassen sich aus einem Date übernehmen. |
-| **Dates** | Geplante und vergangene Dates, vergangene mit Herzen bewerten. Export als `.ics` für den Handy-Kalender. |
-| **Mehr** | Namen, Stadt, vegan-Modus, Dates pro Monat, Jahrestag, Valentinstag, Geburtstage/besondere Tage, feste Termine, Backup. |
-
-## Wie die Vorschläge entstehen
-
-`js/engine.js` filtert die Ideen nach Budget, Entfernung, Tageszeit und Wetter (Regen → nur drinnen,
-Sternegucken nur bei klarem Himmel) und bewertet sie dann: gutes Wetter bevorzugt Draußen-Ideen, Kälte
-Drinnen-Ideen; zuletzt gemachte Dates werden seltener vorgeschlagen; liegt der Tag nahe an einem
-besonderen Tag, kommen die „besonderen“ Ideen nach vorne. Im vegan-Modus suchen Essens-Links nach
-veganen Orten und Rezepte tauschen Zutaten aus.
-
-## Neue Ideen hinzufügen
-
-Ein Eintrag in `data/ideas.json`:
-
-```json
-{
-  "id": "eindeutige-id",
-  "title": "Titel",
-  "emoji": "🎳",
-  "teaser": "Ein Satz Beschreibung",
-  "place": "drinnen",          // oder "draußen"
-  "cost": 35,                  // geschätzt, für beide zusammen in €
-  "reach": 1,                  // 0 = zuhause, 1 = in der Stadt, 2 = Ausflug
-  "times": ["abend", "tag"],
-  "special": false,            // true = für Jahrestag & Co.
-  "needsClear": false,         // true = nur bei klarem Himmel
-  "start": { "abend": "19:00" },
-  "steps": [
-    { "t": "Station", "min": 90, "q": "Suchbegriff für Maps", "url": "https://…",
-      "food": true, "book": true, "todo": "Tisch reservieren", "note": "Tipp" }
-  ],
-  "recipe": { "name": "…", "url": "…", "ingredients": ["Mehl", { "std": "Käse", "vegan": "Hefeflocken" }] }
-}
+```
+index.html              App-Hülle, Tab-Leiste
+css/app.css             Design (hell/dunkel)
+js/app.js               Bildschirme und Abläufe
+js/store.js             Datenhaltung: lokal, Claude-DB oder Supabase; feldgenaue Synchronisierung
+js/remote.js            Supabase-Anbindung (anonyme Anmeldung, Paar-Code, Live-Updates)
+js/places.js            GPS, Ortsname, Overpass-Ortssuche, Öffnungszeiten
+js/gcal.js              Google Kalender (lesen, eintragen, Vorlage-Link)
+js/engine.js            Vorschläge, Plan mit Uhrzeiten, .ics, Rhythmus
+js/weather.js           Open-Meteo
+js/special.js           Jahrestag, Valentinstag, Geburtstage
+data/ideas.json         46 eingebaute Date-Ideen
+supabase/setup.sql      Tabellen, Zugriffsregeln, Funktionen für Supabase
 ```
 
-## Struktur
-
-```
-index.html            App-Hülle + Tab-Leiste
-css/app.css           Design (hell/dunkel)
-js/app.js             Router + alle Bildschirme
-js/engine.js          Vorschläge, Plan, .ics, Date-Rhythmus
-js/weather.js         Open-Meteo (Geocoding + Vorhersage)
-js/special.js         Jahrestag, Valentinstag, Geburtstage
-js/store.js           Speicherung im Browser
-data/ideas.json       46 Date-Ideen
-sw.js, manifest.webmanifest, icons/   Installierbar & offline
-```
-
-## Später (laut Konzept)
-
-Echte Orte über Google Places/OpenStreetMap, GPS-Standort, Paar-Profil mit Vorlieben,
-gemeinsames Paar-Konto mit Synchronisierung (z. B. Supabase/Firebase), direkte Buchung.
+Neue eingebaute Ideen kommen in `data/ideas.json`; eigene Ideen legt ihr direkt in der App an.
