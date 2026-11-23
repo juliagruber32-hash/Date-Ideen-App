@@ -309,7 +309,7 @@ export const mapLink = (p) => `https://www.google.com/maps/search/?api=1&query=$
 
 /* ------------------------------------------------------------ Bilder */
 
-const commonsFile = (name, width = 640) =>
+const commonsFile = (name, width = 500) =>
   `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(name.replace(/^File:/i, '').replace(/ /g, '_'))}?width=${width}`;
 
 function imageFromTags(t) {
@@ -391,8 +391,13 @@ export async function searchMixed(catIds, center, radius) {
   for (const r of radiusLadder(radius)) {
     const missing = catIds.filter((id) => groups[id].length < 3);
     if (!missing.length) break;
-    const found = await mixedOnce(missing, center, r);
-    for (const id of missing) groups[id] = found[id];
+    let found;
+    try {
+      found = await mixedOnce(missing, center, r);
+    } catch {
+      continue; // ein Server-Fehler soll nicht alles verwerfen – nächste Stufe versuchen
+    }
+    for (const id of missing) if (found[id].length >= groups[id].length) groups[id] = found[id];
   }
   memo.set(key, groups);
   return groups;
@@ -400,8 +405,9 @@ export async function searchMixed(catIds, center, radius) {
 
 async function mixedOnce(catIds, center, radius) {
   const cats = catIds.map(categoryById).filter(Boolean);
-  const parts = cats.flatMap((c) => c.filters.map((f) => `nwr${f}(around:${radius},${center.lat},${center.lon});`)).join('');
-  const query = `[out:json][timeout:25];(${parts});out center tags 150;`;
+  // Je Kategorie eine eigene Obergrenze – sonst verdrängen z. B. viele Restaurants alle anderen Orte
+  const parts = cats.map((c, k) => `(${c.filters.map((f) => `nwr${f}(around:${radius},${center.lat},${center.lon});`).join('')})->.s${k};.s${k} out center tags 40;`).join('');
+  const query = `[out:json][timeout:40];${parts}`;
   const json = await overpass(query);
   const groups = Object.fromEntries(cats.map((c) => [c.id, []]));
   const seen = new Set();

@@ -4,7 +4,7 @@
 
 import { googleDetails } from './gplaces.js';
 
-const CACHE_KEY = 'dately.images.v1';
+const CACHE_KEY = 'dately.images.v2';
 let cache = null;
 const pending = new Map();
 const session = new Map();
@@ -54,14 +54,14 @@ async function wikiSummary(title, lang = 'de') {
   if (!res.ok) return null;
   const j = await res.json();
   if (j.type === 'disambiguation') return null;
-  return { title: j.title, image: j.thumbnail?.source?.replace(/\/\d+px-/, '/640px-') ?? '' };
+  return { title: j.title, image: j.thumbnail?.source ?? '' };
 }
 
 /** Fotos von Wikimedia Commons, die direkt am Ort aufgenommen wurden und den Namen tragen. */
 async function commonsNear(place) {
   const want = tokens(place.name);
   if (!want.length) return '';
-  const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=geosearch&ggscoord=${place.lat}%7C${place.lon}&ggsradius=150&ggsnamespace=6&ggslimit=30&prop=imageinfo&iiprop=url&iiurlwidth=640&format=json&origin=*`;
+  const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=geosearch&ggscoord=${place.lat}%7C${place.lon}&ggsradius=150&ggsnamespace=6&ggslimit=30&prop=imageinfo&iiprop=url&iiurlwidth=500&format=json&origin=*`;
   const res = await fetch(url);
   if (!res.ok) return '';
   const pages = Object.values((await res.json()).query?.pages ?? {});
@@ -106,7 +106,8 @@ export async function findImage(job, googleKey = '') {
       url = '';
     }
     // Ohne Google-Foto (z. B. Schlüssel noch nicht aktiv) nur für diese Sitzung merken – später erneut versuchen
-    if (googleKey && job.place && !/googleapis\.com/.test(url)) session.set(key, url);
+    // Nichts gefunden oder noch kein Google-Foto: nur für diese Sitzung merken, später erneut versuchen
+    if (!url || (googleKey && job.place && !/googleapis\.com/.test(url))) session.set(key, url);
     else {
       c[key] = url;
       save();

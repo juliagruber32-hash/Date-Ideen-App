@@ -2896,6 +2896,8 @@ function extensionsFor(lastCat, endTime) {
   const drink = { t: 'Drink zum Ausklang', q: 'Bar', min: 60, cost: 30 };
   const walk = { t: 'Spaziergang', q: 'Park', min: 60 };
   const dessert = { t: 'Eis oder Dessert', q: 'Eisdiele', min: 30, food: true, cost: 12 };
+  const late = endTime >= '20:30' || endTime < '04:00';
+  if (late) return [drink, dessert];
   if (['restaurant', 'wine', 'xmas', 'beergarden'].includes(lastCat)) return evening ? [drink, dessert] : [walk, coffee];
   if (lastCat === 'bar') return [dinner, dessert];
   if (['cafe', 'icecream'].includes(lastCat)) return evening ? [dinner, drink] : [walk, lunch];
