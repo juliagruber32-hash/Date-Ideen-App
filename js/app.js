@@ -3337,7 +3337,7 @@ async function loadStepPlaces(steps, draft, stepCats, center, ctx) {
           .map((p) => ({ ...p, distFromPrev: distanceKm(prev, p), open: isOpenAt(p.hours, when) }))
           .filter((p) => p.open !== false || p.id === draft.picks[i])
           // Hauptort: zuerst im gewählten Umkreis; bekannte Orte weiter weg kommen unten dazu
-          .filter((p) => cat !== firstCat || p.km * 1000 <= radius || p.id === draft.picks[i])
+          .filter((p) => cat !== firstCat || !pool.some((q) => q.km * 1000 <= radius) || p.km * 1000 <= radius || p.id === draft.picks[i])
           // Nähe zählt am meisten; bestätigt geöffnete Orte bekommen 1,5 km Vorsprung
           .sort((a, b) => (b.id === draft.picks[i]) - (a.id === draft.picks[i]) || (a.distFromPrev - (a.open === true ? 1.5 : 0)) - (b.distFromPrev - (b.open === true ? 1.5 : 0)))
           .slice(0, 7);
