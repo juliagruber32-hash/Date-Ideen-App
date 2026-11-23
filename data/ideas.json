@@ -1579,5 +1579,48 @@
     "moods": [
       "romantisch"
     ]
+  },
+  {
+    "id": "weihnachtsmarkt",
+    "title": "Weihnachtsmarkt-Bummel",
+    "emoji": "🎄",
+    "teaser": "Lichterglanz, Glühwein oder Punsch und gebrannte Mandeln für den Heimweg.",
+    "place": "draußen",
+    "cost": 30,
+    "reach": 1,
+    "times": [
+      "abend",
+      "tag"
+    ],
+    "season": [
+      "11-20",
+      "12-31"
+    ],
+    "moods": [
+      "romantisch",
+      "gemütlich"
+    ],
+    "start": {
+      "abend": "18:00",
+      "tag": "15:00"
+    },
+    "steps": [
+      {
+        "t": "Weihnachtsmarkt",
+        "min": 90,
+        "q": "Weihnachtsmarkt",
+        "note": "Handschuhe einpacken"
+      },
+      {
+        "t": "Glühwein & Punsch",
+        "min": 30,
+        "q": "Weihnachtsmarkt",
+        "food": true
+      },
+      {
+        "t": "Gebrannte Mandeln für den Heimweg",
+        "min": 15
+      }
+    ]
   }
 ]

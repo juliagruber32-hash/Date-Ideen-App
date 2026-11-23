@@ -63,13 +63,43 @@ export const CATEGORIES = [
   { id: 'arcade', hidden: true, moods: [], label: 'Spielhallen', emoji: '🕹️', filters: ['["leisure"="amusement_arcade"]', '["sport"="laser_tag"]'], place: 'drinnen', times: ['tag', 'abend'], cost: 40, plan: [['Arcade', 90]] },
   { id: 'boat', hidden: true, moods: [], label: 'Bootsverleih', emoji: '🚣', filters: ['["amenity"="boat_rental"]', '["shop"="boat"]["rental"]'], place: 'draußen', times: ['tag'], cost: 30, plan: [['Boot', 60]] },
   { id: 'chocolate', hidden: true, moods: [], label: 'Schokolade', emoji: '🍫', filters: ['["shop"="chocolate"]', '["shop"="confectionery"]'], place: 'drinnen', times: ['tag'], cost: 20, plan: [['Schokolade', 30]] },
-  { id: 'icerink', moods: ['aktiv','romantisch'], label: 'Eislaufen', emoji: '⛸️', filters: ['["leisure"="ice_rink"]'], place: 'drinnen', times: ['tag', 'abend'], cost: 25, plan: [['Eislaufen', 90], ['Punsch', 30]] },
+  { id: 'icerink', moods: ['aktiv','romantisch'], label: 'Eislaufen', emoji: '⛸️', filters: ['["leisure"="ice_rink"]', '["sport"~"ice_skating|ice_hockey|ice_stock"]["leisure"~"^(stadium|sports_centre|sports_hall|pitch|ice_rink)$"]', '["building"="ice_rink"]["name"]'], place: 'drinnen', times: ['tag', 'abend'], cost: 25, plan: [['Eislaufen', 90], ['Punsch', 30]] },
+  { id: 'xmas', seasonal: true, moods: ['romantisch', 'gemütlich'], label: 'Weihnachtsmärkte', emoji: '🎄', filters: ['["christmas:event"]', '["christmas:type"~"market"]', '["amenity"="marketplace"]["name"~"(Christkindl|Weihnachts|Advents)",i]'], place: 'draußen', times: ['abend', 'tag'], cost: 25, food: true, plan: [['Weihnachtsmarkt', 90], ['Glühwein & Punsch', 30]] },
 ];
 export const categoryById = (id) => CATEGORIES.find((c) => c.id === id);
 
 const memo = new Map();
 
 /** Orte einer Kategorie im Umkreis (Meter). Sortiert nach Entfernung. */
+// Mehrere Overpass-Server: fällt einer aus, wird der nächste gefragt.
+const OVERPASS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+];
+
+async function overpass(query) {
+  let last = 'Ortssuche gerade nicht erreichbar.';
+  for (const url of OVERPASS) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 20000);
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'data=' + encodeURIComponent(query),
+        signal: ctrl.signal,
+      });
+      clearTimeout(timer);
+      if (res.ok) return await res.json();
+      last = res.status === 429 ? 'Zu viele Anfragen – bitte kurz warten.' : last;
+    } catch {
+      /* nächsten Server versuchen */
+    }
+  }
+  throw new Error(last);
+}
+
 export const CUISINES = [
   { id: 'asiatisch', label: 'Asiatisch', tags: ['asian', 'chinese', 'japanese', 'sushi', 'thai', 'vietnamese', 'korean', 'ramen', 'noodle', 'dim_sum'] },
   { id: 'italienisch', label: 'Italienisch', tags: ['italian', 'pizza', 'pasta'] },
@@ -103,13 +133,7 @@ export async function searchNearby(categoryId, center, radius, cuisineId = '') {
   const extra = cuisineId ? cuisineFilters(cuisineId) : [''];
   const parts = cat.filters.flatMap((f) => extra.map((x) => `nwr${f}${x}(around:${radius},${center.lat},${center.lon});`)).join('');
   const query = `[out:json][timeout:25];(${parts});out center tags 60;`;
-  const res = await fetch('https://overpass-api.de/api/interpreter', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: 'data=' + encodeURIComponent(query),
-  });
-  if (!res.ok) throw new Error(res.status === 429 ? 'Zu viele Anfragen – bitte kurz warten.' : 'Ortssuche gerade nicht erreichbar.');
-  const json = await res.json();
+  const json = await overpass(query);
   const seen = new Set();
   const places = json.elements
     .map((el) => toPlace(el, cat, center))
@@ -122,7 +146,11 @@ export async function searchNearby(categoryId, center, radius, cuisineId = '') {
 }
 
 function toPlace(el, cat, center) {
-  const t = el.tags ?? {};
+  const raw = el.tags ?? {};
+  // Weihnachtsmärkte haben eigene Angaben (christmas:name, christmas:opening_hours …)
+  const t = cat.id === 'xmas'
+    ? { ...raw, name: raw['christmas:name'] || raw.name, opening_hours: raw['christmas:opening_hours'] || raw.opening_hours, website: raw['christmas:website'] || raw.website }
+    : raw;
   if (!t.name) return null;
   const lat = el.lat ?? el.center?.lat;
   const lon = el.lon ?? el.center?.lon;
@@ -344,13 +372,7 @@ export async function searchMixed(catIds, center, radius) {
   if (memo.has(key)) return memo.get(key);
   const parts = cats.flatMap((c) => c.filters.map((f) => `nwr${f}(around:${radius},${center.lat},${center.lon});`)).join('');
   const query = `[out:json][timeout:25];(${parts});out center tags 150;`;
-  const res = await fetch('https://overpass-api.de/api/interpreter', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: 'data=' + encodeURIComponent(query),
-  });
-  if (!res.ok) throw new Error(res.status === 429 ? 'Zu viele Anfragen – bitte kurz warten.' : 'Ortssuche gerade nicht erreichbar.');
-  const json = await res.json();
+  const json = await overpass(query);
   const groups = Object.fromEntries(cats.map((c) => [c.id, []]));
   const seen = new Set();
   for (const el of json.elements) {
@@ -370,6 +392,7 @@ export async function searchMixed(catIds, center, radius) {
 /* ------------------------------------------------------------ Welche Ortsart passt zu einer Plan-Station? */
 
 const STEP_RULES = [
+  [/weihnachtsmarkt|christkindl/, 'xmas'],
   [/bowling/, 'bowling'],
   [/museum/, 'museum'],
   [/galerie/, 'gallery'],
@@ -398,8 +421,17 @@ const STEP_RULES = [
 ];
 
 /** Ortsart für eine Station – nur wenn sie außer Haus stattfindet (Suchbegriff vorhanden). */
-export function catForStep(step) {
-  if (!step.q || step.place) return null;
+/** Advents- und Weihnachtszeit (ca. 20. November bis 31. Dezember)? */
+export function isXmasSeason(iso) {
+  const md = (iso ?? '').slice(5);
+  return md >= '11-20' && md <= '12-31';
+}
+
+export function catForStep(step, iso) {
+  if (step.place) return null;
+  // In der Adventszeit: Punsch, Glühwein & Co. auf dem Weihnachtsmarkt
+  if (isXmasSeason(iso) && /punsch|glühwein|heiße schokolade|weihnacht|christkindl/i.test(`${step.t} ${step.q ?? ''}`)) return 'xmas';
+  if (!step.q) return null;
   const text = step.q.toLowerCase();
   return STEP_RULES.find(([re]) => re.test(text))?.[1] ?? null;
 }

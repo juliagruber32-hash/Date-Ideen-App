@@ -2,7 +2,7 @@ import * as store from './store.js';
 import { isHiddenFromMe, myRole, nameOf, other } from './store.js';
 import { geocode, getWeather, manualWeather } from './weather.js';
 import { allIdeas, buildPlan, combineWishes, setPreferences, defaultStart, ideaDuration, loadIdeas, MOODS, moodLabel, REACH, recommend, rhythmStatus, setExtraIdeas, suggest, toICS } from './engine.js';
-import { appleMapsLink, CATEGORIES, CUISINES, catForStep, categoryById, directionsLink, distanceKm, fmtKm, fmtMin, formatHours, hoursOn, isOpenAt, locate, mapLink, placeName, reservationLinks, searchMixed, searchNearby, travelEstimates } from './places.js';
+import { appleMapsLink, CATEGORIES, CUISINES, catForStep, isXmasSeason, categoryById, directionsLink, distanceKm, fmtKm, fmtMin, formatHours, hoursOn, isOpenAt, locate, mapLink, placeName, reservationLinks, searchMixed, searchNearby, travelEstimates } from './places.js';
 import { googleDetails } from './gplaces.js';
 import * as photos from './photos.js';
 import { SUPABASE } from './config.js';
@@ -446,6 +446,7 @@ function cleanDuplicateSurveys() {
     const list = open.filter((p) => (p.kind ?? 'full') === k).sort((a, b) => Object.keys(b.survey ?? {}).length - Object.keys(a.survey ?? {}).length || b.createdAt - a.createdAt);
     if (list[0]) keep.add(list[0].id);
   }
+  if (open.some((p) => (p.kind ?? 'full') === 'full')) open.filter((p) => p.kind === 'day').forEach((p) => keep.delete(p.id));
   const drop = open.filter((p) => !keep.has(p.id) && !Object.keys(p.survey ?? {}).length).map((p) => p.id);
   if (drop.length) store.update((st) => (st.polls = st.polls.filter((p) => !drop.includes(p.id))));
 }
@@ -714,7 +715,7 @@ RENDER.entdecken = () => {
   if (d.tab === 'gemerkt') return renderSaved(head + tabs);
 
   const center = discoverCenter();
-  const cats = CATEGORIES.filter((c) => !c.hidden && (!d.mood || c.moods.includes(d.mood)));
+  const cats = CATEGORIES.filter((c) => !c.hidden && (!c.seasonal || isXmasSeason(isoDate(today()))) && (!d.mood || c.moods.includes(d.mood)));
   if (!cats.some((c) => c.id === d.cat)) d.cat = cats[0]?.id ?? 'restaurant';
   const cat = categoryById(d.cat);
   let results = d.results ?? [];
@@ -1408,7 +1409,7 @@ async function loadNear() {
   if (!center) return;
   d.nearLoading = true;
   d.nearError = null;
-  let cats = NEAR_CATS[feedFilter.daytime];
+  let cats = [...(isXmasSeason(feedDate()) ? ['xmas'] : []), ...NEAR_CATS[feedFilter.daytime]];
   if (feedFilter.mood) cats = CATEGORIES.filter((c) => c.moods.includes(feedFilter.mood) && c.times.includes(feedFilter.daytime)).map((c) => c.id).slice(0, 6);
   if (feedFilter.place) cats = cats.filter((id) => categoryById(id).place === feedFilter.place);
   if (feedFilter.reach === 0) cats = [];
@@ -2095,6 +2096,7 @@ function inboxItems() {
     const k = p.kind ?? 'full';
     if (!latestSurvey[k] || p.createdAt > latestSurvey[k].createdAt) latestSurvey[k] = p;
   }
+  if (latestSurvey.full) delete latestSurvey.day; // die große Umfrage fragt die Tage mit ab
   for (const p of Object.values(latestSurvey)) {
     const mine = !!p.survey?.[role];
     const theirs = !!p.survey?.[other(role)];
@@ -2568,7 +2570,7 @@ RENDER.plan = (ideaId) => {
   const partner = other(role);
   const fromPoll = !!session.pollId;
   const draft = (drafts[ideaId] ??= { start: defaultStart(idea, ctx.daytime), surprise: !fromPoll, hint: '', picks: {}, near: null, openAlt: null });
-  const stepCats = idea.steps.map(catForStep);
+  const stepCats = idea.steps.map((s) => catForStep(s, ctx.date));
   const center = discoverCenter();
   const wantsPlaces = stepCats.some(Boolean) && ctx.reach !== 0 && !store.inArtifact();
   if (wantsPlaces && center && !draft.near && !draft.nearLoading) loadStepPlaces(idea, draft, stepCats, center, ctx);
@@ -2586,7 +2588,14 @@ RENDER.plan = (ideaId) => {
     if (!center) return `<p class="muted small">Erlaube den Standort oder trag eine Stadt ein, dann schlägt Dately hier konkrete Orte vor.</p>`;
     if (draft.nearLoading && !draft.near) return `<p class="muted small"><span class="spinner tiny"></span> Suche passende Orte in der Nähe …</p>`;
     const list = draft.near?.[i] ?? [];
-    if (!list.length) return draft.near ? '<p class="muted small">Keine passenden Orte in der Nähe gefunden.</p>' : '';
+    if (!list.length) {
+      if (!draft.near) return '';
+      const cat = categoryById(stepCats[i]);
+      const place = center.name && center.name !== 'Mein Standort' ? center.name : S().settings.city;
+      const term = `${cat.id === 'xmas' ? 'Christkindlmarkt Weihnachtsmarkt' : cat.label} ${place}`.trim();
+      return `<p class="muted small">In den Kartendaten ist hier noch nichts eingetragen.</p>
+        <div class="links"><a class="link" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(term)}" target="_blank" rel="noopener">${esc(cat.label)} auf Google Maps${icon('external')}</a></div>`;
+    }
     const pick = draft.picks[i];
     return `
       <div class="alt-row">

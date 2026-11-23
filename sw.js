@@ -1,5 +1,5 @@
 // Service Worker: App offline verfügbar machen. Wetter-Anfragen gehen immer ins Netz.
-const VERSION = 'v15';
+const VERSION = 'v16';
 const SHELL = [
   './',
   'index.html',
@@ -40,7 +40,7 @@ self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
   // Netz zuerst (damit Updates sofort ankommen), Cache als Fallback offline.
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request, { cache: 'no-cache' }) // beim Server nachfragen, ob es eine neue Version gibt
       .then((res) => {
         const copy = res.clone();
         caches.open(VERSION).then((c) => c.put(e.request, copy));

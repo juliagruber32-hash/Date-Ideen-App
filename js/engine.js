@@ -106,7 +106,15 @@ export function recommend(dates, count = 3) {
 }
 
 /** Passt die Idee grundsätzlich zu den Eingaben? */
+function inSeason(idea, iso) {
+  if (!idea.season || !iso) return true;
+  const md = iso.slice(5);
+  const [from, to] = idea.season;
+  return from <= to ? md >= from && md <= to : md >= from || md <= to;
+}
+
 function fits(idea, ctx, weather, useMood = true) {
+  if (!inSeason(idea, ctx.date)) return false;
   if (useMood && ctx.mood && !(idea.moods ?? []).includes(ctx.mood)) return false;
   if (useMood && ctx.moods?.length && !(idea.moods ?? []).some((m) => ctx.moods.includes(m))) return false;
   if (ctx.placePref && idea.place !== ctx.placePref) return false;
