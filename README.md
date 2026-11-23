@@ -49,8 +49,8 @@ Damit ihr beide dieselben Dates, Listen und Abstimmungen seht und Überraschunge
    auch für andere Paare, die eure Webseite nutzen. Beide Werte sind öffentlich gedacht, geschützt wird
    über die Zugriffsregeln aus `setup.sql`.
 7. Unter „Ich bin“ deinen Namen wählen.
-8. Den **Einladungslink** kopieren und deinem Partner schicken. Wer ihn öffnet, ist mit euch verbunden
-   und wählt dann unter „Ich bin“ seinen Namen.
+8. Den **Einladungslink** kopieren und der anderen Person schicken. Wer ihn öffnet, ist mit euch verbunden
+   und wählt dann unter „Ich bin“ den eigenen Namen.
 
 Gut zu wissen: Kostenlose Supabase-Projekte pausieren nach etwa einer Woche ohne Nutzung. Dann im
 Supabase-Dashboard auf **Restore** tippen – die Daten bleiben erhalten.
@@ -76,7 +76,7 @@ einträgt, braucht sie eine Client-ID von Google:
 8. In der App: **Zahnrad → Google Kalender** → Client-ID einfügen → **Mit Google verbinden**.
    Google zeigt einen Hinweis „App nicht überprüft“ – das ist bei privaten Apps normal: **Weiter**.
 
-Jeder verbindet seinen eigenen Google Kalender. Der Partner sieht von deinen Terminen nur „belegt“, keine Titel.
+Ihr verbindet beide euren eigenen Google Kalender. Die andere Person sieht von deinen Terminen nur „belegt“, keine Titel.
 Die Google-Verbindung hält etwa eine Stunde; danach im Kalender-Tab auf **Verbinden** tippen.
 
 ### 4. Google-Bewertungen & Fotos (optional)
@@ -104,13 +104,13 @@ Ideen werden nach drei Meldungen automatisch ausgeblendet; löschen kannst du si
 
 | Bereich | Inhalt |
 | --- | --- |
-| **Planen** | „Wer plant?“: *Ich* (optional als Überraschung mit Hinweis), *Partner* (Anfrage senden) oder *Zusammen*: beide beantworten getrennt eine kurze Umfrage (Tage, Tageszeit, Lust, drinnen/draußen, Budget, Entfernung), die App findet den besten gemeinsamen Tag, schlägt passende Ideen vor und ihr stimmt ab bis zum Match. Die App legt fest, wer mit Planen dran ist (abwechselnd, mit „Tauschen“), und erinnert, wenn ein Date fällig ist. Wann, Budget, Entfernung, Standort per GPS. Warnung, wenn an dem Tag schon Termine stehen. „Für dich“-Postfach mit Anfragen, Abstimmungen und Überraschungen. Date-Rhythmus und wer als Nächstes plant. |
+| **Planen** | „Wer plant?“: *Ich* (optional als Überraschung mit Hinweis), *die andere Person* (Anfrage senden) oder *Zusammen*: beide beantworten getrennt eine kurze Umfrage (Tage, Tageszeit, Lust, drinnen/draußen, Budget, Entfernung), die App findet den besten gemeinsamen Tag, schlägt passende Ideen vor und ihr stimmt ab bis zum Match. Die App legt fest, wer mit Planen dran ist (abwechselnd, mit „Tauschen“), und erinnert, wenn ein Date fällig ist. Wann, Budget, Entfernung, Standort per GPS. Warnung, wenn an dem Tag schon Termine stehen. „Für dich“-Postfach mit Anfragen, Abstimmungen und Überraschungen. Date-Rhythmus und wer als Nächstes plant. |
 | **Entdecken → Für euch** | Startet sofort mit Vorschlägen: passende Ideen fürs heutige Wetter und eure Bewertungen, Orte in der Nähe (abends Restaurants & Bars, tagsüber Cafés & Museen), beliebte Community-Ideen. Filter für Standort, Tageszeit, Budget, Stimmung, drinnen/draußen und Entfernung. |
 | **Entdecken → Gemerkt** | Favoriten (Herz bei jeder Idee, jedem Ort und jeder Community-Idee) und eigene Ideen. Favoriten kommen auch bei Vorschlägen vor. |
 | **Entdecken → Orte** | Restaurants (mit Küchen- und Vegan-Filter), Cafés, Bars, Weinbars, Eis, Museen, Kinos, Theater, Bowling, Bouldern, Escape Rooms, Minigolf, Zoo, Parks, Aussichtspunkte, Therme, Eislaufen – mit Bild, Entfernung, Öffnungszeiten und Eintritt, wo bekannt. Filter nach Stimmung. Tippen öffnet die Detailseite: Wochen-Öffnungszeiten, Google-Bewertungen, **Reservieren** (Webseite, OpenTable-Suche), **Anfahrt** zu Fuß/Rad/Bahn/Auto mit geschätzter Dauer und Google Maps bzw. Apple Karten. |
 | **Entdecken → Community** | Dates anderer Paare: übernehmen, merken, bewerten, melden. Sortiert nach Bewertung, Nähe oder neu. Eigene Dates teilt ihr nach dem Date mit „Mit der Community teilen“ (ohne Namen und private Daten). |
 | **Entdecken → Eure Ideen** | Eigene Ideen mit Stimmung, gemerkte Orte und Community-Ideen. |
-| **Kosten** (im Tab Dates) | Ausgaben pro Monat, wer wie viel bezahlt hat, Ausgleich („Alex schuldet dir 32 €“). Aufteilung halbe-halbe oder eingeladen. Ausgaben lassen sich vor dem Partner verstecken – z. B. für Überraschungen. |
+| **Kosten** (im Tab Dates) | Ausgaben pro Monat, wer wie viel bezahlt hat, Ausgleich („Alex schuldet dir 32 €“). Aufteilung halbe-halbe oder eingeladen. Ausgaben lassen sich vor der anderen Person verstecken – z. B. für Überraschungen. |
 | **Fotos & Erinnerung** | Zu jedem Date Fotos hochladen – nur für euch zwei oder öffentlich (erscheinen dann in der Community) – und einen Satz „Was war besonders?“. Fotos werden vor dem Hochladen verkleinert. Ohne Supabase bleiben sie auf dem Gerät. |
 | **Jahresrückblick** (im Tab Dates) | Digitales Fotobuch: Titelseite mit Collage, euer Jahr in Zahlen (ohne Kosten), eine Seite pro Date mit Fotos, Erinnerung und Bewertung. Als PDF speichern über den Druckdialog. |
 | **Empfehlungen** | Auf der Startseite: Ideen, die zu euren Bewertungen passen („Weil euch … gefallen hat“). Auch die normalen Vorschläge berücksichtigen eure Bewertungen und die Stimmung. |

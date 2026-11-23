@@ -1,6 +1,6 @@
 // Datenhaltung. Zwei Betriebsarten:
 //  - lokal: alles in localStorage (z. B. auf GitHub Pages oder offline)
-//  - gemeinsam: geteilte Datenbank des Claude-Artifacts. Beide Partner sehen dieselben
+//  - gemeinsam: geteilte Datenbank des Claude-Artifacts. Beide Personen sehen dieselben
 //    Dates, Listen und Abstimmungen live. Überraschungs-Details liegen im privaten
 //    Bereich der planenden Person und sind für die andere Person nicht lesbar.
 //

@@ -526,7 +526,7 @@
         "t": "Film-Abend",
         "min": 130,
         "url": "https://www.werstreamt.es",
-        "note": "Jede*r darf ein Veto einlegen"
+        "note": "Ihr dürft beide ein Veto einlegen"
       }
     ],
     "recipe": {
@@ -636,7 +636,7 @@
   {
     "id": "kochkurs",
     "title": "Kochkurs zu zweit",
-    "emoji": "👩‍🍳",
+    "emoji": "🧑‍🍳",
     "teaser": "Neue Küche lernen und das Ergebnis gleich gemeinsam essen.",
     "place": "drinnen",
     "cost": 130,
@@ -701,7 +701,7 @@
     "id": "flohmarkt-fruehstueck",
     "title": "Flohmarkt & Frühstück",
     "emoji": "🧸",
-    "teaser": "Jede*r hat 10 € für ein Geschenk an die andere Person.",
+    "teaser": "Ihr habt beide 10 € für ein Geschenk füreinander.",
     "place": "draußen",
     "cost": 40,
     "reach": 1,
@@ -722,7 +722,7 @@
         "t": "Flohmarkt-Challenge",
         "min": 90,
         "url": "https://www.flohmarkt.de",
-        "note": "Max. 10 € pro Person"
+        "note": "Höchstens 10 € pro Person"
       }
     ],
     "moods": [
@@ -1519,7 +1519,7 @@
   {
     "id": "wellness-tag",
     "title": "Wellness-Tag mit Massage",
-    "emoji": "💆",
+    "emoji": "🪷",
     "teaser": "Day-Spa mit Paarmassage – einfach mal nichts tun.",
     "place": "drinnen",
     "cost": 180,

@@ -48,7 +48,7 @@ function render(scrollTop = false) {
 
 $$('.tabbar button').forEach((b) => b.addEventListener('click', () => go(b.dataset.tab)));
 
-// Änderungen vom Partner live übernehmen, aber nicht mitten im Tippen neu zeichnen.
+// Änderungen der anderen Person live übernehmen, aber nicht mitten im Tippen neu zeichnen.
 let pendingRender = false;
 let formDirty = false; // ungespeicherte Eingaben im aktuellen Formular
 root.addEventListener('input', (e) => e.target.closest('form') && (formDirty = true));
@@ -358,7 +358,7 @@ async function connectGcal() {
   }
 }
 
-/** Eigene Google-Termine laden; belegte Zeiten (ohne Titel) für den Partner teilen. */
+/** Eigene Google-Termine laden; belegte Zeiten (ohne Titel) für die andere Person teilen. */
 async function syncGcal() {
   try {
     const from = isoDate(addDays(today(), -7));
@@ -405,8 +405,8 @@ function sharingHTML() {
       <p>${sync.stale ? 'Die Verbindung zum gemeinsamen Speicher fehlt gerade.' : 'Dates, Kalender, Listen und Abstimmungen werden für euch beide gespeichert.'}</p>
       <ol class="steps-list">
         <li>Oben rechts auf <strong>Teilen</strong> tippen.</li>
-        <li>Die E-Mail-Adresse deines Partners eintragen und als <strong>Editor</strong> einladen.</li>
-        <li>Dein Partner öffnet den Link und wählt unter „Ich bin“ seinen Namen.</li>
+        <li>Die E-Mail-Adresse der anderen Person eintragen und als <strong>Editor</strong> einladen.</li>
+        <li>Die andere Person öffnet den Link und wählt unter „Ich bin“ den eigenen Namen.</li>
       </ol>
       ${!sync.canWrite || sync.writeError ? `<p class="warn-text">${esc(sync.writeError ?? 'Du kannst hier nur lesen.')}</p>` : ''}
       <p class="muted small">Standort, Wetter und Ortssuche funktionieren nur in der Webseiten-Version der App.</p>`;
@@ -416,9 +416,9 @@ function sharingHTML() {
     return `
       <p>Verbunden. Alles, was ihr eintragt, seht ihr beide live.</p>
       <div class="field">
-        <span class="label">Einladungslink für deinen Partner</span>
+        <span class="label">Einladungslink für ${esc(myRole() ? nameOf(other(myRole())) : 'die andere Person')}</span>
         <div class="copy-row"><input class="input" id="invite" readonly value="${esc(inviteLink(cfg))}"><button class="btn" id="copy-invite" type="button">Kopieren</button></div>
-        <small class="muted">Schick den Link per WhatsApp oder Mail. Wer ihn öffnet, ist mit euch verbunden – also nur an deinen Partner schicken.</small>
+        <small class="muted">Schick den Link per WhatsApp oder Mail. Wer ihn öffnet, ist mit euch verbunden – schick ihn also nur an die Person, mit der du Dately nutzt.</small>
       </div>
       ${sync.writeError ? `<p class="warn-text">${esc(sync.writeError)}</p>` : ''}
       <button class="btn ghost danger" id="disconnect" type="button">Auf diesem Gerät trennen</button>`;
@@ -428,7 +428,7 @@ function sharingHTML() {
     ${remoteError ? `<p class="warn-text">${esc(remoteError)}</p>` : ''}
     <div class="field"><label class="label" for="sb-url">Project URL</label><input class="input" id="sb-url" placeholder="https://xxxx.supabase.co" value="${esc(cfg?.url ?? '')}" autocomplete="off"></div>
     <div class="field"><label class="label" for="sb-key">Publishable / anon key</label><input class="input" id="sb-key" placeholder="eyJ… oder sb_publishable_…" value="${esc(cfg?.key ?? '')}" autocomplete="off"></div>
-    <div class="field"><label class="label" for="sb-code">Einladungscode (nur wenn dein Partner schon verbunden ist)</label><input class="input" id="sb-code" placeholder="leer lassen beim ersten Einrichten" value="${esc(cfg?.code ?? '')}" autocomplete="off"></div>
+    <div class="field"><label class="label" for="sb-code">Einladungscode (nur wenn die andere Person schon verbunden ist)</label><input class="input" id="sb-code" placeholder="leer lassen beim ersten Einrichten" value="${esc(cfg?.code ?? '')}" autocomplete="off"></div>
     <button class="btn primary" id="sb-connect" type="button">${icon('users')}Verbinden</button>
     <p class="muted small">Die Einrichtung steht Schritt für Schritt in der Anleitung im Projekt (README).</p>`;
 }
@@ -466,7 +466,7 @@ function googleSettingsHTML() {
   }
   const id = S().settings.googleClientId ?? '';
   return `
-    <p>Dates landen direkt in deinem Google Kalender, und die App zeigt, wann ihr schon etwas vorhabt. Dein Partner sieht von deinen Terminen nur „belegt“, keine Titel.</p>
+    <p>Dates landen direkt in deinem Google Kalender, und die App zeigt, wann ihr schon etwas vorhabt. Die andere Person sieht von deinen Terminen nur „belegt“, keine Titel.</p>
     <div class="field">
       <label class="label" for="g-client">OAuth-Client-ID</label>
       <input class="input" id="g-client" data-set="googleClientId" placeholder="…apps.googleusercontent.com" value="${esc(id)}" autocomplete="off">
@@ -1119,7 +1119,7 @@ function renderSurvey(p) {
     return;
   }
 
-  // Ich habe geantwortet, Partner noch nicht
+  // Ich habe geantwortet, die andere Person noch nicht
   if (mine && session.editSurvey !== p.id) {
     root.innerHTML = `
       ${topbar({ title, back: ['start', '', 'Start'] })}
@@ -1729,7 +1729,7 @@ RENDER.start = () => {
 
   root.innerHTML = `
     <header class="home-head">
-      <div class="brand">${icon('heart', 'brand-mark')}<span>Dately</span></div>
+      <div class="brand">${icon('rings', 'brand-mark')}<span>Dately</span></div>
       <div class="row gap">${syncChip()}${settingsButton()}</div>
     </header>
     <section class="hello">
@@ -1766,7 +1766,7 @@ RENDER.start = () => {
         <span class="label">Wer plant?</span>
         ${chips('planner', [
           ['me', role ? 'Ich' : 'Ich', 'user'],
-          ['partner', partner ? esc(nameOf(partner)) : 'Partner*in', 'gift'],
+          ['partner', partner ? esc(nameOf(partner)) : 'Andere Person', 'gift'],
           ['both', 'Zusammen', 'users'],
         ], f.planner, 'seg')}
         <p class="hint" id="planner-hint"></p>
@@ -1812,7 +1812,7 @@ RENDER.start = () => {
   const form = $('#start-form');
   const updatePlanner = () => {
     const p = f.planner;
-    const pn = partner ? nameOf(partner) : 'dein*e Partner*in';
+    const pn = partner ? nameOf(partner) : 'die andere Person';
     $('#planner-hint').textContent =
       p === 'me' ? `Du suchst die Idee aus und kannst sie als Überraschung vor ${pn} geheim halten.`
         : p === 'partner' ? `${pn} bekommt eine Anfrage und plant eine Überraschung für dich.`
