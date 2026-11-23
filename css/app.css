@@ -710,3 +710,56 @@ label.btn.busy { pointer-events: none; opacity: .8; }
   .book { gap: 0; }
   .page { width: 148mm; height: 210mm; aspect-ratio: auto; border-radius: 0; box-shadow: none; break-after: page; page-break-after: always; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+
+/* ---------- Für euch ---------- */
+.seg-tabs.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.seg-tabs.four button { flex-direction: column; gap: 2px; padding: 8px 2px; font-size: 0.76rem; }
+.seg-tabs.four button .ico { width: 18px; height: 18px; }
+.filter-bar { display: flex; gap: 6px; overflow-x: auto; margin-inline: calc(-1 * var(--gutter-l)) calc(-1 * var(--gutter-r)); padding: 0 var(--gutter-r) 2px var(--gutter-l); scrollbar-width: none; }
+.filter-bar::-webkit-scrollbar { display: none; }
+.filter-chip { display: inline-flex; align-items: center; gap: 5px; flex: none; padding: 7px 12px; border-radius: 99px; border: 1px solid var(--line); background: var(--surface); font-size: 0.85rem; font-weight: 500; white-space: nowrap; }
+.filter-chip .ico { width: 15px; height: 15px; color: var(--muted); }
+.filter-chip.on { border-color: var(--accent); color: var(--accent); }
+.filter-chip.strong { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.filter-chip.strong .ico { color: var(--bg); }
+.weather-line { font-size: 0.9rem; color: var(--muted); }
+.feed-card { display: flex; gap: 14px; align-items: flex-start; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); }
+.feed-card h3 { font-size: 1rem; }
+.feed-card .grow { display: flex; flex-direction: column; gap: 5px; align-items: flex-start; }
+.feed-card .row.between { width: 100%; }
+.thumb.sq.big { width: 84px; height: 84px; border-radius: 14px; }
+.thumb.sq.big .thumb-emoji { font-size: 2rem; }
+.h-scroll { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(220px, 72%); gap: 12px; overflow-x: auto; margin-inline: calc(-1 * var(--gutter-l)) calc(-1 * var(--gutter-r)); padding: 2px var(--gutter-r) 6px var(--gutter-l); scroll-snap-type: x mandatory; scrollbar-width: none; }
+.h-scroll::-webkit-scrollbar { display: none; }
+.h-scroll > * { scroll-snap-align: start; }
+.place { position: relative; }
+.place.mini .thumb.wide { aspect-ratio: 16 / 10; }
+.place.mini .place-body { padding: 10px 12px 12px; gap: 3px; }
+.place.mini h3 { font-size: 0.95rem; }
+
+/* ---------- Favoriten-Herz ---------- */
+.fav { flex: none; width: 36px; height: 36px; display: inline-grid; place-items: center; border-radius: 50%; border: none; background: var(--surface-2); color: var(--muted); padding: 0; }
+.fav .ico { width: 19px; height: 19px; }
+.fav.on { color: var(--accent); background: var(--accent-soft); }
+.fav.on .ico { fill: currentColor; }
+.fav.on-img { position: absolute; top: 10px; right: 10px; background: rgb(255 255 255 / 90%); color: #3a2d3d; z-index: 1; }
+.fav.on-img.on { color: #a8245a; }
+.fav.labelled { width: auto; height: 36px; padding: 0 12px; border-radius: var(--r-sm); gap: 6px; display: inline-flex; }
+.fav.labelled::after { content: "Merken"; font-weight: 600; font-size: 0.86rem; }
+.fav.labelled.on::after { content: "Gemerkt"; }
+.ico.inline { width: 15px; height: 15px; vertical-align: -3px; }
+
+/* ---------- Umfrage ---------- */
+.day-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
+.day-btn { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 7px 0 6px; border-radius: var(--r-sm); border: 1px solid var(--line); background: var(--surface); font-variant-numeric: tabular-nums; }
+.day-btn .wd { font-size: 0.7rem; color: var(--muted); font-weight: 600; }
+.day-btn strong { font-size: 1rem; }
+.day-btn .dmarks { display: flex; gap: 2px; height: 6px; }
+.day-btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.day-btn[aria-pressed="true"] .wd { color: var(--accent-ink); }
+.day-result { display: flex; flex-wrap: wrap; gap: 6px; }
+.result p { line-height: 1.5; }
+.turn { display: inline-flex; align-items: center; gap: 5px; font-size: 0.85rem; color: var(--muted); }
+.turn .ico { width: 15px; height: 15px; }
+.turn strong { color: var(--ink); }

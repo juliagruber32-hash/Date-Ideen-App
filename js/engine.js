@@ -95,6 +95,8 @@ export function recommend(dates, count = 3) {
 /** Passt die Idee grundsätzlich zu den Eingaben? */
 function fits(idea, ctx, weather, useMood = true) {
   if (useMood && ctx.mood && !(idea.moods ?? []).includes(ctx.mood)) return false;
+  if (useMood && ctx.moods?.length && !(idea.moods ?? []).some((m) => ctx.moods.includes(m))) return false;
+  if (ctx.placePref && idea.place !== ctx.placePref) return false;
   if (idea.cost > ctx.budget) return false;
   if (idea.reach > ctx.reach) return false;
   if (!idea.times.includes(ctx.daytime)) return false;
@@ -105,8 +107,36 @@ function fits(idea, ctx, weather, useMood = true) {
   return true;
 }
 
+/**
+ * Wünsche aus der Paar-Umfrage zusammenführen: gemeinsamer Tag, Tageszeit, Budget, Entfernung, Stimmung.
+ * answers: { a: {...}, b: {...} } mit days[], daytime ('tag'|'abend'|'beides'), moods[], place ('drinnen'|'draußen'|'egal'), budget, reach.
+ */
+export function combineWishes(answers) {
+  const A = answers.a ?? {};
+  const B = answers.b ?? {};
+  const both = (A.days ?? []).filter((d) => (B.days ?? []).includes(d)).sort();
+  const dt = (x, y) => (x === y ? (x === 'beides' ? 'abend' : x) : x === 'beides' ? y : y === 'beides' ? x : null);
+  const daytime = dt(A.daytime ?? 'beides', B.daytime ?? 'beides');
+  const moodsBoth = (A.moods ?? []).filter((m) => (B.moods ?? []).includes(m));
+  const moods = [...new Set([...(A.moods ?? []), ...(B.moods ?? [])])];
+  const placePref = A.place && A.place === B.place && A.place !== 'egal' ? A.place : null;
+  return {
+    date: both[0] ?? null,
+    commonDays: both,
+    daytime: daytime ?? 'abend',
+    daytimeConflict: !daytime,
+    budget: Math.min(A.budget ?? 200, B.budget ?? 200),
+    reach: Math.min(A.reach ?? 2, B.reach ?? 2),
+    moods: moodsBoth.length ? moodsBoth : moods,
+    moodsBoth,
+    placePref,
+  };
+}
+
 function score(idea, ctx, weather, recent, profile) {
   let s = Math.random() + tasteScore(idea, profile);
+  if (ctx.moods?.length) s += 0.35 * (idea.moods ?? []).filter((m) => ctx.moods.includes(m)).length;
+  if (ctx.moodsBoth?.length) s += 0.4 * (idea.moods ?? []).filter((m) => ctx.moodsBoth.includes(m)).length;
   if (idea.rating?.avg) s += (idea.rating.avg - 3) * 0.15; // Community-Bewertung
   if (ctx.special) s += idea.special ? 1.5 : 0;
   else if (idea.special) s -= 0.6; // Besonderes für besondere Tage aufheben
@@ -132,7 +162,8 @@ export async function suggest(ctx, weather, { exclude = new Set(), recentIds = [
   const profile = tasteProfile(dates);
   let pool = all.filter((i) => fits(i, ctx, weather));
   let moodRelaxed = false;
-  if (!pool.length && ctx.mood) {
+  if (!pool.length && (ctx.mood || ctx.moods?.length || ctx.placePref)) {
+    ctx = { ...ctx, placePref: null };
     pool = all.filter((i) => fits(i, ctx, weather, false));
     moodRelaxed = pool.length > 0;
   }

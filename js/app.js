@@ -1,8 +1,8 @@
 import * as store from './store.js';
 import { isHiddenFromMe, myRole, nameOf, other } from './store.js';
 import { geocode, getWeather, manualWeather } from './weather.js';
-import { allIdeas, buildPlan, defaultStart, ideaDuration, loadIdeas, MOODS, moodLabel, REACH, recommend, rhythmStatus, setExtraIdeas, suggest, toICS } from './engine.js';
-import { appleMapsLink, CATEGORIES, categoryById, directionsLink, distanceKm, fmtKm, fmtMin, formatHours, hoursOn, isOpenAt, locate, mapLink, placeName, reservationLinks, searchNearby, travelEstimates } from './places.js';
+import { allIdeas, buildPlan, combineWishes, defaultStart, ideaDuration, loadIdeas, MOODS, moodLabel, REACH, recommend, rhythmStatus, setExtraIdeas, suggest, toICS } from './engine.js';
+import { appleMapsLink, CATEGORIES, categoryById, directionsLink, distanceKm, fmtKm, fmtMin, formatHours, hoursOn, isOpenAt, locate, mapLink, placeName, reservationLinks, searchMixed, searchNearby, travelEstimates } from './places.js';
 import { googleDetails } from './gplaces.js';
 import * as photos from './photos.js';
 import { SUPABASE } from './config.js';
@@ -40,7 +40,7 @@ function go(name, param = null) {
 function render(scrollTop = false) {
   formDirty = false;
   pendingRender = false;
-  setExtraIdeas(S().ideas);
+  setExtraIdeas([...S().ideas, ...S().favorites.filter((f) => f.idea).map((f) => ({ ...f.idea, id: f.ideaId }))]);
   $$('.tabbar button').forEach((b) => b.toggleAttribute('aria-current', b.dataset.tab === TAB_OF[current.name]));
   (RENDER[current.name] ?? RENDER.start)(current.param);
   if (scrollTop) window.scrollTo(0, 0);
@@ -493,7 +493,7 @@ function bindGoogleSettings() {
 
 /* ================================================================ Entdecken */
 
-const discover = { tab: 'orte', cat: 'restaurant', radius: 5000, results: null, error: null, loading: false, cuisine: '', mood: '', sort: 'beste', community: null, cError: null, cLoading: false, myRatings: {} };
+const discover = { tab: 'fuereuch', cat: 'restaurant', radius: 5000, results: null, error: null, loading: false, cuisine: '', mood: '', sort: 'beste', community: null, cError: null, cLoading: false, myRatings: {} };
 const placeIndex = new Map(); // id -> Ort (für die Detailansicht)
 
 function discoverCenter() {
@@ -521,17 +521,20 @@ const thumb = (src, emoji, cls = '') =>
   src ? `<span class="thumb ${cls}"><img src="${esc(src)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentNode.classList.add('noimg');this.remove()"><span class="thumb-emoji" aria-hidden="true">${emoji}</span></span>`
     : `<span class="thumb noimg ${cls}"><span class="thumb-emoji" aria-hidden="true">${emoji}</span></span>`;
 
-function placeCard(p) {
+function placeCard(p, mini = false) {
   const cat = categoryById(p.category);
+  const favIdea = ideaFromPlace(p);
   const now = new Date();
   const open = isOpenAt(p.hours, now);
   const todayHours = hoursOn(p.hours, now);
   return `
-    <article class="place" data-open-place="${p.id}" tabindex="0" role="button" aria-label="${esc(p.name)} öffnen">
+    <article class="place ${mini ? 'mini' : ''}" data-open-place="${p.id}" tabindex="0" role="button" aria-label="${esc(p.name)} öffnen">
       ${thumb(p.image, cat.emoji, 'wide')}
+      ${favBtn(favIdea, 'on-img')}
       <div class="place-body">
+        ${mini ? `<span class="kicker">${esc(cat.label)}</span>` : ''}
         <div class="row between top"><h3>${esc(p.name)}</h3><span class="muted small nowrap">${fmtKm(p.km)}</span></div>
-        <p class="muted small">${[p.cuisine, p.street].filter(Boolean).map(esc).join(' · ') || cat.label}</p>
+        <p class="muted small">${[p.cuisine, p.street].filter(Boolean).map(esc).join(' · ') || (mini ? '' : cat.label)}</p>
         <p class="small">
           ${open === true ? '<span class="tag ok">Geöffnet</span>' : open === false ? '<span class="tag">Geschlossen</span>' : ''}
           ${todayHours ? `Heute ${esc(todayHours)}` : p.hours ? '' : '<span class="muted">Öffnungszeiten unbekannt</span>'}
@@ -584,16 +587,20 @@ function moodChips(group, value) {
 
 RENDER.entdecken = () => {
   const d = discover;
+  if (d.tab === 'eigene') d.tab = 'gemerkt';
   const tabs = `
-    <nav class="seg-tabs three" role="tablist">
+    <nav class="seg-tabs four" role="tablist">
+      <button role="tab" data-dtab="fuereuch" aria-selected="${d.tab === 'fuereuch'}">${icon('sparkle')}Für euch</button>
       <button role="tab" data-dtab="orte" aria-selected="${d.tab === 'orte'}">${icon('pin')}Orte</button>
       <button role="tab" data-dtab="community" aria-selected="${d.tab === 'community'}">${icon('users')}Community</button>
-      <button role="tab" data-dtab="eigene" aria-selected="${d.tab === 'eigene'}">${icon('bookmark')}Eure Ideen</button>
+      <button role="tab" data-dtab="gemerkt" aria-selected="${d.tab === 'gemerkt'}">${icon('heart')}Gemerkt</button>
     </nav>`;
-  const head = topbar({ title: 'Entdecken', sub: d.tab === 'orte' ? 'Restaurants, Bars, Museen & mehr in eurer Nähe.' : d.tab === 'community' ? 'Dates, die andere Paare geplant und bewertet haben.' : 'Eure gespeicherten und eigenen Ideen.' });
+  const subs = { fuereuch: 'Ideen und Orte, die gerade zu euch passen.', orte: 'Restaurants, Bars, Museen & mehr in eurer Nähe.', community: 'Dates, die andere Paare geplant und bewertet haben.', gemerkt: 'Eure Favoriten und eigenen Ideen.' };
+  const head = topbar({ title: 'Entdecken', sub: subs[d.tab] });
 
+  if (d.tab === 'fuereuch') return renderForYou(head + tabs);
   if (d.tab === 'community') return renderCommunity(head + tabs);
-  if (d.tab === 'eigene') return renderOwnIdeas(head + tabs);
+  if (d.tab === 'gemerkt') return renderSaved(head + tabs);
 
   const center = discoverCenter();
   const cats = CATEGORIES.filter((c) => !d.mood || c.moods.includes(d.mood));
@@ -753,14 +760,15 @@ RENDER.ort = (id) => {
 
     <div class="actions">
       <button class="btn primary big" id="o-plan">${icon('sparkle')}Als Date planen</button>
-      <button class="btn" id="o-save">${icon('bookmark')}Bei euren Ideen merken</button>
+      <button class="btn" id="o-save">${icon('heart')}${isFav(`ort-${p.id}`) ? 'Favorit ✓' : 'Als Favorit speichern'}</button>
     </div>`;
 
   bindBack();
   $('#o-plan').addEventListener('click', (e) => planIdeaNow(ideaFromPlace(p), e.currentTarget));
-  $('#o-save').addEventListener('click', () => {
-    store.update((s) => s.ideas.push({ ...ideaFromPlace(p), id: `eigen-${uid()}`, createdBy: myRole(), createdAt: Date.now() }));
-    toast(`„${p.name}“ gemerkt`);
+  $('#o-save').addEventListener('click', async () => {
+    favRegistry.set(`ort-${p.id}`, ideaFromPlace(p));
+    await toggleFav(`ort-${p.id}`);
+    render();
   });
   const key = S().settings.googlePlacesKey;
   if (key && !gInfo.has(id)) {
@@ -828,7 +836,7 @@ function renderCommunity(head) {
           ${(r.moods ?? []).length ? `<div class="mood-tags">${r.moods.map((m) => `<span class="tag">${esc(moodLabel(m))}</span>`).join('')}</div>` : ''}
           <div class="row gap wrap">
             <button class="btn primary sm" data-adopt="${r.id}">${icon('sparkle')}Übernehmen</button>
-            <button class="btn sm" data-csave="${r.id}">${icon('bookmark')}Merken</button>
+            ${favBtn(communityIdea(r), 'labelled')}
             <button class="btn sm ghost" data-creviews="${r.id}">Bewertungen</button>
             ${r.mine ? `<button class="btn sm ghost danger" data-cdel="${r.id}">Zurückziehen</button>` : `<button class="btn sm ghost" data-creport="${r.id}">Melden</button>`}
           </div>
@@ -904,38 +912,6 @@ function renderCommunity(head) {
     }
   });
   if (community.api && !d.community && !d.cLoading && !d.cError) loadCommunity();
-}
-
-/* --- Eigene Ideen ------------------------------------------------------------- */
-
-function renderOwnIdeas(head) {
-  const custom = S().ideas;
-  root.innerHTML = `
-    ${head}
-    <button class="btn soft big" data-go="idee">${icon('plus')}Eigene Idee anlegen</button>
-    ${custom.length ? `<div class="list-card">${custom.map((i) => `
-      <div class="date-item static">
-        ${thumb(i.image || i.steps?.find((s) => s.place?.image)?.place.image, esc(i.emoji ?? '💡'), 'sq')}
-        <span class="grow"><strong>${esc(i.title)}</strong><small class="muted">${i.place === 'drinnen' ? 'Drinnen' : 'Draußen'} · ${fmtEuro(i.cost)} · ${fmtDuration(ideaDuration(i))}${(i.moods ?? []).length ? ` · ${i.moods.map(moodLabel).join(', ')}` : ''}</small></span>
-        <button class="icon-btn small" data-plan-custom="${i.id}" aria-label="Planen">${icon('sparkle')}</button>
-        ${community.api && !i.communityId ? `<button class="icon-btn small" data-share-idea="${i.id}" aria-label="Mit der Community teilen">${icon('share')}</button>` : ''}
-        <button class="icon-btn small" data-del-idea="${i.id}" aria-label="Löschen">${icon('trash')}</button>
-      </div>`).join('')}</div>` : '<p class="muted">Gemerkte Orte, übernommene Community-Ideen und eigene Ideen landen hier. Sie erscheinen auch bei den Vorschlägen, wenn sie zu Budget, Wetter und Stimmung passen.</p>'}`;
-
-  bindDiscoverTabs();
-  on('[data-go]', 'click', (_, el) => go(el.dataset.go));
-  on('[data-del-idea]', 'click', (_, el) => {
-    store.update((s) => (s.ideas = s.ideas.filter((i) => i.id !== el.dataset.delIdea)));
-    render();
-  });
-  on('[data-plan-custom]', 'click', (_, el) => {
-    const idea = ideaById(el.dataset.planCustom);
-    if (idea) planIdeaNow(idea, el);
-  });
-  on('[data-share-idea]', 'click', (_, el) => {
-    const idea = ideaById(el.dataset.shareIdea);
-    if (idea) go('teilen', `idea:${idea.id}`);
-  });
 }
 
 /* --- Mit der Community teilen ------------------------------------------------- */
@@ -1018,6 +994,514 @@ RENDER.teilen = (param) => {
     });
   });
 };
+
+/* ================================================================ Umfrage: Tag & Lust */
+
+const SURVEY_DAYS = 14;
+const surveyDays = () => Array.from({ length: SURVEY_DAYS }, (_, i) => isoDate(addDays(today(), i)));
+
+function createSurvey(kind) {
+  const id = uid();
+  const ls = L().lastSearch;
+  store.update((s) =>
+    s.polls.push({
+      id,
+      kind, // 'full' = Tag + Lust, danach Vorschläge und Abstimmung; 'day' = nur Tag
+      stage: 'survey',
+      createdBy: myRole(),
+      createdAt: Date.now(),
+      survey: {},
+      status: 'open',
+      round: 0,
+      rounds: {},
+      ctx: { date: isoDate(today()), daytime: ls.daytime ?? 'abend', budget: ls.budget ?? 60, reach: ls.reach ?? 1 },
+    }),
+  );
+  return id;
+}
+
+/** Kurzer Hinweis, was an dem Tag schon ansteht (für die Tagesauswahl). */
+function dayHint(iso) {
+  const date = parseISO(iso);
+  const n = [
+    ...L().gcal.events.filter((e) => e.date === iso),
+    ...S().events.filter((e) => e.date === iso),
+    ...S().settings.fixed.filter((f) => f.weekday === date.getDay()),
+    ...S().dates.filter((d) => d.date === iso),
+  ].length;
+  const partner = partnerBusy(iso).length;
+  return { n, partner };
+}
+
+const weatherSnap = (w) => (w?.known ? { known: true, icon: w.icon, label: w.label, temp: w.temp ?? null, wet: w.wet, cold: w.cold, clear: w.clear } : { known: false, reason: w?.reason ?? '' });
+
+/** Aus beiden Antworten Vorschläge erzeugen und in die Abstimmung wechseln. */
+async function generateFromSurvey(pollId, date) {
+  const p = S().polls.find((x) => x.id === pollId);
+  if (!p || p.stage !== 'survey') return;
+  const w = combineWishes(p.survey);
+  const ctx = { date, daytime: w.daytime, budget: w.budget, reach: w.reach, moods: w.moods, moodsBoth: w.moodsBoth, placePref: w.placePref };
+  const center = discoverCenter();
+  session.ctx = ctx;
+  session.weather = await getWeather(center, date, ctx.daytime);
+  session.shown = new Set();
+  const ideas = await reroll();
+  if (!ideas.length) return toast('Keine Idee passt zu euren Wünschen – erhöht das Budget in der Umfrage.');
+  const builtin = new Set((await loadIdeas()).map((i) => i.id));
+  store.update((s) => {
+    const x = s.polls.find((y) => y.id === pollId);
+    if (!x || x.stage !== 'survey') return;
+    Object.assign(x, {
+      stage: 'vote',
+      ctx,
+      weather: weatherSnap(session.weather),
+      summary: { moodsBoth: w.moodsBoth, moods: w.moods, budget: w.budget, daytime: w.daytime, placePref: w.placePref },
+      round: 1,
+      rounds: { r1: { ideas: ideas.map((i) => i.id), votes: { a: {}, b: {} }, snap: Object.fromEntries(ideas.filter((i) => !builtin.has(i.id)).map((i) => [i.id, i])) } },
+    });
+  });
+  render(true);
+}
+
+function renderSurvey(p) {
+  const role = myRole();
+  const partner = other(role);
+  const mine = p.survey?.[role];
+  const theirs = p.survey?.[partner];
+  const full = p.kind !== 'day';
+  const title = full ? 'Worauf habt ihr Lust?' : 'Welcher Tag passt euch?';
+
+  // Beide fertig: Ergebnis
+  if (mine && theirs && session.editSurvey !== p.id) {
+    const w = combineWishes(p.survey);
+    const union = [...new Set([...(mine.days ?? []), ...(theirs.days ?? [])])].sort();
+    const dayBtn = (iso, primary) => `<button class="btn ${primary ? 'primary' : ''}" data-pick-day="${iso}">${full ? icon('sparkle') : icon('calendar')}${full ? 'Ideen für' : 'Date am'} ${esc(relDay(iso) ?? fmtDate(iso, { weekday: 'short', day: 'numeric', month: 'short' }))}${full ? ' finden' : ' planen'}</button>`;
+    root.innerHTML = `
+      ${topbar({ title, sub: 'Ihr habt beide geantwortet.', back: ['start', '', 'Start'] })}
+      <section class="panel stack result">
+        ${w.commonDays.length ? `
+          <span class="kicker">Gemeinsame Tage</span>
+          <div class="day-result">${w.commonDays.map((d, i) => `<span class="tag ${i === 0 ? 'ok' : ''}">${esc(fmtShort(d))}</span>`).join('')}</div>
+          <p>Am besten passt <strong>${esc(relDay(w.date) ?? fmtDate(w.date))}</strong>, ${daytimeLabel(w.daytime)}.${w.daytimeConflict ? ' (Ihr wolltet unterschiedliche Tageszeiten – wir nehmen den Abend.)' : ''}</p>`
+          : `<span class="kicker">Kein gemeinsamer Tag</span><p>Wählt einen der Tage, die einer von euch angegeben hat – oder startet die Umfrage neu.</p>`}
+        ${full ? `
+          <span class="kicker">Eure Wünsche</span>
+          <p>${w.moodsBoth.length ? `Beide haben Lust auf <strong>${w.moodsBoth.map(moodLabel).join(', ')}</strong>.` : `Zusammen: ${w.moods.map(moodLabel).join(', ') || 'alles offen'}.`} Budget bis ${w.budget} € · ${REACH[w.reach]}${w.placePref ? ` · ${w.placePref === 'drinnen' ? 'Drinnen' : 'Draußen'}` : ''}</p>` : ''}
+      </section>
+      <div class="actions">
+        ${w.commonDays.length ? dayBtn(w.date, true) + w.commonDays.slice(1, 3).map((d) => dayBtn(d, false)).join('') : union.slice(0, 5).map((d) => dayBtn(d, false)).join('')}
+        <button class="btn ghost" id="survey-edit">Meine Antworten ändern</button>
+        <button class="btn ghost danger" id="survey-del">${icon('trash')}Umfrage löschen</button>
+      </div>
+      ${full ? '<p class="hint center">Nach der Tageswahl schlägt die App drei Ideen vor, über die ihr abstimmt.</p>' : ''}`;
+    bindBack();
+    on('[data-pick-day]', 'click', async (_, el) => {
+      const iso = el.dataset.pickDay;
+      if (full) return withBusy(el, () => generateFromSurvey(p.id, iso));
+      store.update((s) => {
+        const x = s.polls.find((y) => y.id === p.id);
+        if (x) Object.assign(x, { status: 'planned', ctx: { ...x.ctx, date: iso, daytime: w.daytime } });
+      });
+      Object.assign(L().lastSearch, { when: 'date', date: iso, daytime: w.daytime });
+      store.saveLocal();
+      session.plannerTouched = false;
+      toast(`Tag steht fest: ${fmtShort(iso)}`);
+      go('start');
+    });
+    $('#survey-edit').addEventListener('click', () => {
+      session.editSurvey = p.id;
+      render();
+    });
+    armed($('#survey-del'), () => {
+      store.update((s) => (s.polls = s.polls.filter((x) => x.id !== p.id)));
+      go('start');
+    });
+    return;
+  }
+
+  // Ich habe geantwortet, Partner noch nicht
+  if (mine && session.editSurvey !== p.id) {
+    root.innerHTML = `
+      ${topbar({ title, back: ['start', '', 'Start'] })}
+      <section class="surprise-card">
+        <div class="gift-mark">${icon('check')}</div>
+        <h1>Danke!</h1>
+        <p class="sub">Sobald ${esc(nameOf(partner))} geantwortet hat, zeigt euch die App den besten Tag${full ? ' und passende Ideen' : ''}.</p>
+      </section>
+      <button class="btn" id="survey-edit">Meine Antworten ändern</button>`;
+    bindBack();
+    $('#survey-edit').addEventListener('click', () => {
+      session.editSurvey = p.id;
+      render();
+    });
+    return;
+  }
+
+  // Fragebogen
+  const ls = L().lastSearch;
+  const draft = {
+    days: new Set(mine?.days ?? []),
+    daytime: mine?.daytime ?? 'beides',
+    moods: new Set(mine?.moods ?? []),
+    place: mine?.place ?? 'egal',
+    budget: mine?.budget ?? ls.budget ?? 60,
+    reach: mine?.reach ?? 1,
+  };
+  root.innerHTML = `
+    ${topbar({ title, sub: `Deine Antworten sieht ${esc(nameOf(partner))} erst, wenn ihr beide fertig seid.`, back: ['start', '', 'Start'] })}
+    <form class="panel form" id="survey-form" novalidate>
+      <div class="field">
+        <span class="label">Wann hast du Zeit? <small class="muted">(mehrere möglich)</small></span>
+        <div class="day-grid">
+          ${surveyDays().map((iso) => {
+            const d = parseISO(iso);
+            const h = dayHint(iso);
+            return `<button type="button" class="day-btn" data-day-opt="${iso}" aria-pressed="${draft.days.has(iso)}">
+              <span class="wd">${WD_SHORT[d.getDay()]}</span><strong>${d.getDate()}</strong>
+              <span class="dmarks">${h.n ? `<i class="dot gcal" title="Du hast Termine"></i>` : ''}${h.partner ? `<i class="dot busy" title="${esc(nameOf(partner))} hat Termine"></i>` : ''}</span>
+            </button>`;
+          }).join('')}
+        </div>
+        <small class="muted">Punkte zeigen Termine: <i class="dot gcal"></i> deine, <i class="dot busy"></i> ${esc(nameOf(partner))} (aus Google Kalender).</small>
+      </div>
+      <div class="field"><span class="label">Tageszeit</span>${chips('s-daytime', [['tag', 'Tagsüber', 'sun'], ['abend', 'Abends', 'moon'], ['beides', 'Egal']], draft.daytime, 'seg')}</div>
+      ${full ? `
+        <div class="field"><span class="label">Worauf hast du Lust? <small class="muted">(bis zu 3)</small></span>
+          <div class="chips" id="s-moods">${MOODS.map(([v, l, e]) => `<button type="button" class="chip" data-m="${v}" aria-pressed="${draft.moods.has(v)}">${e} ${l}</button>`).join('')}</div></div>
+        <div class="field"><span class="label">Drinnen oder draußen?</span>${chips('s-place', [['drinnen', 'Drinnen', 'home'], ['draußen', 'Draußen', 'sun'], ['egal', 'Egal']], draft.place, 'seg')}</div>
+        <div class="field">
+          <div class="label-row"><span class="label">Budget für euch beide</span><output id="s-budget-out" class="budget-out">${draft.budget} €</output></div>
+          <input type="range" id="s-budget" min="0" max="200" step="5" value="${draft.budget}" aria-label="Budget in Euro">
+        </div>
+        <div class="field"><span class="label">Wie weit?</span>${chips('s-reach', [[0, 'Zuhause'], [1, 'In der Stadt'], [2, 'Ausflug']], draft.reach, 'seg')}</div>` : ''}
+      <button class="btn primary big" type="submit">${icon('check')}Antworten senden</button>
+    </form>`;
+
+  bindBack();
+  const form = $('#survey-form');
+  form.addEventListener('click', (e) => {
+    const day = e.target.closest('[data-day-opt]');
+    if (day) {
+      const iso = day.dataset.dayOpt;
+      draft.days.has(iso) ? draft.days.delete(iso) : draft.days.add(iso);
+      day.setAttribute('aria-pressed', String(draft.days.has(iso)));
+    }
+    const m = e.target.closest('#s-moods [data-m]');
+    if (m) {
+      const v = m.dataset.m;
+      if (draft.moods.has(v)) draft.moods.delete(v);
+      else if (draft.moods.size < 3) draft.moods.add(v);
+      else toast('Höchstens drei – entferne erst eine');
+      m.setAttribute('aria-pressed', String(draft.moods.has(v)));
+    }
+  });
+  bindChips(form, 's-daytime', (v) => (draft.daytime = v));
+  bindChips(form, 's-place', (v) => (draft.place = v));
+  bindChips(form, 's-reach', (v) => (draft.reach = Number(v)));
+  $('#s-budget')?.addEventListener('input', (e) => {
+    draft.budget = Number(e.target.value);
+    $('#s-budget-out').textContent = `${draft.budget} €`;
+  });
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!draft.days.size) return toast('Wähle mindestens einen Tag');
+    const answer = { days: [...draft.days].sort(), daytime: draft.daytime, at: Date.now() };
+    if (full) Object.assign(answer, { moods: [...draft.moods], place: draft.place, budget: draft.budget, reach: draft.reach });
+    store.update((s) => {
+      const x = s.polls.find((y) => y.id === p.id);
+      if (x) x.survey = { ...(x.survey ?? {}), [role]: answer };
+    });
+    session.editSurvey = null;
+    toast('Antworten gespeichert');
+    render(true);
+  });
+}
+
+/* ================================================================ Favoriten */
+
+const favRegistry = new Map();
+const isFav = (id) => S().favorites.some((f) => f.ideaId === id);
+
+function favBtn(idea, cls = '') {
+  favRegistry.set(idea.id, idea);
+  const on = isFav(idea.id);
+  return `<button type="button" class="fav ${on ? 'on' : ''} ${cls}" data-fav="${esc(idea.id)}" aria-pressed="${on}" aria-label="${on ? 'Aus Favoriten entfernen' : 'Als Favorit speichern'}">${icon('heart')}</button>`;
+}
+
+async function toggleFav(id) {
+  if (!myRole()) return toast('Wähle zuerst auf „Planen“, wer du bist');
+  const idea = favRegistry.get(id) ?? ideaById(id);
+  if (!idea) return;
+  const builtin = (await loadIdeas()).some((i) => i.id === id);
+  const was = isFav(id);
+  store.update((s) => {
+    if (was) s.favorites = s.favorites.filter((f) => f.ideaId !== id);
+    else s.favorites.push({ id: `fav-${id}`.slice(0, 180), ideaId: id, idea: builtin ? null : { ...idea, custom: true }, by: myRole(), at: Date.now() });
+  });
+  toast(was ? 'Aus Favoriten entfernt' : 'Als Favorit gespeichert');
+  $$(`[data-fav="${CSS.escape(id)}"]`).forEach((b) => {
+    b.classList.toggle('on', !was);
+    b.setAttribute('aria-pressed', String(!was));
+  });
+}
+
+// Herz-Knöpfe sitzen oft in anklickbaren Karten: in der Capture-Phase abfangen.
+root.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-fav]');
+  if (!b) return;
+  e.preventDefault();
+  e.stopPropagation();
+  toggleFav(b.dataset.fav);
+}, true);
+
+/* ================================================================ Entdecken: Für euch */
+
+const feedFilter = { budget: null, mood: '', place: '', reach: 1, daytime: new Date().getHours() >= 14 ? 'abend' : 'tag', open: false };
+
+const NEAR_CATS = { abend: ['restaurant', 'bar', 'cinema', 'theatre', 'wine', 'escape'], tag: ['cafe', 'museum', 'park', 'zoo', 'icecream', 'gallery'] };
+
+function feedDate() {
+  const t = today();
+  const late = new Date().getHours() >= (feedFilter.daytime === 'abend' ? 21 : 16);
+  return isoDate(late ? addDays(t, 1) : t);
+}
+
+async function loadFeed() {
+  const d = discover;
+  d.feedLoading = true;
+  const center = discoverCenter();
+  const date = feedDate();
+  const budget = feedFilter.budget ?? L().lastSearch.budget ?? 60;
+  const ctx = { date, daytime: feedFilter.daytime, budget, reach: feedFilter.reach, mood: feedFilter.mood, placePref: feedFilter.place || null };
+  try {
+    d.feedWeather = await getWeather(center, date, ctx.daytime);
+  } catch {
+    d.feedWeather = { known: false };
+  }
+  const res = await suggest(ctx, d.feedWeather, { count: 4, dates: S().dates.map(fullPlanOrMeta), recentIds: S().dates.slice(-8).map((x) => x.ideaId) });
+  d.feed = res.ideas;
+  d.feedCtx = ctx;
+  d.feedLoading = false;
+  if (current.name === 'entdecken' && d.tab === 'fuereuch') render();
+}
+
+async function loadNear() {
+  const d = discover;
+  const center = discoverCenter();
+  if (!center) return;
+  d.nearLoading = true;
+  d.nearError = null;
+  let cats = NEAR_CATS[feedFilter.daytime];
+  if (feedFilter.mood) cats = CATEGORIES.filter((c) => c.moods.includes(feedFilter.mood) && c.times.includes(feedFilter.daytime)).map((c) => c.id).slice(0, 6);
+  if (feedFilter.place) cats = cats.filter((id) => categoryById(id).place === feedFilter.place);
+  if (feedFilter.reach === 0) cats = [];
+  try {
+    const groups = cats.length ? await searchMixed(cats, center, feedFilter.reach === 2 ? 25000 : 4000) : {};
+    const now = new Date();
+    // Pro Kategorie die zwei nächsten, geöffnete zuerst
+    d.near = Object.values(groups)
+      .flatMap((list) => list.slice(0, 2))
+      .sort((a, b) => (isOpenAt(b.hours, now) === true) - (isOpenAt(a.hours, now) === true) || a.km - b.km);
+    d.near.forEach((p) => placeIndex.set(p.id, p));
+  } catch (e) {
+    d.near = null;
+    d.nearError = store.inArtifact() ? 'Orte in der Nähe gibt es in der Webseiten-Version.' : e.message === 'Failed to fetch' ? 'Keine Verbindung zur Ortssuche.' : e.message;
+  }
+  d.nearLoading = false;
+  if (current.name === 'entdecken' && d.tab === 'fuereuch') render();
+}
+
+function feedCard(i) {
+  const img = i.photos?.[0] || i.image || i.steps?.find((s) => s.place?.image)?.place.image;
+  return `
+    <article class="feed-card">
+      ${thumb(img, i.emoji ?? '💡', 'sq big')}
+      <div class="grow">
+        <div class="row between top"><h3>${esc(i.title)}</h3>${favBtn(i)}</div>
+        <p class="muted small">${fmtEuro(i.cost ?? 0)} · ${fmtDuration(ideaDuration(i))} · ${i.place === 'drinnen' ? 'Drinnen' : 'Draußen'}${i.rating?.count ? ` · ★ ${String(i.rating.avg).replace('.', ',')}` : ''}</p>
+        <p class="teaser">${esc(i.teaser ?? '')}</p>
+        <button class="btn sm primary" data-feed-plan="${esc(i.id)}">${icon('sparkle')}Planen</button>
+      </div>
+    </article>`;
+}
+
+function renderForYou(head) {
+  const d = discover;
+  const center = discoverCenter();
+  if (!center && !d.autoLocTried && !store.inArtifact()) {
+    d.autoLocTried = true;
+    useGps().then(() => {
+      d.near = null;
+      d.feed = null;
+      if (current.name === 'entdecken') render();
+    }).catch(() => {});
+  }
+  if (!d.feed && !d.feedLoading) loadFeed();
+  if (center && !d.near && !d.nearLoading && !d.nearError) loadNear();
+  const recos = recommend(S().dates.map(fullPlanOrMeta), 3);
+  const topCommunity = (d.community ?? []).filter((r) => r.rating_count).sort((a, b) => b.avg_stars - a.avg_stars).slice(0, 3);
+  if (community.api && !d.community && !d.cLoading) loadCommunity();
+  const w = d.feedWeather;
+  const budget = feedFilter.budget ?? L().lastSearch.budget ?? 60;
+  const f = feedFilter;
+
+  root.innerHTML = `
+    ${head}
+    <section class="filter-bar">
+      <button class="filter-chip" data-ftoggle>${icon('pin')}${esc(center?.name ?? 'Standort')}</button>
+      <button class="filter-chip" data-ftoggle>${f.daytime === 'abend' ? 'Abends' : 'Tagsüber'}</button>
+      <button class="filter-chip" data-ftoggle>bis ${budget} €</button>
+      ${f.mood ? `<button class="filter-chip on" data-ftoggle>${esc(moodLabel(f.mood))}</button>` : ''}
+      ${f.place ? `<button class="filter-chip on" data-ftoggle>${f.place === 'drinnen' ? 'Drinnen' : 'Draußen'}</button>` : ''}
+      <button class="filter-chip strong" data-ftoggle>${icon('more')}Filter</button>
+    </section>
+    <section class="panel form filter-panel" ${f.open ? '' : 'hidden'}>
+      <div class="field"><span class="label">Standort</span>
+        <div class="row gap"><div class="input-ico grow">${icon('pin')}<input class="input" id="ff-city" value="${esc(center?.name ?? S().settings.city)}" placeholder="Stadt"></div>
+        <button type="button" class="btn square" id="ff-gps" aria-label="Meinen Standort verwenden">${icon('locate')}</button></div>
+      </div>
+      <div class="field"><span class="label">Tageszeit</span>${chips('ff-daytime', [['tag', 'Tagsüber', 'sun'], ['abend', 'Abends', 'moon']], f.daytime, 'seg')}</div>
+      <div class="field">
+        <div class="label-row"><span class="label">Budget für euch beide</span><output id="ff-budget-out" class="budget-out">${budget} €</output></div>
+        <input type="range" id="ff-budget" min="0" max="200" step="5" value="${budget}" aria-label="Budget in Euro">
+      </div>
+      <div class="field"><span class="label">Stimmung</span>${chips('ff-mood', [['', 'Alle'], ...MOODS.map(([v, l, e]) => [v, `${e} ${l}`])], f.mood)}</div>
+      <div class="field"><span class="label">Drinnen oder draußen</span>${chips('ff-place', [['', 'Beides'], ['drinnen', 'Drinnen', 'home'], ['draußen', 'Draußen', 'sun']], f.place, 'seg')}</div>
+      <div class="field"><span class="label">Wie weit?</span>${chips('ff-reach', [[0, 'Zuhause'], [1, 'In der Stadt'], [2, 'Ausflug']], f.reach, 'seg')}</div>
+      <button type="button" class="btn primary" id="ff-apply">Anwenden</button>
+    </section>
+
+    ${w?.known ? `<p class="weather-line">${w.icon} ${relDay(feedDate()) ?? fmtShort(feedDate())} ${daytimeLabel(f.daytime)}: ${esc(w.label)}${w.temp != null ? `, ${w.temp}°` : ''}${w.wet ? ' – Ideen für drinnen' : ''}</p>` : ''}
+
+    <section class="stack">
+      <h2 class="section-title">Passt zu euch</h2>
+      ${d.feedLoading && !d.feed ? '<div class="loading"><span class="spinner"></span>Suche Ideen …</div>'
+        : d.feed?.length ? d.feed.map(feedCard).join('') : '<p class="muted">Keine Idee passt zu diesen Filtern. Erhöht das Budget oder ändert die Stimmung.</p>'}
+      ${d.feed?.length ? `<button class="btn soft" id="feed-more">${icon('dice')}Andere Ideen</button>` : ''}
+    </section>
+
+    ${f.reach === 0 ? '' : `
+    <section class="stack">
+      <div class="row between"><h2 class="section-title">In eurer Nähe</h2><button class="linkish small" data-dtab="orte">Alle Orte</button></div>
+      ${!center ? `<div class="empty"><p>${store.inArtifact() ? 'Orte in der Nähe gibt es in der Webseiten-Version.' : 'Erlaube den Standort oder trag oben eine Stadt ein, dann zeigt Dately Restaurants, Bars & Co. in eurer Nähe.'}</p></div>`
+        : d.nearLoading && !d.near ? '<div class="loading"><span class="spinner"></span>Suche Orte …</div>'
+          : d.nearError ? `<p class="muted">${esc(d.nearError)}</p>`
+            : d.near?.length ? `<div class="h-scroll">${d.near.map((p) => placeCard(p, true)).join('')}</div>` : '<p class="muted">Nichts in der Nähe gefunden.</p>'}
+    </section>`}
+
+    ${topCommunity.length ? `
+    <section class="stack">
+      <div class="row between"><h2 class="section-title">Beliebt bei anderen Paaren</h2><button class="linkish small" data-dtab="community">Alle</button></div>
+      ${topCommunity.map((r) => feedCard(communityIdea(r))).join('')}
+    </section>` : ''}
+
+    ${recos.length ? `
+    <section class="stack">
+      <h2 class="section-title">Weil es euch gefallen hat</h2>
+      ${recos.map(({ idea }) => feedCard(idea)).join('')}
+    </section>` : ''}`;
+
+  bindDiscoverTabs();
+  const refresh = () => {
+    d.feed = null;
+    d.near = null;
+    d.nearError = null;
+    render();
+  };
+  on('[data-ftoggle]', 'click', () => {
+    f.open = !f.open;
+    $('.filter-panel').hidden = !f.open;
+  });
+  const panel = $('.filter-panel');
+  bindChips(panel, 'ff-daytime', (v) => (f.daytime = v));
+  bindChips(panel, 'ff-mood', (v) => (f.mood = v));
+  bindChips(panel, 'ff-place', (v) => (f.place = v));
+  bindChips(panel, 'ff-reach', (v) => (f.reach = Number(v)));
+  $('#ff-budget').addEventListener('input', (e) => {
+    f.budget = Number(e.target.value);
+    $('#ff-budget-out').textContent = `${f.budget} €`;
+  });
+  $('#ff-gps').addEventListener('click', async (e) => {
+    await withBusy(e.currentTarget, async () => {
+      try {
+        const g = await useGps();
+        $('#ff-city').value = g.name;
+      } catch (err) {
+        toast(store.inArtifact() ? 'Den Standort gibt es in der Webseiten-Version.' : err.message);
+      }
+    });
+  });
+  $('#ff-apply').addEventListener('click', async (e) => {
+    const city = $('#ff-city').value.trim();
+    await withBusy(e.currentTarget, async () => {
+      if (city && city !== center?.name) {
+        L().geo = null;
+        store.saveLocal();
+        await ensureGeo(city);
+      }
+    });
+    f.open = false;
+    refresh();
+  });
+  $('#feed-more')?.addEventListener('click', async (e) => {
+    await withBusy(e.currentTarget, async () => {
+      const shown = new Set(d.feed.map((i) => i.id));
+      const res = await suggest(d.feedCtx, d.feedWeather, { count: 4, exclude: shown, dates: S().dates.map(fullPlanOrMeta) });
+      d.feed = res.ideas;
+    });
+    render();
+  });
+  on('[data-feed-plan]', 'click', (_, el) => {
+    const idea = favRegistry.get(el.dataset.feedPlan) ?? ideaById(el.dataset.feedPlan);
+    if (idea) planIdeaNow(idea, el);
+  });
+  on('[data-open-place]', 'click', (_, el) => go('ort', el.dataset.openPlace));
+}
+
+/* ================================================================ Entdecken: Gemerkt */
+
+function renderSaved(head) {
+  const favs = [...S().favorites].sort((a, b) => b.at - a.at);
+  const custom = S().ideas;
+  const favIdeas = favs.map((f) => ({ f, idea: f.idea ?? ideaById(f.ideaId) })).filter((x) => x.idea);
+  root.innerHTML = `
+    ${head}
+    <section class="stack">
+      <h2 class="section-title">Favoriten</h2>
+      ${favIdeas.length ? favIdeas.map(({ f, idea }) => `
+        <article class="feed-card">
+          ${thumb(idea.photos?.[0] || idea.image || idea.steps?.find((s) => s.place?.image)?.place.image, idea.emoji ?? '💡', 'sq big')}
+          <div class="grow">
+            <div class="row between top"><h3>${esc(idea.title)}</h3>${favBtn(idea)}</div>
+            <p class="muted small">${fmtEuro(idea.cost ?? 0)} · ${fmtDuration(ideaDuration(idea))} · gemerkt von ${f.by === myRole() ? 'dir' : esc(nameOf(f.by))}</p>
+            <button class="btn sm primary" data-feed-plan="${esc(idea.id)}">${icon('sparkle')}Planen</button>
+          </div>
+        </article>`).join('') : `<p class="muted">Tippe bei einer Idee, einem Ort oder einer Community-Idee auf ${icon('heart', 'inline')}, um sie für später zu speichern. Favoriten kommen auch bei Vorschlägen bevorzugt vor.</p>`}
+    </section>
+    <section class="stack">
+      <div class="row between"><h2 class="section-title">Eigene Ideen</h2><button class="btn sm soft" data-go="idee">${icon('plus')}Neue Idee</button></div>
+      ${custom.length ? `<div class="list-card">${custom.map((i) => `
+        <div class="date-item static">
+          ${thumb(i.image || i.steps?.find((s) => s.place?.image)?.place.image, esc(i.emoji ?? '💡'), 'sq')}
+          <span class="grow"><strong>${esc(i.title)}</strong><small class="muted">${i.place === 'drinnen' ? 'Drinnen' : 'Draußen'} · ${fmtEuro(i.cost)} · ${fmtDuration(ideaDuration(i))}${(i.moods ?? []).length ? ` · ${i.moods.map(moodLabel).join(', ')}` : ''}</small></span>
+          <button class="icon-btn small" data-feed-plan="${i.id}" aria-label="Planen">${icon('sparkle')}</button>
+          ${community.api && !i.communityId ? `<button class="icon-btn small" data-share-idea="${i.id}" aria-label="Mit der Community teilen">${icon('share')}</button>` : ''}
+          <button class="icon-btn small" data-del-idea="${i.id}" aria-label="Löschen">${icon('trash')}</button>
+        </div>`).join('')}</div>` : '<p class="muted">Eigene Ideen erscheinen auch bei den Vorschlägen, wenn sie zu Budget, Wetter und Stimmung passen.</p>'}
+    </section>`;
+
+  bindDiscoverTabs();
+  on('[data-go]', 'click', (_, el) => go(el.dataset.go));
+  on('[data-feed-plan]', 'click', (_, el) => {
+    const idea = favRegistry.get(el.dataset.feedPlan) ?? ideaById(el.dataset.feedPlan);
+    if (idea) planIdeaNow(idea, el);
+  });
+  on('[data-del-idea]', 'click', (_, el) => {
+    store.update((s) => (s.ideas = s.ideas.filter((i) => i.id !== el.dataset.delIdea)));
+    render();
+  });
+  on('[data-share-idea]', 'click', (_, el) => go('teilen', `idea:${el.dataset.shareIdea}`));
+}
 
 /* ================================================================ Eigene Idee */
 
@@ -1130,6 +1614,21 @@ function inboxItems() {
   const role = myRole();
   const t = isoDate(today());
   const items = [];
+  const rs = rhythmStatus(s.dates, s.settings.datesPerMonth);
+  const turn = nextPlanner();
+  const openReq = s.requests.some((x) => x.status === 'open');
+  if (role && rs.due && !openReq) {
+    items.push(turn === role ? `
+      <article class="inbox-item accent">
+        <div class="inbox-ico">${icon('sparkle')}</div>
+        <div class="grow"><strong>Du bist dran mit Planen</strong><p>Euer nächstes Date ist fällig – überrasch ${esc(nameOf(other(role)))}!</p></div>
+        <button class="btn primary sm" data-scroll-form>Planen</button>
+      </article>` : `
+      <article class="inbox-item">
+        <div class="inbox-ico">${icon('clock')}</div>
+        <div class="grow"><strong>${esc(nameOf(turn))} ist dran mit Planen</strong><p>Euer nächstes Date ist fällig.</p></div>
+      </article>`);
+  }
 
   for (const r of s.requests.filter((x) => x.status === 'open')) {
     if (r.to === role) {
@@ -1155,7 +1654,19 @@ function inboxItems() {
     }
   }
 
-  for (const p of s.polls.filter((x) => x.status === 'open')) {
+  for (const p of s.polls.filter((x) => x.status === 'open' && x.stage === 'survey')) {
+    const mine = !!p.survey?.[role];
+    const theirs = !!p.survey?.[other(role)];
+    const label = mine && theirs ? 'Beide fertig – Ergebnis ansehen' : mine ? `Warte auf ${esc(nameOf(other(role)))}` : `${p.createdBy === role ? 'Deine' : `${esc(nameOf(p.createdBy))} wartet auf deine`} Antworten (1 Minute)`;
+    items.push(`
+      <article class="inbox-item ${!mine || theirs ? 'accent' : ''}">
+        <div class="inbox-ico">${icon(p.kind === 'day' ? 'calendar' : 'vote')}</div>
+        <div class="grow"><strong>${p.kind === 'day' ? 'Welcher Tag passt euch?' : 'Worauf habt ihr Lust?'}</strong><p>${label}</p></div>
+        <button class="btn ${!mine || theirs ? 'primary' : ''} sm" data-open-poll="${p.id}">${!mine ? 'Antworten' : 'Öffnen'}</button>
+      </article>`);
+  }
+
+  for (const p of s.polls.filter((x) => x.status === 'open' && x.stage !== 'survey')) {
     const st = pollState(p);
     const label = st.bothDone
       ? st.matches.length ? `Match: ${esc(ideaById(st.matches[0])?.title ?? '')}` : 'Kein Match – neue Runde?'
@@ -1195,6 +1706,8 @@ function inboxItems() {
 }
 
 function nextPlanner() {
+  const t = S().settings.nextTurn;
+  if (t === 'a' || t === 'b') return t;
   const last = [...S().dates]
     .filter((d) => d.plannedBy === 'a' || d.plannedBy === 'b')
     .sort((x, y) => (y.date + y.start).localeCompare(x.date + x.start))[0];
@@ -1211,6 +1724,8 @@ RENDER.start = () => {
   const inbox = inboxItems();
   const hasNames = s.settings.nameA || s.settings.nameB;
   const np = nextPlanner();
+  // „Wer plant?“ folgt der Reihe, bis jemand selbst etwas anderes wählt.
+  if (!session.plannerTouched && role) f.planner = np === role ? 'me' : 'partner';
 
   root.innerHTML = `
     <header class="home-head">
@@ -1238,7 +1753,8 @@ RENDER.start = () => {
         </div>
         <div class="rhythm-side">
           ${r.due ? `<span class="tag warn">Date fällig</span>` : r.thisMonth >= r.goal ? `<span class="tag ok">Ziel erreicht</span>` : ''}
-          <span class="muted small">Als Nächstes plant <strong>${np === role ? 'du' : esc(nameOf(np))}</strong></span>
+          <span class="turn">${icon('repeat')}Diesmal plant <strong>${np === role ? 'du' : esc(nameOf(np))}</strong></span>
+          <button type="button" class="linkish small" id="swap-turn">Tauschen</button>
         </div>
       </div>
       <span class="progress"><span style="width:${pct}%"></span></span>
@@ -1255,7 +1771,7 @@ RENDER.start = () => {
         ], f.planner, 'seg')}
         <p class="hint" id="planner-hint"></p>
       </div>
-      <div class="field">
+      <div class="field only-solo">
         <span class="label">Wann?</span>
         ${chips('when', [['tonight', 'Heute Abend'], ['weekend', 'Wochenende'], ['date', 'Datum wählen']], f.when)}
         <input type="date" id="f-date" class="input" value="${esc(f.date && f.date >= isoDate(today()) ? f.date : isoDate(addDays(today(), 1)))}" min="${isoDate(today())}" ${f.when === 'date' ? '' : 'hidden'}>
@@ -1265,16 +1781,16 @@ RENDER.start = () => {
         <span class="label">Tageszeit</span>
         ${chips('daytime', [['tag', 'Tagsüber', 'sun'], ['abend', 'Abends', 'moon']], f.daytime)}
       </div>
-      <div class="field">
+      <div class="field only-solo">
         <div class="label-row"><span class="label">Budget für euch beide</span><output id="budget-out" class="budget-out">${f.budget} €</output></div>
         <input type="range" id="f-budget" min="0" max="200" step="5" value="${f.budget}" aria-label="Budget in Euro">
         <div class="scale"><span>0 €</span><span>50</span><span>100</span><span>150</span><span>200 €</span></div>
       </div>
-      <div class="field">
+      <div class="field only-solo">
         <span class="label">Wie weit?</span>
         ${chips('reach', [[0, 'Zuhause', 'home'], [1, 'In der Stadt', 'city'], [2, 'Ausflug', 'car']], f.reach)}
       </div>
-      <div class="field">
+      <div class="field only-solo">
         <span class="label">Stimmung</span>
         ${chips('fmood', [['', 'Egal'], ...MOODS.map(([v, l, e]) => [v, `${e} ${l}`])], f.mood ?? '')}
       </div>
@@ -1300,9 +1816,11 @@ RENDER.start = () => {
     $('#planner-hint').textContent =
       p === 'me' ? `Du suchst die Idee aus und kannst sie als Überraschung vor ${pn} geheim halten.`
         : p === 'partner' ? `${pn} bekommt eine Anfrage und plant eine Überraschung für dich.`
-          : 'Die App schlägt drei Ideen vor, ihr stimmt beide ab.';
-    $('#f-submit').innerHTML = p === 'me' ? `${icon('sparkle')}Ideen finden` : p === 'partner' ? `${icon('gift')}Anfrage an ${esc(pn)} senden` : `${icon('vote')}Abstimmung starten`;
+          : 'Ihr beantwortet beide kurz, wann ihr Zeit habt und worauf ihr Lust habt. Daraus macht die App Vorschläge, über die ihr abstimmt.';
+    $('#f-submit').innerHTML = p === 'me' ? `${icon('sparkle')}Ideen finden` : p === 'partner' ? `${icon('gift')}Anfrage an ${esc(pn)} senden` : `${icon('vote')}Umfrage starten`;
     $('#note-field').hidden = p !== 'partner';
+    $$('.only-solo', form).forEach((el) => (el.hidden = p === 'both'));
+    $('#daytime-field').hidden = p === 'both' || f.when === 'tonight';
   };
   updatePlanner();
   const showConflicts = () => {
@@ -1329,6 +1847,7 @@ RENDER.start = () => {
     $('#budget-out').textContent = `${f.budget} €`;
   });
   bindChips(form, 'planner', (v) => {
+    session.plannerTouched = true;
     f.planner = v;
     updatePlanner();
   });
@@ -1336,7 +1855,7 @@ RENDER.start = () => {
     f.when = v;
     setTimeout(showConflicts);
     $('#f-date').hidden = v !== 'date';
-    $('#daytime-field').hidden = v === 'tonight';
+    $('#daytime-field').hidden = v === 'tonight' || f.planner === 'both';
   });
   bindChips(form, 'daytime', (v) => (f.daytime = v));
   bindChips(form, 'reach', (v) => (f.reach = Number(v)));
@@ -1364,17 +1883,24 @@ RENDER.start = () => {
       render(true);
       return;
     }
+    if (f.planner === 'both') {
+      if (city) ensureGeo(city);
+      return go('poll', createSurvey('full'));
+    }
     const btn = $('#f-submit');
     await withBusy(btn, async () => {
       await prepareSession(ctx, city);
-      if (f.planner === 'both') {
-        const id = await createPoll();
-        if (id) go('poll', id);
-      } else go('suggest');
+      go('suggest');
     });
   });
 
   bindWhoAmI();
+  $('#swap-turn')?.addEventListener('click', () => {
+    store.update((st) => (st.settings.nextTurn = other(np)));
+    session.plannerTouched = false;
+    toast(`Diesmal plant ${other(np) === role ? 'du' : nameOf(other(np))}`);
+    render();
+  });
   on('[data-go]', 'click', (_, el) => go(el.dataset.go));
   on('[data-go-book]', 'click', () => go('rueckblick', String(today().getMonth() === 0 ? today().getFullYear() - 1 : today().getFullYear())));
   on('[data-reco]', 'click', (_, el) => {
@@ -1396,6 +1922,7 @@ RENDER.start = () => {
   });
   on('[data-open-poll]', 'click', (_, el) => go('poll', el.dataset.openPoll));
   on('[data-open-date]', 'click', (_, el) => go('date', el.dataset.openDate));
+  on('[data-scroll-form]', 'click', () => $('#start-form').scrollIntoView({ behavior: 'smooth', block: 'start' }));
   on('[data-special]', 'click', async (_, el) => {
     if (!myRole()) return toast('Wähle zuerst oben, wer du bist');
     await withBusy(el, async () => {
@@ -1500,6 +2027,7 @@ function ideaCard(i, extra = '') {
           <h3>${esc(i.title)}</h3>
           <p class="teaser">${esc(i.teaser)}</p>
         </div>
+        ${favBtn(i)}
       </div>
       <dl class="facts">
         <div><dt>${icon(i.place === 'drinnen' ? 'home' : 'sun')}</dt><dd>${i.place === 'drinnen' ? 'Drinnen' : 'Draußen'}</dd></div>
@@ -1639,6 +2167,7 @@ RENDER.plan = (ideaId) => {
       } else {
         s.dates.push({ ...plan, ...meta, surprise: false });
       }
+      if (meta.plannedBy === 'a' || meta.plannedBy === 'b') s.settings.nextTurn = other(meta.plannedBy);
       const req = s.requests.find((r) => r.id === session.requestId);
       if (req) Object.assign(req, { status: 'planned', dateId: id });
       const poll = s.polls.find((p) => p.id === session.pollId);
@@ -1848,9 +2377,10 @@ RENDER.poll = (id) => {
     bindBack();
     return bindWhoAmI();
   }
+  if (p.stage === 'survey') return renderSurvey(p);
   const partner = other(role);
   const st = pollState(p);
-  const ideas = st.rd.ideas.map(ideaById).filter(Boolean);
+  const ideas = st.rd.ideas.map((iid) => ideaById(iid) ?? st.rd.snap?.[iid]).filter(Boolean);
   const showTheirs = st.mineDone; // Stimmen des Partners erst nach der eigenen Abgabe zeigen
 
   const voteButtons = (i) => {
@@ -1895,6 +2425,7 @@ RENDER.poll = (id) => {
       <span class="status ${st.partnerDone ? 'done' : ''}">${icon(st.partnerDone ? 'check' : 'clock')}${esc(nameOf(partner))}</span>
       ${p.weather?.icon ? weatherPill(p.weather) : ''}
     </div>
+    ${p.summary ? `<p class="hint">${icon('sparkle')} Passend zu euren Wünschen: ${p.summary.moodsBoth?.length ? p.summary.moodsBoth.map(moodLabel).join(', ') : (p.summary.moods ?? []).map(moodLabel).join(', ') || 'alles offen'} · bis ${p.summary.budget} €</p>` : ''}
     ${result}
     ${!st.mineDone && p.status === 'open' ? `<p class="hint">Stimm bei allen drei Ideen ab. ${esc(nameOf(partner))}s Stimmen siehst du danach.</p>` : ''}
     ${st.mineDone && !st.partnerDone ? `<p class="hint">Fertig. Sobald ${esc(nameOf(partner))} abgestimmt hat, seht ihr euer Match.</p>` : ''}
@@ -1929,7 +2460,7 @@ RENDER.poll = (id) => {
     store.update((s) => {
       const poll = s.polls.find((x) => x.id === id);
       poll.round += 1;
-      poll.rounds = { ...poll.rounds, [`r${poll.round}`]: { ideas: next.map((i) => i.id), votes: { a: {}, b: {} } } };
+      poll.rounds = { ...poll.rounds, [`r${poll.round}`]: { ideas: next.map((i) => i.id), votes: { a: {}, b: {} }, snap: Object.fromEntries(next.filter((i) => i.custom).map((i) => [i.id, i])) } };
     });
     render(true);
   });
@@ -1949,7 +2480,7 @@ function entriesFor(date) {
   const list = [];
   for (const d of s.dates.filter((x) => x.date === iso)) list.push({ type: 'date', time: d.start, title: dateTitle(d), emoji: dateEmoji(d), date: d.id });
   for (const r of s.requests.filter((x) => x.status === 'open' && x.ctx.date === iso)) list.push({ type: 'pending', time: '', title: `${nameOf(r.to)} plant ein Date` });
-  for (const p of s.polls.filter((x) => x.status === 'open' && x.ctx.date === iso)) list.push({ type: 'pending', time: '', title: 'Abstimmung läuft', poll: p.id });
+  for (const p of s.polls.filter((x) => x.status === 'open' && x.stage !== 'survey' && x.ctx.date === iso)) list.push({ type: 'pending', time: '', title: 'Abstimmung läuft', poll: p.id });
   for (const f of s.settings.fixed.filter((x) => x.weekday === date.getDay())) list.push({ type: 'fixed', time: f.time, title: f.title });
   for (const sp of specialsOn(s.settings, date)) list.push({ type: 'special', time: '', title: `${sp.icon} ${sp.label}` });
   for (const e of s.events.filter((x) => x.date === iso)) list.push({ type: 'event', time: e.time, title: e.title, who: e.who, id: e.id });
@@ -2025,6 +2556,7 @@ RENDER.kalender = () => {
         </div>
       </form>
       ${cal.sel >= todayIso ? `<button class="btn soft big" id="plan-here">${icon('sparkle')}Date für diesen Tag planen</button>` : ''}
+      <button class="btn big" id="find-day">${icon('vote')}Gemeinsamen Tag finden</button>
     </section>`;
 
   bindGcalBar();
@@ -2054,6 +2586,10 @@ RENDER.kalender = () => {
     if (!title) return;
     store.update((st) => st.events.push({ id: uid(), date: cal.sel, time: fd.get('time'), title, who: fd.get('who'), createdAt: Date.now() }));
     render();
+  });
+  $('#find-day').addEventListener('click', () => {
+    if (!myRole()) return toast('Wähle zuerst auf „Planen“, wer du bist');
+    go('poll', createSurvey('day'));
   });
   $('#plan-here')?.addEventListener('click', () => {
     Object.assign(L().lastSearch, { when: 'date', date: cal.sel });
@@ -2479,7 +3015,6 @@ RENDER.rueckblick = (param) => {
   const favMood = Object.entries(moodCount).sort((a, b) => b[1] - a[1])[0]?.[0];
   const best = [...entries].sort((a, b) => avgRating(b.d) - avgRating(a.d))[0];
   const places = new Set(entries.flatMap(({ plan }) => (plan.steps ?? []).filter((s) => s.place).map((s) => s.place.name)));
-  const spent = S().expenses.filter((e) => e.kind !== 'settle' && e.date.startsWith(String(year))).reduce((a, e) => a + e.amount, 0);
   const months = new Set(entries.map(({ d }) => d.date.slice(5, 7)));
   const canPrint = !store.inArtifact();
 
@@ -2536,7 +3071,6 @@ RENDER.rueckblick = (param) => {
         </div>
         ${favMood ? `<p class="stat-line">Eure Lieblingsstimmung: <strong>${esc(moodLabel(favMood))}</strong></p>` : ''}
         ${best && avgRating(best.d) ? `<p class="stat-line">Euer Highlight: <strong>${esc(best.plan.title)}</strong> im ${MONTHS[Number(best.d.date.slice(5, 7)) - 1]}</p>` : ''}
-        ${spent ? `<p class="stat-line">Gemeinsam investiert: <strong>${euro(spent)}</strong> in schöne Momente</p>` : ''}
       </section>
 
       ${entries.map(datePage).join('')}

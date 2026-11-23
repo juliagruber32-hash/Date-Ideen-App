@@ -289,3 +289,46 @@ export const fmtMin = (m) => (m < 60 ? `${Math.max(1, m)} Min.` : `${Math.floor(
 
 export const directionsLink = (p, mode) => `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lon}&travelmode=${mode}`;
 export const appleMapsLink = (p, mode = 'd') => `https://maps.apple.com/?daddr=${p.lat},${p.lon}&dirflg=${mode}&q=${encodeURIComponent(p.name)}`;
+
+/* ------------------------------------------------------------ Gemischte Suche für „Für euch“ */
+
+const FILTER_RE = /\["([^"]+)"(?:(=|~)"([^"]+)")?\]/g;
+function matchesFilter(tags, filter) {
+  for (const [, key, op, val] of filter.matchAll(FILTER_RE)) {
+    const v = tags[key];
+    if (v == null) return false;
+    if (op === '=' && v !== val) return false;
+    if (op === '~' && !new RegExp(val).test(v)) return false;
+  }
+  return true;
+}
+
+/** Mehrere Kategorien in einer Abfrage. Gibt Orte gruppiert nach Kategorie zurück. */
+export async function searchMixed(catIds, center, radius) {
+  const cats = catIds.map(categoryById).filter(Boolean);
+  const key = `mix|${catIds.join(',')}|${center.lat.toFixed(3)}|${center.lon.toFixed(3)}|${radius}`;
+  if (memo.has(key)) return memo.get(key);
+  const parts = cats.flatMap((c) => c.filters.map((f) => `nwr${f}(around:${radius},${center.lat},${center.lon});`)).join('');
+  const query = `[out:json][timeout:25];(${parts});out center tags 150;`;
+  const res = await fetch('https://overpass-api.de/api/interpreter', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'data=' + encodeURIComponent(query),
+  });
+  if (!res.ok) throw new Error(res.status === 429 ? 'Zu viele Anfragen – bitte kurz warten.' : 'Ortssuche gerade nicht erreichbar.');
+  const json = await res.json();
+  const groups = Object.fromEntries(cats.map((c) => [c.id, []]));
+  const seen = new Set();
+  for (const el of json.elements) {
+    const cat = cats.find((c) => c.filters.some((f) => matchesFilter(el.tags ?? {}, f)));
+    if (!cat) continue;
+    const p = toPlace(el, cat, center);
+    if (!p || seen.has(p.name + p.street)) continue;
+    seen.add(p.name + p.street);
+    groups[cat.id].push(p);
+  }
+  for (const id of Object.keys(groups)) groups[id] = groups[id].sort((a, b) => a.km - b.km).slice(0, 12);
+  await addWikidataImages(Object.values(groups).flat());
+  memo.set(key, groups);
+  return groups;
+}
