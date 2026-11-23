@@ -7,6 +7,7 @@ import { googleDetails } from './gplaces.js';
 const CACHE_KEY = 'dately.images.v1';
 let cache = null;
 const pending = new Map();
+const session = new Map();
 
 function load() {
   if (cache) return cache;
@@ -90,8 +91,9 @@ async function placeImage(place, googleKey) {
  */
 export async function findImage(job, googleKey = '') {
   const c = load();
-  const key = job.place ? `p:${job.place.id ?? `${job.place.name}@${job.place.lat}`}` : `t:${job.topic}`;
+  const key = job.place ? `${googleKey ? 'gp' : 'p'}:${job.place.id ?? `${job.place.name}@${job.place.lat}`}` : `t:${job.topic}`;
   if (key in c) return c[key];
+  if (session.has(key)) return session.get(key);
   if (pending.has(key)) return pending.get(key);
   const p = (async () => {
     let url = '';
@@ -103,8 +105,12 @@ export async function findImage(job, googleKey = '') {
     } catch {
       url = '';
     }
-    c[key] = url;
-    save();
+    // Ohne Google-Foto (z. B. Schlüssel noch nicht aktiv) nur für diese Sitzung merken – später erneut versuchen
+    if (googleKey && job.place && !/googleapis\.com/.test(url)) session.set(key, url);
+    else {
+      c[key] = url;
+      save();
+    }
     pending.delete(key);
     return url;
   })();
