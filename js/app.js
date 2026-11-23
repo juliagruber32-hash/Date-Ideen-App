@@ -683,7 +683,9 @@ const gJob = (place) => {
   gJobs.set(id, place);
   return id;
 };
-const imgTag = (src) => `<img src="${esc(src)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentNode.classList.add('noimg');this.remove()">`;
+// Google-Fotos brauchen die Herkunft der Seite (Schlüssel ist auf die Webseite beschränkt)
+const refPol = (src) => (/googleapis\.com/.test(src) ? 'strict-origin-when-cross-origin' : 'no-referrer');
+const imgTag = (src) => `<img src="${esc(src)}" alt="" loading="lazy" referrerpolicy="${refPol(src)}" onerror="this.parentNode.classList.add('noimg');this.remove()">`;
 
 function hydrateMedia() {
   const key = S().settings.googlePlacesKey;
@@ -721,7 +723,7 @@ const gRating = (p) => (S().settings.googlePlacesKey && p?.lat != null ? `<span 
 
 const thumb = (src, emoji, cls = '', job = null, target = null) =>
   !src && job ? `<span class="thumb noimg ${cls}" data-img="${imgJob(job, target)}"><span class="thumb-emoji" aria-hidden="true">${glyph(emoji)}</span></span>`
-  : src ? `<span class="thumb ${cls}"><img src="${esc(src)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentNode.classList.add('noimg');this.remove()"><span class="thumb-emoji" aria-hidden="true">${glyph(emoji)}</span></span>`
+  : src ? `<span class="thumb ${cls}"><img src="${esc(src)}" alt="" loading="lazy" referrerpolicy="${refPol(src)}" onerror="this.parentNode.classList.add('noimg');this.remove()"><span class="thumb-emoji" aria-hidden="true">${glyph(emoji)}</span></span>`
     : `<span class="thumb noimg ${cls}"><span class="thumb-emoji" aria-hidden="true">${glyph(emoji)}</span></span>`;
 
 function placeCard(p, mini = false) {
@@ -1028,7 +1030,7 @@ RENDER.ort = (id) => {
   root.innerHTML = `
     ${topbar({ title: '', back: session.ortBack ?? ['entdecken', '', 'Entdecken'] })}
     <div class="hero-img ${img ? '' : 'noimg'}">
-      ${img ? `<img src="${esc(img)}" alt="${esc(p.name)}" referrerpolicy="no-referrer" onerror="this.parentNode.classList.add('noimg');this.remove()">` : ''}
+      ${img ? `<img src="${esc(img)}" alt="${esc(p.name)}" referrerpolicy="${refPol(img)}" onerror="this.parentNode.classList.add('noimg');this.remove()">` : ''}
       <span class="thumb-emoji" aria-hidden="true">${glyph(cat.emoji)}</span>
     </div>
     <header class="topbar">
