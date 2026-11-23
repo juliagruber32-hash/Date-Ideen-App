@@ -81,21 +81,39 @@ const OVERPASS = [
   'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
 ];
 
-// Anfragen nacheinander stellen: Die Server erlauben nur wenige gleichzeitige Anfragen pro Gerät.
-let queue = Promise.resolve();
-function overpass(query) {
-  const run = queue.then(() => overpassNow(query));
-  queue = run.catch(() => {});
-  return run;
+// Höchstens zwei Anfragen gleichzeitig (mehr lassen die Server pro Gerät nicht zu).
+// Wichtige Suchen (z. B. die Orte im geöffneten Plan) kommen vor Hintergrund-Suchen dran.
+const MAX_PARALLEL = 2;
+let active = 0;
+const waiting = [];
+function overpass(query, prio = 0) {
+  return new Promise((resolve, reject) => {
+    waiting.push({ query, prio, resolve, reject });
+    waiting.sort((x, y) => y.prio - x.prio);
+    pump();
+  });
+}
+function pump() {
+  while (active < MAX_PARALLEL && waiting.length) {
+    const job = waiting.shift();
+    active++;
+    overpassNow(job.query)
+      .then(job.resolve, job.reject)
+      .finally(() => {
+        active--;
+        pump();
+      });
+  }
 }
 
 async function overpassNow(query) {
   let last = 'Ortssuche gerade nicht erreichbar.';
   for (let round = 0; round < 2; round++) {
+    let busy = false;
     for (const url of OVERPASS) {
       try {
         const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 45000); // große Umkreise brauchen Zeit
+        const timer = setTimeout(() => ctrl.abort(), 30000);
         const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -108,12 +126,16 @@ async function overpassNow(query) {
           if (json.remark && /timed out|runtime error/i.test(json.remark) && !json.elements?.length) continue;
           return json;
         }
-        if (res.status === 429) last = 'Zu viele Anfragen – bitte kurz warten.';
+        if (res.status === 429 || res.status === 504) {
+          busy = true;
+          last = 'Zu viele Anfragen – bitte kurz warten.';
+        }
       } catch {
         /* nächsten Server versuchen */
       }
     }
-    await new Promise((r) => setTimeout(r, 2500)); // kurz warten, dann noch einmal alle Server
+    if (!busy) break; // nur bei „zu viele Anfragen“ ein zweites Mal versuchen
+    await new Promise((r) => setTimeout(r, 2500));
   }
   throw new Error(last);
 }
@@ -166,7 +188,7 @@ async function searchOnce(categoryId, center, radius, cuisineId) {
   const extra = cuisineId ? cuisineFilters(cuisineId) : [''];
   const parts = cat.filters.flatMap((f) => extra.map((x) => `nwr${f}${x}(around:${radius},${center.lat},${center.lon});`)).join('');
   const query = `[out:json][timeout:25];(${parts});out center tags 60;`;
-  const json = await overpass(query);
+  const json = await overpass(query, 1);
   const seen = new Set();
   const places = json.elements
     .map((el) => toPlace(el, cat, center))
@@ -399,7 +421,7 @@ function matchesFilter(tags, filter) {
 }
 
 /** Mehrere Kategorien in einer Abfrage. Gibt Orte gruppiert nach Kategorie zurück. */
-export async function searchMixed(catIds, center, radius) {
+export async function searchMixed(catIds, center, radius, prio = 0) {
   const key = `mix|${catIds.join(',')}|${center.lat.toFixed(3)}|${center.lon.toFixed(3)}|${radius}`;
   if (memo.has(key)) return memo.get(key);
   const groups = Object.fromEntries(catIds.map((id) => [id, []]));
@@ -409,7 +431,7 @@ export async function searchMixed(catIds, center, radius) {
     if (!missing.length) break;
     let found;
     try {
-      found = await mixedOnce(missing, center, r);
+      found = await mixedOnce(missing, center, r, prio);
     } catch {
       failed = true;
       continue; // ein Server-Fehler soll nicht alles verwerfen – nächste Stufe versuchen
@@ -422,12 +444,12 @@ export async function searchMixed(catIds, center, radius) {
   return groups;
 }
 
-async function mixedOnce(catIds, center, radius) {
+async function mixedOnce(catIds, center, radius, prio = 0) {
   const cats = catIds.map(categoryById).filter(Boolean);
   // Je Kategorie eine eigene Obergrenze – sonst verdrängen z. B. viele Restaurants alle anderen Orte
   const parts = cats.map((c, k) => `(${c.filters.map((f) => `nwr${f}(around:${radius},${center.lat},${center.lon});`).join('')})->.s${k};.s${k} out center tags 40;`).join('');
-  const query = `[out:json][timeout:40];${parts}`;
-  const json = await overpass(query);
+  const query = `[out:json][timeout:25];${parts}`;
+  const json = await overpass(query, prio);
   const groups = Object.fromEntries(cats.map((c) => [c.id, []]));
   const seen = new Set();
   for (const el of json.elements) {
@@ -454,7 +476,7 @@ export async function searchByName(term, center, radius) {
   let places = [];
   for (const r of radiusLadder(Math.min(radius, 60000))) {
     const parts = ['amenity', 'leisure', 'tourism', 'shop'].map((k) => `nwr["name"~"${clean}",i]["${k}"](around:${r},${center.lat},${center.lon});`).join('');
-    const json = await overpass(`[out:json][timeout:25];(${parts});out center tags 60;`);
+    const json = await overpass(`[out:json][timeout:25];(${parts});out center tags 60;`, 1);
     const seen = new Set();
     places = json.elements
       .map((el) => toPlace(el, CATEGORIES.find((c) => !c.hidden && c.filters.some((f) => matchesFilter(el.tags ?? {}, f))) ?? categoryById('ort'), center))

@@ -949,7 +949,7 @@ function renderSearch(head) {
       const radiusKm = feedFilter.radiusKm || Math.round(d.radius / 1000) || 15;
       const cuisine = CUISINES.find((c) => norm(c.label).includes(norm(d.query)) || norm(d.query).includes(norm(c.label)));
       const catId = catForStep({ q: d.query, t: d.query }, isoDate(today())) ?? CATEGORIES.find((c) => !c.hidden && norm(c.label).includes(norm(d.query)))?.id ?? null;
-      const base = { center, radiusKm, daytime: feedFilter.daytime, date: feedDate(), moods: preferredMoods(), weather: d.feedWeather };
+      const base = { center, radiusKm, daytime: feedFilter.daytime, date: feedDate(), moods: preferredMoods(), weather: d.feedWeather, prio: 1 };
       let gen = [];
       if (cuisine) {
         const list = await searchNearby('restaurant', center, radiusKm * 1000, cuisine.id);
@@ -3016,6 +3016,7 @@ RENDER.plan = (ideaId) => {
     if (!center) return `<p class="muted small">Erlaube den Standort oder trag eine Stadt ein, dann schlägt Dately hier konkrete Orte vor.</p>`;
     if (draft.nearLoading && !draft.near) return `<p class="muted small"><span class="spinner tiny"></span> Suche passende Orte in der Nähe …</p>`;
     const list = draft.near?.[i] ?? [];
+    if (!list.length && draft.nearError) return `<p class="muted small">Die Kartendaten sind gerade nicht erreichbar.</p><button type="button" class="btn sm soft" data-near-retry>${icon('repeat')}Nochmal suchen</button>`;
     if (!list.length) {
       if (!draft.near) return '';
       const cat = categoryById(stepCats[i]);
@@ -3094,6 +3095,11 @@ RENDER.plan = (ideaId) => {
     draft.start = e.target.value;
     render();
   });
+  on('[data-near-retry]', 'click', () => {
+    draft.near = null;
+    draft.nearError = false;
+    render();
+  });
   bindChips(root, 'p-dur', (v) => {
     draft.duration = v ? Number(v) : null;
     render();
@@ -3157,7 +3163,7 @@ async function loadStepPlaces(steps, draft, stepCats, center, ctx) {
   draft.nearLoading = true;
   const ids = [...new Set(stepCats.filter(Boolean))];
   try {
-    const groups = await searchMixed(ids, center, (ctx.radiusKm || reachToKm(ctx.reach) || 15) * 1000);
+    const groups = await searchMixed(ids, center, (ctx.radiusKm || reachToKm(ctx.reach) || 15) * 1000, 2);
     draft.near = {};
     const used = new Set();
     let prev = center;
@@ -3189,8 +3195,10 @@ async function loadStepPlaces(steps, draft, stepCats, center, ctx) {
       }
       t = addMinutes(t, s.min);
     });
+    draft.nearError = false;
   } catch {
     draft.near = {};
+    draft.nearError = true;
   }
   draft.nearLoading = false;
   if (current.name === 'plan') render();

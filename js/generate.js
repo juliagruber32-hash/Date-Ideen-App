@@ -104,12 +104,12 @@ export function buildGeneratedIdea(main, follow, pairing, { start, date }) {
  * opts: { center, radiusKm, daytime, date, moods, weather, place, onlyCategory, count }
  */
 export async function generateLocalDates(opts) {
-  const { center, radiusKm = 15, daytime = 'abend', date, moods = [], weather, place = null, onlyCategory = null, count = 4, mainList = null, budget = Infinity } = opts;
+  const { center, radiusKm = 15, daytime = 'abend', date, moods = [], weather, place = null, onlyCategory = null, count = 4, mainList = null, budget = Infinity, prio = 0 } = opts;
   const pairOf = (catId) => PAIRINGS[catId] ?? [['cafe', 'Kaffee danach', 45], ['restaurant', 'Essen danach', 75]];
   const mains = mainList ? ['suche'] : onlyCategory ? [onlyCategory] : mainCategories({ moods, daytime, date, weather, place, budget }).slice(0, 5);
   const followSrc = mainList ? [...new Set(mainList.map((p) => p.category))] : mains;
   const follows = [...new Set(followSrc.flatMap((id) => pairOf(id).map((p) => p[0])))].filter((id) => id !== 'xmas' || isXmasSeason(date));
-  const groups = await searchMixed([...new Set([...(mainList ? [] : mains), ...follows])], center, radiusKm * 1000);
+  const groups = await searchMixed([...new Set([...(mainList ? [] : mains), ...follows])], center, radiusKm * 1000, prio);
   const startOf = (catId) => {
     const t = categoryById(catId)?.times ?? [daytime];
     return (t.includes(daytime) ? daytime : t[0]) === 'abend' ? '18:30' : '14:00';
