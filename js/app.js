@@ -2,7 +2,7 @@ import * as store from './store.js';
 import { isHiddenFromMe, myRole, nameOf, other } from './store.js';
 import { geocode, getWeather, manualWeather } from './weather.js';
 import { allIdeas, buildPlan, combineWishes, setPreferences, defaultStart, ideaDuration, loadIdeas, MOODS, moodLabel, REACH, recommend, rhythmStatus, setExtraIdeas, suggest, toICS } from './engine.js';
-import { appleMapsLink, CATEGORIES, CUISINES, catForStep, isXmasSeason, categoryById, directionsLink, distanceKm, fmtKm, fmtMin, formatHours, hoursOn, isOpenAt, locate, mapLink, placeName, reservationLinks, searchMixed, searchNearby, travelEstimates } from './places.js';
+import { appleMapsLink, CATEGORIES, CUISINES, catForStep, isXmasSeason, categoryById, directionsLink, distanceKm, fmtKm, fmtMin, formatHours, hoursOn, isOpenAt, locate, mapLink, placeName, reservationLinks, searchByName, searchMixed, searchNearby, travelEstimates } from './places.js';
 import { googleDetails } from './gplaces.js';
 import * as photos from './photos.js';
 import { SUPABASE } from './config.js';
@@ -112,6 +112,42 @@ function bindChips(scope, group, onChange) {
     if (!btn) return;
     $$('.chip', wrap).forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
     onChange(btn.dataset.value);
+  });
+}
+
+/* --- Umkreis in Kilometern --------------------------------------------------- */
+
+const RADIUS_STEPS = [5, 15, 40, 60, 100];
+const kmToReach = (km) => (km === 0 ? 0 : km <= 15 ? 1 : 2);
+const reachToKm = (reach) => (reach === 0 ? 0 : reach === 2 ? 60 : 15);
+
+/** Chips: (Zuhause) · 5 · 15 · 40 · 60 · 100 km · Eigener, plus Eingabefeld für den eigenen Wert. */
+function radiusChips(group, km, { home = false } = {}) {
+  const custom = km > 0 && !RADIUS_STEPS.includes(km);
+  const opts = [...(home ? [[0, 'Zuhause', 'home']] : []), ...RADIUS_STEPS.map((k) => [k, `${k} km`]), ['eigen', custom ? `${km} km` : 'Eigener']];
+  return `
+    ${chips(group, opts, custom ? 'eigen' : km, 'radius-chips')}
+    <div class="row gap radius-custom" data-custom-for="${group}" ${custom ? '' : 'hidden'}>
+      <input class="input narrow" type="number" min="1" max="200" inputmode="numeric" data-km-input="${group}" value="${custom ? km : ''}" placeholder="z. B. 25" aria-label="Eigener Umkreis in km">
+      <span class="muted">km Umkreis</span>
+    </div>`;
+}
+
+function bindRadius(scope, group, onChange) {
+  const box = $(`[data-custom-for="${group}"]`, scope);
+  const input = $(`[data-km-input="${group}"]`, scope);
+  bindChips(scope, group, (v) => {
+    if (v === 'eigen') {
+      box.hidden = false;
+      input.focus();
+      return;
+    }
+    box.hidden = true;
+    onChange(Number(v));
+  });
+  input?.addEventListener('change', () => {
+    const km = Math.max(1, Math.min(200, Math.round(Number(input.value) || 0)));
+    if (km) onChange(km);
   });
 }
 
@@ -605,7 +641,7 @@ function bindGoogleSettings() {
 
 /* ================================================================ Entdecken */
 
-const discover = { tab: 'fuereuch', cat: 'restaurant', radius: 5000, results: null, error: null, loading: false, cuisine: '', mood: '', sort: 'beste', community: null, cError: null, cLoading: false, myRatings: {} };
+const discover = { tab: 'fuereuch', query: '', search: null, searchLoading: false, cat: 'restaurant', radius: 15000, results: null, error: null, loading: false, cuisine: '', mood: '', sort: 'beste', community: null, cError: null, cLoading: false, myRatings: {} };
 const placeIndex = new Map(); // id -> Ort (für die Detailansicht)
 
 function discoverCenter() {
@@ -708,7 +744,13 @@ RENDER.entdecken = () => {
       <button role="tab" data-dtab="gemerkt" aria-selected="${d.tab === 'gemerkt'}">${icon('heart')}Gemerkt</button>
     </nav>`;
   const subs = { fuereuch: 'Ideen und Orte, die gerade zu euch passen.', orte: 'Restaurants, Bars, Museen & mehr in eurer Nähe.', community: 'Dates, die andere Paare geplant und bewertet haben.', gemerkt: 'Eure Favoriten und eigenen Ideen.' };
-  const head = topbar({ title: 'Entdecken', sub: subs[d.tab] });
+  const head = topbar({ title: 'Entdecken', sub: subs[d.tab] }) + `
+    <form class="search-bar" id="d-search-form" role="search">
+      ${icon('search')}
+      <input class="input" id="d-search" type="search" placeholder="Dates suchen, z. B. Therme, Sushi, romantisch" value="${esc(d.query)}" autocomplete="off" enterkeyhint="search">
+      ${d.query ? `<button type="button" class="icon-btn small" id="d-search-clear" aria-label="Suche leeren">${icon('x')}</button>` : ''}
+    </form>`;
+  if (d.query) return renderSearch(head);
 
   if (d.tab === 'fuereuch') return renderForYou(head + tabs);
   if (d.tab === 'community') return renderCommunity(head + tabs);
@@ -728,7 +770,7 @@ RENDER.entdecken = () => {
         <div class="grow"><strong>${center ? esc(center.name) : 'Kein Standort'}</strong><br><small class="muted">${center ? (center.gps ? 'Aktueller Standort' : 'Stadt aus den Einstellungen') : 'Erlaube den Standort oder trag eine Stadt ein'}</small></div>
         <button class="btn sm" id="d-gps">${icon('locate')}Standort</button>
       </div>
-      ${chips('radius', [[2000, '2 km'], [5000, '5 km'], [15000, '15 km'], [40000, '40 km']], d.radius)}
+      ${radiusChips('radius', Math.round(d.radius / 1000))}
     </section>
     <div class="cat-scroll">${moodChips('mood', d.mood)}</div>
     <div class="cat-scroll">${chips('cat', cats.map((c) => [c.id, c.label]), d.cat, 'cats')}</div>
@@ -761,8 +803,8 @@ RENDER.entdecken = () => {
   };
 
   bindDiscoverTabs();
-  bindChips(root, 'radius', (v) => {
-    d.radius = Number(v);
+  bindRadius(root, 'radius', (km) => {
+    d.radius = km * 1000;
     load();
   });
   bindChips(root, 'mood', (v) => {
@@ -798,7 +840,87 @@ RENDER.entdecken = () => {
   if (center && !d.results && !d.loading && !d.error) load();
 };
 
+function bindSearchBar() {
+  const input = $('#d-search');
+  if (!input) return;
+  let t;
+  const run = () => {
+    const q = input.value.trim();
+    if (q === discover.query) return;
+    discover.query = q;
+    discover.search = null;
+    render();
+    const again = $('#d-search');
+    again?.focus();
+    again?.setSelectionRange(again.value.length, again.value.length);
+  };
+  input.addEventListener('input', () => {
+    clearTimeout(t);
+    t = setTimeout(run, 450);
+  });
+  $('#d-search-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    clearTimeout(t);
+    run();
+    input.blur();
+  });
+  $('#d-search-clear')?.addEventListener('click', () => {
+    discover.query = '';
+    discover.search = null;
+    render();
+  });
+}
+
+const norm = (x) => String(x ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+/** Suchergebnisse: passende Ideen (eingebaut, eigene, Community) und Orte mit diesem Namen. */
+function renderSearch(head) {
+  const d = discover;
+  const tokens = norm(d.query).split(/\s+/).filter(Boolean);
+  const hay = (i) => norm([i.title, i.teaser, ...(i.steps ?? []).flatMap((s) => [s.t, s.q, s.place?.name]), ...(i.moods ?? []).map(moodLabel), i.place].join(' '));
+  const match = (i) => tokens.every((t) => hay(i).includes(t));
+  const ideas = allIdeas().filter(match).slice(0, 12);
+  const com = (d.community ?? []).map(communityIdea).filter(match).slice(0, 6);
+  const center = discoverCenter();
+  if (center && !d.search && !d.searchLoading && !store.inArtifact()) {
+    d.searchLoading = true;
+    searchByName(d.query, center, Math.max(d.radius, 30000))
+      .then((r) => (d.search = r))
+      .catch(() => (d.search = []))
+      .finally(() => {
+        d.searchLoading = false;
+        if (current.name === 'entdecken' && d.query) render();
+      });
+  }
+  if (community.api && !d.community && !d.cLoading) loadCommunity();
+  const places = d.search ?? [];
+  places.forEach((p) => placeIndex.set(p.id, p));
+
+  root.innerHTML = `
+    ${head}
+    <p class="muted small">Ergebnisse für „${esc(d.query)}“</p>
+    <section class="stack">
+      <h2 class="section-title">Date-Ideen</h2>
+      ${ideas.length ? ideas.map(feedCard).join('') : '<p class="muted">Keine passende Idee. Versuch einen anderen Begriff oder leg eine eigene Idee an.</p>'}
+    </section>
+    ${com.length ? `<section class="stack"><h2 class="section-title">Aus der Community</h2>${com.map(feedCard).join('')}</section>` : ''}
+    ${center && !store.inArtifact() ? `
+    <section class="stack">
+      <h2 class="section-title">Orte in eurer Nähe</h2>
+      ${d.searchLoading && !d.search ? '<div class="loading"><span class="spinner"></span>Suche Orte …</div>'
+        : places.length ? `<div class="places">${places.map((p) => placeCard(p)).join('')}</div>` : '<p class="muted">Kein Ort mit diesem Namen im Umkreis gefunden.</p>'}
+    </section>` : ''}`;
+
+  bindSearchBar();
+  on('[data-feed-plan]', 'click', (_, el) => {
+    const idea = favRegistry.get(el.dataset.feedPlan) ?? ideaById(el.dataset.feedPlan);
+    if (idea) planIdeaNow(idea, el);
+  });
+  on('[data-open-place]', 'click', (_, el) => (session.ortBack = null, go('ort', el.dataset.openPlace)));
+}
+
 function bindDiscoverTabs() {
+  bindSearchBar();
   on('[data-dtab]', 'click', (_, el) => {
     discover.tab = el.dataset.dtab;
     render();
@@ -1374,7 +1496,7 @@ root.addEventListener('click', (e) => {
 
 /* ================================================================ Entdecken: Für euch */
 
-const feedFilter = { budget: null, mood: '', place: '', reach: 1, daytime: new Date().getHours() >= 14 ? 'abend' : 'tag', open: false };
+const feedFilter = { budget: null, mood: '', place: '', reach: 1, radiusKm: 15, daytime: new Date().getHours() >= 14 ? 'abend' : 'tag', open: false };
 
 const NEAR_CATS = { abend: ['restaurant', 'bar', 'cinema', 'theatre', 'wine', 'escape'], tag: ['cafe', 'museum', 'park', 'zoo', 'icecream', 'gallery'] };
 
@@ -1390,7 +1512,7 @@ async function loadFeed() {
   const center = discoverCenter();
   const date = feedDate();
   const budget = feedFilter.budget ?? L().lastSearch.budget ?? 60;
-  const ctx = { date, daytime: feedFilter.daytime, budget, reach: feedFilter.reach, mood: feedFilter.mood, placePref: feedFilter.place || null };
+  const ctx = { date, daytime: feedFilter.daytime, budget, reach: kmToReach(feedFilter.radiusKm), radiusKm: feedFilter.radiusKm, mood: feedFilter.mood, placePref: feedFilter.place || null };
   try {
     d.feedWeather = await getWeather(center, date, ctx.daytime);
   } catch {
@@ -1412,9 +1534,9 @@ async function loadNear() {
   let cats = [...(isXmasSeason(feedDate()) ? ['xmas'] : []), ...NEAR_CATS[feedFilter.daytime]];
   if (feedFilter.mood) cats = CATEGORIES.filter((c) => c.moods.includes(feedFilter.mood) && c.times.includes(feedFilter.daytime)).map((c) => c.id).slice(0, 6);
   if (feedFilter.place) cats = cats.filter((id) => categoryById(id).place === feedFilter.place);
-  if (feedFilter.reach === 0) cats = [];
+  if (feedFilter.radiusKm === 0) cats = [];
   try {
-    const groups = cats.length ? await searchMixed(cats, center, feedFilter.reach === 2 ? 25000 : 4000) : {};
+    const groups = cats.length ? await searchMixed(cats, center, feedFilter.radiusKm * 1000) : {};
     const now = new Date();
     // Pro Kategorie die zwei nächsten, geöffnete zuerst
     d.near = Object.values(groups)
@@ -1469,6 +1591,7 @@ function renderForYou(head) {
       <button class="filter-chip" data-ftoggle>${icon('pin')}${esc(center?.name ?? 'Standort')}</button>
       <button class="filter-chip" data-ftoggle>${f.daytime === 'abend' ? 'Abends' : 'Tagsüber'}</button>
       <button class="filter-chip" data-ftoggle>bis ${budget} €</button>
+      <button class="filter-chip" data-ftoggle>${f.radiusKm === 0 ? 'Zuhause' : `${f.radiusKm} km`}</button>
       ${f.mood ? `<button class="filter-chip on" data-ftoggle>${esc(moodLabel(f.mood))}</button>` : ''}
       ${f.place ? `<button class="filter-chip on" data-ftoggle>${f.place === 'drinnen' ? 'Drinnen' : 'Draußen'}</button>` : ''}
       <button class="filter-chip strong" data-ftoggle>${icon('more')}Filter</button>
@@ -1485,7 +1608,7 @@ function renderForYou(head) {
       </div>
       <div class="field"><span class="label">Stimmung</span>${chips('ff-mood', [['', 'Alle'], ...MOODS.map(([v, l]) => [v, l])], f.mood)}</div>
       <div class="field"><span class="label">Drinnen oder draußen</span>${chips('ff-place', [['', 'Beides'], ['drinnen', 'Drinnen', 'home'], ['draußen', 'Draußen', 'sun']], f.place, 'seg')}</div>
-      <div class="field"><span class="label">Wie weit?</span>${chips('ff-reach', [[0, 'Zuhause'], [1, 'In der Stadt'], [2, 'Ausflug']], f.reach, 'seg')}</div>
+      <div class="field"><span class="label">Wie weit?</span>${radiusChips('ff-reach', f.radiusKm, { home: true })}</div>
       <button type="button" class="btn primary" id="ff-apply">Anwenden</button>
     </section>
 
@@ -1498,7 +1621,7 @@ function renderForYou(head) {
       ${d.feed?.length ? `<button class="btn soft" id="feed-more">${icon('dice')}Andere Ideen</button>` : ''}
     </section>
 
-    ${f.reach === 0 ? '' : `
+    ${f.radiusKm === 0 ? '' : `
     <section class="stack">
       <div class="row between"><h2 class="section-title">In eurer Nähe</h2><button class="linkish small" data-dtab="orte">Alle Orte</button></div>
       ${!center ? `<div class="empty"><p>${store.inArtifact() ? 'Orte in der Nähe gibt es in der Webseiten-Version.' : 'Erlaube den Standort oder trag oben eine Stadt ein, dann zeigt Dately Restaurants, Bars & Co. in eurer Nähe.'}</p></div>`
@@ -1534,7 +1657,7 @@ function renderForYou(head) {
   bindChips(panel, 'ff-daytime', (v) => (f.daytime = v));
   bindChips(panel, 'ff-mood', (v) => (f.mood = v));
   bindChips(panel, 'ff-place', (v) => (f.place = v));
-  bindChips(panel, 'ff-reach', (v) => (f.reach = Number(v)));
+  bindRadius(panel, 'ff-reach', (km) => (f.radiusKm = km));
   $('#ff-budget').addEventListener('input', (e) => {
     f.budget = Number(e.target.value);
     $('#ff-budget-out').textContent = `${f.budget} €`;
@@ -2096,7 +2219,7 @@ function inboxItems() {
     const k = p.kind ?? 'full';
     if (!latestSurvey[k] || p.createdAt > latestSurvey[k].createdAt) latestSurvey[k] = p;
   }
-  if (latestSurvey.full) delete latestSurvey.day; // die große Umfrage fragt die Tage mit ab
+  delete latestSurvey.day; // „Welcher Tag passt?“ gibt es nur im Kalender
   for (const p of Object.values(latestSurvey)) {
     const mine = !!p.survey?.[role];
     const theirs = !!p.survey?.[other(role)];
@@ -2239,8 +2362,8 @@ RENDER.start = () => {
         <div class="scale"><span>0 €</span><span>50</span><span>100</span><span>150</span><span>200 €</span></div>
       </div>
       <div class="field only-solo">
-        <span class="label">Wie weit?</span>
-        ${chips('reach', [[0, 'Zuhause', 'home'], [1, 'In der Stadt', 'city'], [2, 'Ausflug', 'car']], f.reach)}
+        <span class="label">Wie weit darf es sein?</span>
+        ${radiusChips('reach', f.radiusKm ?? reachToKm(f.reach), { home: true })}
       </div>
       <div class="field only-solo">
         <span class="label">Stimmung</span>
@@ -2310,7 +2433,10 @@ RENDER.start = () => {
     $('#daytime-field').hidden = v === 'tonight' || f.planner === 'both';
   });
   bindChips(form, 'daytime', (v) => (f.daytime = v));
-  bindChips(form, 'reach', (v) => (f.reach = Number(v)));
+  bindRadius(form, 'reach', (km) => {
+    f.radiusKm = km;
+    f.reach = kmToReach(km);
+  });
   bindChips(form, 'fmood', (v) => (f.mood = v));
 
   form.addEventListener('submit', async (e) => {
@@ -2324,7 +2450,8 @@ RENDER.start = () => {
     if (f.when === 'tonight') f.daytime = 'abend';
     L().lastSearch = { ...f };
     store.saveLocal();
-    const ctx = { date: resolveDate(f), daytime: f.daytime, budget: f.budget, reach: f.reach, mood: f.mood || '' };
+    const radiusKm = f.radiusKm ?? reachToKm(f.reach);
+    const ctx = { date: resolveDate(f), daytime: f.daytime, budget: f.budget, reach: kmToReach(radiusKm), radiusKm, mood: f.mood || '' };
     const city = $('#f-city').value.trim();
 
     if (f.planner === 'partner') {
@@ -2700,7 +2827,7 @@ async function loadStepPlaces(idea, draft, stepCats, center, ctx) {
   draft.nearLoading = true;
   const ids = [...new Set(stepCats.filter(Boolean))];
   try {
-    const groups = await searchMixed(ids, center, ctx.reach === 2 ? 25000 : 6000);
+    const groups = await searchMixed(ids, center, (ctx.radiusKm || reachToKm(ctx.reach) || 15) * 1000);
     draft.near = {};
     const used = new Set();
     let prev = center;
@@ -3112,6 +3239,13 @@ RENDER.kalender = () => {
         </div>
       </form>
       ${cal.sel >= todayIso ? `<button class="btn soft big" id="plan-here">${icon('sparkle')}Date für diesen Tag planen</button>` : ''}
+      ${(() => {
+        const dp = S().polls.filter((p) => p.status === 'open' && p.stage === 'survey' && p.kind === 'day').sort((a, b) => b.createdAt - a.createdAt)[0];
+        if (!dp || !myRole()) return '';
+        const mine = !!dp.survey?.[myRole()];
+        const theirs = !!dp.survey?.[other(myRole())];
+        return `<div class="banner neutral-row">${icon('calendar')}<span class="grow"><strong>Welcher Tag passt euch?</strong><br><small class="muted">${mine && theirs ? 'Beide haben geantwortet – Ergebnis ansehen' : mine ? `Warte auf ${esc(nameOf(other(myRole())))}` : 'Deine Antwort fehlt noch'}</small></span><button class="btn sm ${mine && !theirs ? '' : 'primary'}" data-open-poll="${dp.id}">Öffnen</button></div>`;
+      })()}
       <button class="btn big" id="find-day">${icon('vote')}Gemeinsamen Tag finden</button>
     </section>`;
 
@@ -3572,6 +3706,13 @@ RENDER.rueckblick = (param) => {
   const best = [...entries].sort((a, b) => avgRating(b.d) - avgRating(a.d))[0];
   const places = new Set(entries.flatMap(({ plan }) => (plan.steps ?? []).filter((s) => s.place).map((s) => s.place.name)));
   const months = new Set(entries.map(({ d }) => d.date.slice(5, 7)));
+  const planned = { a: 0, b: 0, both: 0 };
+  let surprises = 0;
+  for (const { d } of entries) {
+    if (d.plannedBy in planned) planned[d.plannedBy]++;
+    if (d.surprise || d.revealed) surprises++;
+  }
+  const maxPlanned = Math.max(1, planned.a, planned.b, planned.both);
   const canPrint = !store.inArtifact();
 
   const datePage = ({ d, plan }, i) => {
@@ -3626,6 +3767,12 @@ RENDER.rueckblick = (param) => {
           <div><strong>${places.size || allPhotos.length}</strong><span>${places.size ? 'besondere Orte' : 'Fotos'}</span></div>
         </div>
         ${favMood ? `<p class="stat-line">Eure Lieblingsstimmung: <strong>${esc(moodLabel(favMood))}</strong></p>` : ''}
+        <div class="who-planned">
+          <span class="kicker">Wer hat geplant?</span>
+          ${[['a', nameOf('a')], ['b', nameOf('b')], ['both', 'Zusammen']].map(([k, label]) => `
+            <div class="wp-row"><span>${esc(label)}</span><span class="wp-bar"><span style="width:${Math.round((planned[k] / maxPlanned) * 100)}%"></span></span><strong>${planned[k]}</strong></div>`).join('')}
+          ${surprises ? `<p class="stat-line">${surprises} ${surprises === 1 ? 'Überraschung' : 'Überraschungen'} – ${planned.a === planned.b ? 'ihr überrascht euch gleich gern' : `${esc(nameOf(planned.a > planned.b ? 'a' : 'b'))} hat öfter geplant`}.</p>` : ''}
+        </div>
         ${best && avgRating(best.d) ? `<p class="stat-line">Euer Highlight: <strong>${esc(best.plan.title)}</strong> im ${MONTHS[Number(best.d.date.slice(5, 7)) - 1]}</p>` : ''}
       </section>
 

@@ -839,3 +839,17 @@ body.auth-screen .view { padding-bottom: 40px; }
 .dots-row { display: flex; gap: 5px; }
 .dots-row i { width: 22px; height: 4px; border-radius: 99px; background: var(--line); }
 .dots-row i.on { background: var(--accent); }
+
+/* ---------- Umkreis, Suche, Statistik ---------- */
+.radius-chips .chip { padding: 7px 13px; }
+.radius-custom { margin-top: 2px; }
+.radius-custom .input { width: 110px; }
+.search-bar { position: relative; display: flex; align-items: center; }
+.search-bar > .ico { position: absolute; left: 14px; color: var(--muted); width: 18px; height: 18px; pointer-events: none; }
+.search-bar .input { padding-left: 42px; padding-right: 40px; background: var(--surface); }
+.search-bar .icon-btn { position: absolute; right: 4px; }
+.who-planned { display: flex; flex-direction: column; gap: 8px; }
+.wp-row { display: grid; grid-template-columns: minmax(70px, auto) 1fr 24px; gap: 10px; align-items: center; font-size: 0.92rem; }
+.wp-bar { height: 8px; border-radius: 99px; background: #ebe4dc; overflow: hidden; }
+.wp-bar span { display: block; height: 100%; background: var(--accent-p, var(--accent)); border-radius: inherit; }
+.wp-row strong { text-align: right; font-variant-numeric: tabular-nums; }

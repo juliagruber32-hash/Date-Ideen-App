@@ -63,6 +63,7 @@ export const CATEGORIES = [
   { id: 'arcade', hidden: true, moods: [], label: 'Spielhallen', emoji: '🕹️', filters: ['["leisure"="amusement_arcade"]', '["sport"="laser_tag"]'], place: 'drinnen', times: ['tag', 'abend'], cost: 40, plan: [['Arcade', 90]] },
   { id: 'boat', hidden: true, moods: [], label: 'Bootsverleih', emoji: '🚣', filters: ['["amenity"="boat_rental"]', '["shop"="boat"]["rental"]'], place: 'draußen', times: ['tag'], cost: 30, plan: [['Boot', 60]] },
   { id: 'chocolate', hidden: true, moods: [], label: 'Schokolade', emoji: '🍫', filters: ['["shop"="chocolate"]', '["shop"="confectionery"]'], place: 'drinnen', times: ['tag'], cost: 20, plan: [['Schokolade', 30]] },
+  { id: 'ort', hidden: true, moods: [], label: 'Ort', emoji: '📍', filters: [], place: 'drinnen', times: ['tag', 'abend'], cost: 25, plan: [['Besuch', 90]] },
   { id: 'icerink', moods: ['aktiv','romantisch'], label: 'Eislaufen', emoji: '⛸️', filters: ['["leisure"="ice_rink"]', '["sport"~"ice_skating|ice_hockey|ice_stock"]["leisure"~"^(stadium|sports_centre|sports_hall|pitch|ice_rink)$"]', '["building"="ice_rink"]["name"]'], place: 'drinnen', times: ['tag', 'abend'], cost: 25, plan: [['Eislaufen', 90], ['Punsch', 30]] },
   { id: 'xmas', seasonal: true, moods: ['romantisch', 'gemütlich'], label: 'Weihnachtsmärkte', emoji: '🎄', filters: ['["christmas:event"]', '["christmas:type"~"market"]', '["amenity"="marketplace"]["name"~"(Christkindl|Weihnachts|Advents)",i]'], place: 'draußen', times: ['abend', 'tag'], cost: 25, food: true, plan: [['Weihnachtsmarkt', 90], ['Glühwein & Punsch', 30]] },
 ];
@@ -126,10 +127,25 @@ function cuisineFilters(cuisineId) {
   return [`["cuisine"~"(^|;)(${c.tags.join('|')})(;|$)",i]`];
 }
 
+/** Radien von innen nach außen bis zum gewählten Umkreis – so kommen die nächsten Orte zuerst. */
+export function radiusLadder(radius) {
+  return [...[3000, 10000, 30000, 70000].filter((r) => r < radius), radius];
+}
+
 export async function searchNearby(categoryId, center, radius, cuisineId = '') {
-  const cat = categoryById(categoryId);
   const key = `${categoryId}|${cuisineId}|${center.lat.toFixed(3)}|${center.lon.toFixed(3)}|${radius}`;
   if (memo.has(key)) return memo.get(key);
+  let places = [];
+  for (const r of radiusLadder(radius)) {
+    places = await searchOnce(categoryId, center, r, cuisineId);
+    if (places.length >= 20) break;
+  }
+  memo.set(key, places);
+  return places;
+}
+
+async function searchOnce(categoryId, center, radius, cuisineId) {
+  const cat = categoryById(categoryId);
   const extra = cuisineId ? cuisineFilters(cuisineId) : [''];
   const parts = cat.filters.flatMap((f) => extra.map((x) => `nwr${f}${x}(around:${radius},${center.lat},${center.lon});`)).join('');
   const query = `[out:json][timeout:25];(${parts});out center tags 60;`;
@@ -141,7 +157,6 @@ export async function searchNearby(categoryId, center, radius, cuisineId = '') {
     .sort((a, b) => a.km - b.km)
     .slice(0, 30);
   await addWikidataImages(places);
-  memo.set(key, places);
   return places;
 }
 
@@ -367,9 +382,21 @@ function matchesFilter(tags, filter) {
 
 /** Mehrere Kategorien in einer Abfrage. Gibt Orte gruppiert nach Kategorie zurück. */
 export async function searchMixed(catIds, center, radius) {
-  const cats = catIds.map(categoryById).filter(Boolean);
   const key = `mix|${catIds.join(',')}|${center.lat.toFixed(3)}|${center.lon.toFixed(3)}|${radius}`;
   if (memo.has(key)) return memo.get(key);
+  const groups = Object.fromEntries(catIds.map((id) => [id, []]));
+  for (const r of radiusLadder(radius)) {
+    const missing = catIds.filter((id) => groups[id].length < 3);
+    if (!missing.length) break;
+    const found = await mixedOnce(missing, center, r);
+    for (const id of missing) groups[id] = found[id];
+  }
+  memo.set(key, groups);
+  return groups;
+}
+
+async function mixedOnce(catIds, center, radius) {
+  const cats = catIds.map(categoryById).filter(Boolean);
   const parts = cats.flatMap((c) => c.filters.map((f) => `nwr${f}(around:${radius},${center.lat},${center.lon});`)).join('');
   const query = `[out:json][timeout:25];(${parts});out center tags 150;`;
   const json = await overpass(query);
@@ -385,8 +412,32 @@ export async function searchMixed(catIds, center, radius) {
   }
   for (const id of Object.keys(groups)) groups[id] = groups[id].sort((a, b) => a.km - b.km).slice(0, 12);
   await addWikidataImages(Object.values(groups).flat());
-  memo.set(key, groups);
   return groups;
+}
+
+/* ------------------------------------------------------------ Suche nach Namen (z. B. „Therme“) */
+
+/** Orte, deren Name den Suchbegriff enthält – im Umkreis, nächste zuerst. */
+export async function searchByName(term, center, radius) {
+  const clean = term.trim().replace(/[\\^$.*+?()[\]{}|"]/g, '');
+  if (clean.length < 3) return [];
+  const key = `name|${clean.toLowerCase()}|${center.lat.toFixed(3)}|${center.lon.toFixed(3)}|${radius}`;
+  if (memo.has(key)) return memo.get(key);
+  let places = [];
+  for (const r of radiusLadder(Math.min(radius, 60000))) {
+    const parts = ['amenity', 'leisure', 'tourism', 'shop'].map((k) => `nwr["name"~"${clean}",i]["${k}"](around:${r},${center.lat},${center.lon});`).join('');
+    const json = await overpass(`[out:json][timeout:25];(${parts});out center tags 60;`);
+    const seen = new Set();
+    places = json.elements
+      .map((el) => toPlace(el, CATEGORIES.find((c) => !c.hidden && c.filters.some((f) => matchesFilter(el.tags ?? {}, f))) ?? categoryById('ort'), center))
+      .filter((p) => p && !seen.has(p.name + p.street) && seen.add(p.name + p.street))
+      .sort((a, b) => a.km - b.km)
+      .slice(0, 15);
+    if (places.length >= 5) break;
+  }
+  await addWikidataImages(places);
+  memo.set(key, places);
+  return places;
 }
 
 /* ------------------------------------------------------------ Welche Ortsart passt zu einer Plan-Station? */
