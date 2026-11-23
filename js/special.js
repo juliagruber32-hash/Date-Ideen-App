@@ -11,9 +11,11 @@ export function specialDefs(settings) {
   if (settings.valentine) list.push({ name: 'Valentinstag', icon: '💘', mmdd: '02-14', kind: 'valentin' });
   for (const s of settings.specialDays) {
     if (!s.date) continue;
+    const person = s.who === 'a' ? settings.nameA : s.who === 'b' ? settings.nameB : s.name;
+    const names = { geburtstag: `Geburtstag ${person || ''}`.trim(), standesamt: 'Hochzeitstag (Standesamt)', hochzeit: 'Hochzeitstag' };
     list.push({
-      name: s.kind === 'geburtstag' ? `Geburtstag ${s.name}` : s.name,
-      icon: s.kind === 'geburtstag' ? '🎂' : '⭐',
+      name: names[s.kind] ?? s.name,
+      icon: s.kind === 'geburtstag' ? '🎂' : s.kind === 'standesamt' || s.kind === 'hochzeit' ? '💍' : '⭐',
       mmdd: s.date.slice(5),
       year: Number(s.date.slice(0, 4)) || null,
       kind: s.kind,
@@ -26,6 +28,10 @@ function label(def, date) {
   if (def.kind === 'jahrestag' && def.year) {
     const n = date.getFullYear() - def.year;
     if (n > 0) return `${n}. Jahrestag`;
+  }
+  if ((def.kind === 'standesamt' || def.kind === 'hochzeit') && def.year) {
+    const n = date.getFullYear() - def.year;
+    if (n > 0) return `${n}. Hochzeitstag${def.kind === 'standesamt' ? ' (Standesamt)' : ''}`;
   }
   return def.name;
 }

@@ -1,7 +1,7 @@
 import * as store from './store.js';
 import { isHiddenFromMe, myRole, nameOf, other } from './store.js';
 import { geocode, getWeather, manualWeather } from './weather.js';
-import { allIdeas, buildPlan, combineWishes, defaultStart, ideaDuration, loadIdeas, MOODS, moodLabel, REACH, recommend, rhythmStatus, setExtraIdeas, suggest, toICS } from './engine.js';
+import { allIdeas, buildPlan, combineWishes, setPreferences, defaultStart, ideaDuration, loadIdeas, MOODS, moodLabel, REACH, recommend, rhythmStatus, setExtraIdeas, suggest, toICS } from './engine.js';
 import { appleMapsLink, CATEGORIES, catForStep, categoryById, directionsLink, distanceKm, fmtKm, fmtMin, formatHours, hoursOn, isOpenAt, locate, mapLink, placeName, reservationLinks, searchMixed, searchNearby, travelEstimates } from './places.js';
 import { googleDetails } from './gplaces.js';
 import * as photos from './photos.js';
@@ -45,6 +45,7 @@ function render(scrollTop = false) {
   document.body.classList.toggle('auth-screen', current.name === 'konto');
   formDirty = false;
   pendingRender = false;
+  setPreferences(S().settings.prefs);
   setExtraIdeas([...S().ideas, ...S().favorites.filter((f) => f.idea).map((f) => ({ ...f.idea, id: f.ideaId }))]);
   $$('.tabbar button').forEach((b) => b.toggleAttribute('aria-current', b.dataset.tab === TAB_OF[current.name]));
   if (!scrollTop) {
@@ -1859,31 +1860,159 @@ async function startAccount(cfg) {
   }
 }
 
-/** Nach der ersten Anmeldung: Namen für Person 1 und 2 festlegen. */
-function namesCard() {
+/* ================================================================ Einstieg: Namen, besondere Tage, Vorlieben */
+
+const PREF_DIET = [['alles', 'Alles'], ['vegetarisch', 'Vegetarisch'], ['vegan', 'Vegan']];
+
+function onboardingStep() {
   const st = S().settings;
   const role = myRole();
-  if (!role || (st.nameA && st.nameB)) return '';
-  const other = role === 'a' ? 'b' : 'a';
-  const field = (r, label) => `<div class="field grow"><label class="label" for="nm-${r}">${label}</label><input class="input" id="nm-${r}" maxlength="30" value="${esc(r === 'a' ? st.nameA : st.nameB)}" placeholder="Name" autocomplete="${r === role ? 'given-name' : 'off'}"></div>`;
+  if (!role) return null;
+  if (session.obForce) return session.obForce;
+  if (!st.nameA || !st.nameB) return 'namen';
+  if (st.onboarded?.[role]) return null;
+  return session.obStep ?? 'tage';
+}
+
+const specialOf = (kind, who) => S().settings.specialDays.find((d) => d.kind === kind && (!who || d.who === who));
+
+function onboardingCard() {
+  const step = onboardingStep();
+  if (!step) return '';
+  const st = S().settings;
+  const role = myRole();
+  const partner = other(role);
+  const nr = { namen: 1, tage: 2, vorlieben: 3 }[step];
+  const head = (title, sub) => `
+    <div class="ob-progress"><span class="kicker">Schritt ${nr} von 3</span><span class="dots-row">${[1, 2, 3].map((n) => `<i class="${n <= nr ? 'on' : ''}"></i>`).join('')}</span></div>
+    <div class="panel-head">${icon(step === 'namen' ? 'users' : step === 'tage' ? 'heart' : 'sparkle')}<h2>${title}</h2></div>
+    <p class="muted small">${sub}</p>`;
+
+  if (step === 'namen') {
+    const field = (r, label) => `<div class="field grow"><label class="label" for="nm-${r}">${label}</label><input class="input" id="nm-${r}" maxlength="30" value="${esc(r === 'a' ? st.nameA : st.nameB)}" placeholder="Name" autocomplete="${r === role ? 'given-name' : 'off'}"></div>`;
+    return `
+      <form class="panel form onboarding" id="ob-form" data-step="namen" novalidate>
+        ${head('Wie heißt ihr?', 'Die Namen seht ihr überall in Dately. Ihr könnt sie jederzeit in den Einstellungen ändern.')}
+        <div class="row gap wrap">${field(role, 'Dein Name')}${field(partner, 'Name deines Gegenübers')}</div>
+        <button class="btn primary" type="submit">Weiter</button>
+      </form>`;
+  }
+
+  if (step === 'tage') {
+    const married = session.obMarried ?? !!(specialOf('standesamt') || specialOf('hochzeit'));
+    const val = (kind, who) => esc(specialOf(kind, who)?.date ?? '');
+    return `
+      <form class="panel form onboarding" id="ob-form" data-step="tage" novalidate>
+        ${head('Eure besonderen Tage', 'Dately erinnert euch rechtzeitig und schlägt dann besondere Dates vor. Alles ist freiwillig.')}
+        <div class="field"><label class="label" for="ob-anniv">Seit wann seid ihr zusammen?</label><input class="input" type="date" id="ob-anniv" value="${esc(st.anniversary)}"></div>
+        <div class="field"><span class="label">Seid ihr verheiratet?</span>${chips('ob-married', [['ja', 'Ja'], ['nein', 'Nein']], married ? 'ja' : 'nein', 'seg')}</div>
+        <div class="stack-sm" id="ob-wedding" ${married ? '' : 'hidden'}>
+          <div class="field"><label class="label" for="ob-standesamt">Standesamtliche Hochzeit</label><input class="input" type="date" id="ob-standesamt" value="${val('standesamt')}"></div>
+          <div class="field"><label class="label" for="ob-hochzeit">Kirchliche oder freie Trauung <small class="muted">(falls an einem anderen Tag)</small></label><input class="input" type="date" id="ob-hochzeit" value="${val('hochzeit')}"></div>
+        </div>
+        <div class="row gap wrap">
+          <div class="field grow"><label class="label" for="ob-geb-${role}">Dein Geburtstag</label><input class="input" type="date" id="ob-geb-${role}" value="${val('geburtstag', role)}"></div>
+          <div class="field grow"><label class="label" for="ob-geb-${partner}">Geburtstag ${esc(nameOf(partner))}</label><input class="input" type="date" id="ob-geb-${partner}" value="${val('geburtstag', partner)}"></div>
+        </div>
+        <div class="row gap"><button class="btn ghost" type="button" data-ob-skip>Überspringen</button><button class="btn primary grow" type="submit">Weiter</button></div>
+      </form>`;
+  }
+
+  const p = st.prefs?.[role] ?? {};
+  const theirs = st.prefs?.[partner];
   return `
-    <form class="panel form names-card" id="names-form" novalidate>
-      <div class="panel-head">${icon('users')}<h2>Wie heißt ihr?</h2></div>
-      <p class="muted small">Die Namen seht ihr überall in Dately. Ihr könnt sie jederzeit unter Einstellungen ändern.</p>
-      <div class="row gap wrap">${field(role, 'Dein Name')}${field(other, 'Name deines Gegenübers')}</div>
-      <button class="btn primary" type="submit">${icon('check')}Speichern</button>
+    <form class="panel form onboarding" id="ob-form" data-step="vorlieben" novalidate>
+      ${head('Was gefällt dir bei Dates?', `Deine Antworten helfen Dately, passende Ideen für euch zu finden.${theirs ? ` ${esc(nameOf(partner))} hat schon geantwortet.` : ` ${esc(nameOf(partner))} beantwortet das auf dem eigenen Handy.`}`)}
+      <div class="field"><span class="label">Worauf hast du am meisten Lust? <small class="muted">(bis zu 4)</small></span>
+        <div class="chips" id="ob-moods">${MOODS.map(([v, l]) => `<button type="button" class="chip" data-m="${v}" aria-pressed="${(p.moods ?? []).includes(v)}">${l}</button>`).join('')}</div></div>
+      <div class="field"><span class="label">Lieber drinnen oder draußen?</span>${chips('ob-place', [['drinnen', 'Drinnen', 'home'], ['draußen', 'Draußen', 'sun'], ['egal', 'Beides']], p.place ?? 'egal', 'seg')}</div>
+      <div class="field"><span class="label">Wie isst du?</span>${chips('ob-diet', PREF_DIET, p.diet ?? 'alles', 'seg')}</div>
+      <div class="field">
+        <div class="label-row"><span class="label">Typisches Budget für ein Date (zu zweit)</span><output id="ob-budget-out" class="budget-out">${p.budget ?? 50} €</output></div>
+        <input type="range" id="ob-budget" min="0" max="200" step="5" value="${p.budget ?? 50}" aria-label="Budget in Euro">
+      </div>
+      <div class="row gap"><button class="btn ghost" type="button" data-ob-skip>Überspringen</button><button class="btn primary grow" type="submit">${icon('check')}Fertig</button></div>
     </form>`;
 }
 
-function bindNamesCard() {
-  $('#names-form')?.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const a = $('#nm-a').value.trim();
-    const b = $('#nm-b').value.trim();
-    if (!a || !b) return toast('Bitte beide Namen eintragen');
-    store.update((st) => Object.assign(st.settings, { nameA: a, nameB: b }));
-    toast(`Schön, dass ihr da seid, ${myRole() === 'a' ? a : b}!`);
+function bindOnboarding() {
+  const form = $('#ob-form');
+  if (!form) return;
+  const step = form.dataset.step;
+  const role = myRole();
+  const finish = () => {
+    store.update((st) => (st.settings.onboarded = { ...(st.settings.onboarded ?? {}), [role]: true }));
+    session.obStep = null;
+    session.obForce = null;
+    toast('Alles eingerichtet – viel Freude mit Dately!');
+    render(true);
+  };
+  const next = (s) => {
+    if (session.obForce) session.obForce = s;
+    else session.obStep = s;
     render();
+    $('#ob-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  $$('[data-ob-skip]', form).forEach((b) => b.addEventListener('click', () => (step === 'tage' ? next('vorlieben') : finish())));
+
+  if (step === 'tage') {
+    bindChips(form, 'ob-married', (v) => {
+      session.obMarried = v === 'ja';
+      $('#ob-wedding').hidden = v !== 'ja';
+    });
+  }
+  const moods = new Set(S().settings.prefs?.[role]?.moods ?? []);
+  const prefs = { place: S().settings.prefs?.[role]?.place ?? 'egal', diet: S().settings.prefs?.[role]?.diet ?? 'alles', budget: S().settings.prefs?.[role]?.budget ?? 50 };
+  if (step === 'vorlieben') {
+    $('#ob-moods').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-m]');
+      if (!b) return;
+      const v = b.dataset.m;
+      if (moods.has(v)) moods.delete(v);
+      else if (moods.size < 4) moods.add(v);
+      else toast('Höchstens vier – entferne erst eine');
+      b.setAttribute('aria-pressed', String(moods.has(v)));
+    });
+    bindChips(form, 'ob-place', (v) => (prefs.place = v));
+    bindChips(form, 'ob-diet', (v) => (prefs.diet = v));
+    $('#ob-budget').addEventListener('input', (e) => {
+      prefs.budget = Number(e.target.value);
+      $('#ob-budget-out').textContent = `${prefs.budget} €`;
+    });
+  }
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (step === 'namen') {
+      const a = $('#nm-a').value.trim();
+      const b = $('#nm-b').value.trim();
+      if (!a || !b) return toast('Bitte beide Namen eintragen');
+      store.update((st) => Object.assign(st.settings, { nameA: a, nameB: b }));
+      return next('tage');
+    }
+    if (step === 'tage') {
+      const married = !$('#ob-wedding').hidden;
+      store.update((st) => {
+        st.settings.anniversary = $('#ob-anniv').value || st.settings.anniversary;
+        const setDay = (kind, who, date) => {
+          const id = `sp-${kind}${who ? `-${who}` : ''}`;
+          st.settings.specialDays = st.settings.specialDays.filter((d) => d.id !== id && !(d.kind === kind && (!who || d.who === who)));
+          if (date) st.settings.specialDays.push({ id, kind, who: who ?? null, name: '', date });
+        };
+        setDay('standesamt', null, married ? $('#ob-standesamt').value : '');
+        setDay('hochzeit', null, married ? $('#ob-hochzeit').value : '');
+        setDay('geburtstag', 'a', $('#ob-geb-a').value);
+        setDay('geburtstag', 'b', $('#ob-geb-b').value);
+      });
+      return next('vorlieben');
+    }
+    store.update((st) => {
+      st.settings.prefs = { ...(st.settings.prefs ?? {}), [role]: { moods: [...moods], ...prefs } };
+      if (prefs.diet === 'vegan') st.settings.vegan = true;
+    });
+    L().lastSearch.budget = prefs.budget;
+    store.saveLocal();
+    finish();
   });
 }
 
@@ -1981,8 +2110,7 @@ function inboxItems() {
       </article>`);
   }
 
-  const sp = upcomingSpecials(s.settings, 21)[0];
-  if (sp) {
+  for (const sp of upcomingSpecials(s.settings, 21).slice(0, 2)) {
     const when = sp.days === 0 ? 'heute' : sp.days === 1 ? 'morgen' : `in ${sp.days} Tagen`;
     items.push(`
       <article class="inbox-item special">
@@ -2027,7 +2155,7 @@ RENDER.start = () => {
     </section>
 
     ${whoAmICard()}
-    ${namesCard()}
+    ${onboardingCard()}
 
     ${inbox.length ? `<section class="stack"><h2 class="section-title">Für dich</h2>${inbox.join('')}</section>` : ''}
 
@@ -2185,7 +2313,7 @@ RENDER.start = () => {
   });
 
   bindWhoAmI();
-  bindNamesCard();
+  bindOnboarding();
   $('#swap-turn')?.addEventListener('click', () => {
     store.update((st) => (st.settings.nextTurn = other(np)));
     session.plannerTouched = false;
@@ -3561,6 +3689,12 @@ RENDER.mehr = () => {
     </section>
 
     <section class="panel form">
+      <div class="panel-head">${icon('sparkle')}<h2>Vorlieben</h2></div>
+      <p class="muted small">${['a', 'b'].map((r) => { const p = st.prefs?.[r]; return `<strong>${esc(r === role ? 'Du' : nameOf(r))}:</strong> ${p?.moods?.length ? esc(p.moods.map(moodLabel).join(', ')) : 'noch nichts angegeben'}`; }).join('<br>')}</p>
+      <button class="btn soft" type="button" data-ob-open="vorlieben">${icon('sparkle')}Meine Vorlieben bearbeiten</button>
+    </section>
+
+    <section class="panel form">
       <div class="panel-head">${icon('repeat')}<h2>Date-Rhythmus</h2></div>
       <div class="row between">
         <span>Dates pro Monat</span>
@@ -3588,10 +3722,11 @@ RENDER.mehr = () => {
 
     <section class="panel form">
       <div class="panel-head">${icon('star')}<h2>Besondere Tage</h2></div>
+      <button class="btn soft" type="button" data-ob-open="tage">${icon('heart')}Jahrestag, Hochzeit & Geburtstage bearbeiten</button>
       <div class="field"><label class="label" for="s-anniv">Jahrestag</label><input class="input" type="date" id="s-anniv" data-set="anniversary" value="${esc(st.anniversary)}"></div>
       <label class="switch"><input type="checkbox" id="s-val" data-set="valentine" ${st.valentine ? 'checked' : ''}><span><strong>An Valentinstag erinnern</strong></span></label>
       <ul class="mini-list">
-        ${st.specialDays.map((d) => `<li><span class="grow">${d.kind === 'geburtstag' ? 'Geburtstag ' : ''}${esc(d.name)}</span><span class="muted">${fmtDate(d.date, { day: 'numeric', month: 'long' })}</span><button class="icon-btn small" data-del-special="${d.id}" aria-label="Entfernen">${icon('x')}</button></li>`).join('')}
+        ${st.specialDays.map((d) => `<li><span class="grow">${esc(d.kind === 'geburtstag' ? `Geburtstag ${d.who ? nameOf(d.who) : d.name}` : d.kind === 'standesamt' ? 'Hochzeitstag (Standesamt)' : d.kind === 'hochzeit' ? 'Hochzeitstag' : d.name)}</span><span class="muted">${fmtDate(d.date, { day: 'numeric', month: 'long' })}</span><button class="icon-btn small" data-del-special="${d.id}" aria-label="Entfernen">${icon('x')}</button></li>`).join('')}
       </ul>
       <form id="add-special" class="stack-sm">
         <div class="row gap">
@@ -3673,6 +3808,10 @@ RENDER.mehr = () => {
     render();
   });
   bindBack();
+  on('[data-ob-open]', 'click', (_, el) => {
+    session.obForce = el.dataset.obOpen;
+    go('start');
+  });
   bindSharing();
   bindGoogleSettings();
   $('#import').addEventListener('change', async (e) => {

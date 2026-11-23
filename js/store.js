@@ -27,6 +27,8 @@ const defaultSettings = () => ({
   googleClientId: '',
   googlePlacesKey: '',
   nextTurn: null, // wer als Nächstes plant ('a' | 'b')
+  prefs: {}, // Vorlieben je Person { a: { moods, place, diet, budget } }
+  onboarded: {}, // Einstieg erledigt { a: true, b: true }
 });
 
 const defaults = () => ({

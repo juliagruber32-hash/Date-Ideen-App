@@ -832,3 +832,10 @@ body.auth-screen .view { padding-bottom: 40px; }
 .alt.on { border-color: var(--accent); background: var(--accent-soft); }
 .alt .ico { color: var(--accent); width: 18px; height: 18px; }
 .spinner.tiny { width: 12px; height: 12px; border-width: 2px; display: inline-block; vertical-align: -1px; margin-right: 4px; }
+
+/* ---------- Einstieg ---------- */
+.onboarding { border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); scroll-margin-top: 16px; }
+.ob-progress { display: flex; align-items: center; justify-content: space-between; }
+.dots-row { display: flex; gap: 5px; }
+.dots-row i { width: 22px; height: 4px; border-radius: 99px; background: var(--line); }
+.dots-row i.on { background: var(--accent); }

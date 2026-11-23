@@ -1,5 +1,5 @@
 // Service Worker: App offline verfügbar machen. Wetter-Anfragen gehen immer ins Netz.
-const VERSION = 'v13';
+const VERSION = 'v14';
 const SHELL = [
   './',
   'index.html',

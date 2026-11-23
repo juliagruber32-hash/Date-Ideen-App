@@ -41,11 +41,24 @@ export const moodLabel = (m) => MOODS.find((x) => x[0] === m)?.[1] ?? m;
  * Geschmacksprofil aus euren Bewertungen: Stimmungen, Orte und Ideen,
  * die euch gefallen (positiv) oder nicht (negativ). Bewertung 1–5, neutral = 3.
  */
+let preferences = {}; // { a: { moods, place, diet, budget }, b: {...} }
+export function setPreferences(p) {
+  preferences = p ?? {};
+}
+
 export function tasteProfile(dates) {
   const moods = {};
   const ideas = {};
   const place = { drinnen: 0, draußen: 0 };
   let count = 0;
+  // Angegebene Vorlieben: was beide mögen, zählt doppelt
+  for (const p of Object.values(preferences)) {
+    if (!p) continue;
+    for (const m of p.moods ?? []) moods[m] = (moods[m] ?? 0) + 0.5;
+    if (p.place in place) place[p.place] += 0.25;
+    count += (p.moods?.length ?? 0) > 0 ? 1 : 0;
+  }
+  const prefCount = count;
   for (const d of dates) {
     const vals = Object.values(d.ratings ?? {}).filter((v) => v > 0);
     if (!vals.length) continue;
@@ -59,7 +72,7 @@ export function tasteProfile(dates) {
     if (d.ideaId) ideas[d.ideaId] = avg;
     count++;
   }
-  return { moods, ideas, place, count };
+  return { moods, ideas, place, count, prefCount };
 }
 
 function tasteScore(idea, profile) {
@@ -87,7 +100,7 @@ export function recommend(dates, count = 3) {
       const best = dates
         .filter((d) => Object.values(d.ratings ?? {}).some((v) => v >= 4))
         .find((d) => (d.moods ?? allIdeas().find((i) => i.id === d.ideaId)?.moods ?? []).some((m) => shared.includes(m)));
-      const reason = best?.title ? `Weil euch „${best.title}“ gefallen hat` : shared.length ? `Ihr mögt es ${shared.map(moodLabel).join(' und ').toLowerCase()}` : 'Passt zu euren Bewertungen';
+      const reason = best?.title ? `Weil euch „${best.title}“ gefallen hat` : shared.length ? `Passt zu euren Vorlieben: ${shared.slice(0, 2).map(moodLabel).join(' & ').toLowerCase()}` : 'Passt zu euren Bewertungen';
       return { idea, reason };
     });
 }
