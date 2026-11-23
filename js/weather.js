@@ -69,7 +69,7 @@ const WINDOWS = { tag: [10, 18], abend: [18, 23] };
  * Ergebnis: { known, icon, label, temp, prob, wet, cold, clear, reason? }
  */
 export async function getWeather(geo, iso, daytime) {
-  if (!geo) return { known: false, reason: 'Keine Stadt eingetragen' };
+  if (!geo) return { known: false, reason: 'Wetter konnte nicht automatisch geladen werden' };
   const ahead = daysBetween(today(), parseISO(iso));
   if (ahead < 0 || ahead > 15) return { known: false, reason: 'Vorhersage erst 16 Tage vorher verfügbar' };
 
@@ -119,4 +119,12 @@ function mode(arr) {
   const counts = new Map();
   for (const v of arr) counts.set(v, (counts.get(v) ?? 0) + 1);
   return [...counts.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0];
+}
+
+/** Manuell gewähltes Wetter, wenn die Vorhersage nicht geladen werden kann. */
+export function manualWeather(kind) {
+  if (kind === 'sun') return { known: true, manual: true, icon: '☀️', label: 'Schönes Wetter', temp: null, prob: 0, wet: false, cold: false, clear: true };
+  if (kind === 'cold') return { known: true, manual: true, icon: '🌥️', label: 'Kalt, aber trocken', temp: null, prob: 0, wet: false, cold: true, clear: false };
+  if (kind === 'rain') return { known: true, manual: true, icon: '🌧️', label: 'Regen', temp: null, prob: 100, wet: true, cold: false, clear: false };
+  return { known: false, manual: true, reason: 'Wetter offen' };
 }
