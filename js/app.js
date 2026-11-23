@@ -2946,8 +2946,10 @@ function timedSteps(steps, draft, from) {
   const map = [];
   let prev = from;
   let travel = 0;
+  const hasPlaces = steps.some((x) => x.place?.lat != null);
   steps.forEach((x, i) => {
     const p = x.place;
+    if (hasPlaces && from && !p && /^anfahrt\b/i.test(x.t ?? '')) return; // wird unten als echte Anfahrt berechnet
     if (p?.lat != null && prev?.lat != null) {
       const km = distanceKm(prev, p);
       if (km > (prev === from ? 0.3 : 0.15)) {
@@ -3163,7 +3165,29 @@ async function loadStepPlaces(steps, draft, stepCats, center, ctx) {
   draft.nearLoading = true;
   const ids = [...new Set(stepCats.filter(Boolean))];
   try {
-    const groups = await searchMixed(ids, center, (ctx.radiusKm || reachToKm(ctx.reach) || 15) * 1000, 2);
+    const radius = (ctx.radiusKm || reachToKm(ctx.reach) || 15) * 1000;
+    const groups = { ...(await searchMixed(ids, center, radius, 2)) };
+    // Hauptorte, die im Umkreis fehlen (z. B. Lasertag, Kochkurs), etwas weiter weg suchen
+    const far = ids.filter((id) => !groups[id]?.length && !['xmas', 'karaoke', 'bookshop', 'chocolate', 'boat'].includes(id));
+    if (far.length && radius < 60000) {
+      const wider = await searchMixed(far, center, Math.min(radius * 3, 60000), 2).catch(() => ({}));
+      for (const id of far) if (wider[id]?.length) groups[id] = wider[id];
+    }
+    // Nichts gefunden (z. B. Weihnachtsmarkt nicht in den Kartendaten)? Für Nebenstationen eine passende Alternative
+    const ALT = { xmas: ctx.daytime === 'abend' ? 'bar' : 'cafe', chocolate: 'cafe', boat: 'icecream' };
+    // Alternativen nur für Nebenstationen eines Dates, dessen Hauptort gefunden wurde (z. B. Punsch nach dem Eislaufen)
+    const anyFound = ids.some((id) => groups[id]?.length);
+    const altIds = [...new Set(steps.map((s, i) => (anyFound && !(groups[stepCats[i]] ?? []).length && ALT[stepCats[i]] && !/weihnachtsmarkt|christkindl/i.test(s.t) ? ALT[stepCats[i]] : null)).filter(Boolean))];
+    if (altIds.length) {
+      const extra = await searchMixed(altIds, center, radius, 2).catch(() => ({}));
+      steps.forEach((s, i) => {
+        const alt = ALT[stepCats[i]];
+        if (!(groups[stepCats[i]] ?? []).length && alt && extra[alt]?.length && !/weihnachtsmarkt|christkindl/i.test(s.t)) {
+          groups[`alt${i}`] = extra[alt];
+          stepCats[i] = `alt${i}`;
+        }
+      });
+    }
     draft.near = {};
     const used = new Set();
     let prev = center;
@@ -3185,6 +3209,8 @@ async function loadStepPlaces(steps, draft, stepCats, center, ctx) {
           .filter((p) => p.open !== false || p.id === draft.picks[i])
           .sort((a, b) => (b.id === draft.picks[i]) - (a.id === draft.picks[i]) || (b.open === true) - (a.open === true) || a.distFromPrev - b.distFromPrev)
           .slice(0, 6);
+        // Gleiche Ortsart wie die Station davor (z. B. Lasertag & Arcade): denselben Ort nehmen
+        if (i > 0 && stepCats[i - 1] === cat && draft.picks[i - 1] && !draft.picks[i]) draft.picks[i] = draft.picks[i - 1];
         list.forEach((p) => placeIndex.set(p.id, p));
         draft.near[i] = list;
         if (list[0]) {

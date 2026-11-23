@@ -65,6 +65,8 @@ export const CATEGORIES = [
   { id: 'chocolate', hidden: true, moods: [], label: 'Schokolade', emoji: '🍫', filters: ['["shop"="chocolate"]', '["shop"="confectionery"]'], place: 'drinnen', times: ['tag'], cost: 20, plan: [['Schokolade', 30]] },
   { id: 'openair', seasonal: 'summer', moods: ['romantisch', 'kultur'], label: 'Open-Air-Kino', emoji: '🎬', filters: ['["amenity"="cinema"]["open_air"="yes"]', '["cinema:type"="open_air"]', '["amenity"="cinema"]["name"~"(Open.?Air|Freiluft|Sommerkino)",i]'], place: 'draußen', times: ['abend'], cost: 25, plan: [['Open-Air-Kino', 150]] },
   { id: 'lake', seasonal: 'summer', moods: ['entspannt', 'romantisch'], label: 'Badeseen', emoji: '🏖️', filters: ['["leisure"="swimming_area"]["name"]', '["leisure"="bathing_place"]["name"]', '["natural"="beach"]["name"]'], place: 'draußen', times: ['tag'], cost: 5, plan: [['Am See', 150]] },
+  { id: 'cooking', hidden: true, moods: [], label: 'Kochkurse', emoji: '👩‍🍳', filters: ['["amenity"="cooking_school"]', '["shop"]["name"~"Kochschule|Kochstudio|Kochkurs",i]', '["amenity"]["name"~"Kochschule|Kochstudio",i]'], place: 'drinnen', times: ['tag', 'abend'], cost: 120, food: true, plan: [['Kochkurs', 180]] },
+  { id: 'pottery', hidden: true, moods: [], label: 'Töpferkurse', emoji: '🏺', filters: ['["craft"="pottery"]', '["shop"="pottery"]', '["shop"]["name"~"Töpfer|Keramik",i]'], place: 'drinnen', times: ['tag', 'abend'], cost: 80, plan: [['Töpfern', 150]] },
   { id: 'ort', hidden: true, moods: [], label: 'Ort', emoji: '📍', filters: [], place: 'drinnen', times: ['tag', 'abend'], cost: 25, plan: [['Besuch', 90]] },
   { id: 'icerink', moods: ['aktiv','romantisch'], label: 'Eislaufen', emoji: '⛸️', filters: ['["leisure"="ice_rink"]', '["sport"~"ice_skating|ice_hockey|ice_stock"]["leisure"~"^(stadium|sports_centre|sports_hall|pitch|ice_rink)$"]', '["building"="ice_rink"]["name"]'], place: 'drinnen', times: ['tag', 'abend'], cost: 25, plan: [['Eislaufen', 90], ['Punsch', 30]] },
   { id: 'xmas', seasonal: true, moods: ['romantisch', 'gemütlich'], label: 'Weihnachtsmärkte', emoji: '🎄', filters: ['["christmas:event"]', '["christmas:type"~"market"]', '["amenity"="marketplace"]["name"~"(Christkindl|Weihnachts|Advents)",i]'], place: 'draußen', times: ['abend', 'tag'], cost: 25, food: true, plan: [['Weihnachtsmarkt', 90], ['Glühwein & Punsch', 30]] },
@@ -206,11 +208,11 @@ export function radiusLadder(radius) {
 // Nominatim erlaubt höchstens eine Anfrage pro Sekunde – deshalb nacheinander mit Pause.
 const NOMI = {
   museum: ['[museum]'], gallery: ['Galerie'], cinema: ['[cinema]'], theatre: ['[theatre]'], restaurant: ['[restaurant]'],
-  cafe: ['[cafe]'], bar: ['[bar]', '[pub]'], icecream: ['[ice cream]'], wine: ['Weinbar'], bowling: ['Bowling'],
+  cafe: ['[cafe]', 'Café'], bar: ['[bar]', '[pub]'], cooking: ['Kochschule', 'Kochkurs'], pottery: ['Töpferei', 'Keramik'], icecream: ['[ice cream]'], wine: ['Weinbar'], bowling: ['Bowling'],
   escape: ['Escape Room'], climbing: ['Boulderhalle', 'Kletterhalle'], minigolf: ['[miniature golf]'], zoo: ['[zoo]', 'Wildpark'],
   park: ['[park]'], viewpoint: ['[viewpoint]'], spa: ['Therme', '[sauna]'], icerink: ['[ice rink]', 'Eishalle', 'Eisstadion'],
   xmas: ['Christkindlmarkt', 'Weihnachtsmarkt'], beergarden: ['[biergarten]'], lake: ['Badesee'], boat: ['Bootsverleih'],
-  bookshop: ['[bookshop]'], karaoke: ['Karaoke'], arcade: ['Lasertag'], chocolate: ['Chocolaterie'], openair: ['Open-Air-Kino'],
+  bookshop: ['Buchhandlung', '[bookshop]'], karaoke: ['Karaoke'], arcade: ['Lasertag'], chocolate: ['Chocolaterie'], openair: ['Open-Air-Kino'],
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const nomiWaiting = [];
@@ -218,6 +220,7 @@ let nomiBusy = false;
 
 /** Eine Nominatim-Anfrage; wichtige Anfragen (prio) kommen zuerst dran. */
 function nominatimOnce(q, center, radius, prio = 0) {
+  radius = Math.min(radius, 40000);
   return new Promise((resolve, reject) => {
     nomiWaiting.push({ q, center, radius, prio, resolve, reject });
     nomiWaiting.sort((x, y) => y.prio - x.prio);
@@ -230,7 +233,7 @@ async function nomiPump() {
   nomiBusy = true;
   while (nomiWaiting.length) {
     const { q, center, radius, resolve, reject } = nomiWaiting.shift();
-    const r = Math.min(radius, 40000) / 1000;
+    const r = radius / 1000;
     const dLat = r / 111;
     const dLon = r / (111 * Math.cos((center.lat * Math.PI) / 180));
     const box = [center.lon - dLon, center.lat + dLat, center.lon + dLon, center.lat - dLat].map((x) => x.toFixed(4)).join(',');
@@ -250,28 +253,43 @@ async function nominatimCategory(catId, center, radius, prio = 0) {
   const cat = categoryById(catId);
   const out = [];
   const seen = new Set();
-  for (const q of NOMI[catId] ?? [cat.label]) {
-    const list = await nominatimOnce(q, center, radius, prio).catch(() => []);
-    for (const x of list) {
-      const a = x.address ?? {};
-      const el = {
-        type: x.osm_type, id: x.osm_id, lat: Number(x.lat), lon: Number(x.lon),
-        tags: { ...(x.extratags ?? {}), name: x.name, [x.category]: x.type, 'addr:street': a.road, 'addr:housenumber': a.house_number, 'addr:city': a.city || a.town || a.village || '' },
-      };
-      if (['bus_stop', 'platform', 'station'].includes(x.type)) continue;
-      const p = toPlace(el, cat, center);
-      if (!p || seen.has(p.name) || p.km * 1000 > radius) continue;
-      seen.add(p.name);
-      out.push(p);
+  let calls = 0;
+  let errors = 0;
+  // Erst im engen Umkreis suchen (Nominatim sortiert nicht nach Entfernung), dann weiter
+  const steps = [...new Set([Math.min(radius, 8000), Math.min(radius, 20000), radius])];
+  for (const r of steps) {
+    for (const q of NOMI[catId] ?? [cat.label]) {
+      calls++;
+      const list = await nominatimOnce(q, center, r, prio).catch(() => {
+        errors++;
+        return [];
+      });
+      for (const x of list) {
+        const a = x.address ?? {};
+        const el = {
+          type: x.osm_type, id: x.osm_id, lat: Number(x.lat), lon: Number(x.lon),
+          tags: { ...(x.extratags ?? {}), name: x.name, [x.category]: x.type, 'addr:street': a.road, 'addr:housenumber': a.house_number, 'addr:city': a.city || a.town || a.village || '' },
+        };
+        if (['bus_stop', 'platform', 'station', 'stop_position', 'parking'].includes(x.type)) continue;
+        const p = toPlace(el, cat, center);
+        if (!p || seen.has(p.name) || p.km * 1000 > radius) continue;
+        seen.add(p.name);
+        out.push(p);
+      }
+      if (out.length >= 5) break;
     }
-    if (out.length >= 8) break;
+    if (out.length >= 3) break;
   }
-  return out.sort((a, b) => a.km - b.km).slice(0, 12);
+  const res = out.sort((a, b) => a.km - b.km).slice(0, 12);
+  if (calls && errors === calls) Object.defineProperty(res, 'failed', { value: true });
+  return res;
 }
 
 async function nominatimGroups(catIds, center, radius, prio = 0) {
   const groups = {};
   await Promise.all(catIds.map(async (id) => (groups[id] = await nominatimCategory(id, center, radius, prio))));
+  // Nur wenn keine einzige Anfrage durchging, gilt die Suche als fehlgeschlagen (sonst: wirklich nichts in der Nähe)
+  Object.defineProperty(groups, 'failed', { value: catIds.every((id) => groups[id].failed) });
   await addWikidataImages(Object.values(groups).flat());
   return groups;
 }
@@ -541,13 +559,14 @@ export async function searchMixed(catIds, center, radius, prio = 0) {
   let groups;
   if (prio >= 2) {
     // Geöffneter Plan: beide Dienste gleichzeitig fragen, das erste brauchbare Ergebnis zählt
-    const viaNomi = nominatimGroups(catIds, center, radius, prio).then((g) => (count(g) ? g : Promise.reject(new Error('leer'))));
-    groups = await Promise.any([viaOverpass.then((g) => (count(g) ? g : Promise.reject(new Error('leer')))), viaNomi]).catch(() => null);
+    const viaNomi = nominatimGroups(catIds, center, radius, prio);
+    groups = await Promise.any([viaOverpass.then((g) => (count(g) ? g : Promise.reject(new Error('leer')))), viaNomi.then((g) => (count(g) ? g : Promise.reject(new Error('leer'))))])
+      .catch(() => viaNomi);
   } else {
     groups = await viaOverpass.catch(() => null);
     if (!groups || !count(groups)) groups = await nominatimGroups(catIds, center, radius, prio);
   }
-  if (!groups || !count(groups)) throw new Error('Ortssuche gerade nicht erreichbar.');
+  if (!groups || groups.failed) throw new Error('Ortssuche gerade nicht erreichbar.');
   memo.set(key, groups);
   return groups;
 }
@@ -619,6 +638,8 @@ export async function searchByName(term, center, radius) {
 
 const STEP_RULES = [
   [/weihnachtsmarkt|christkindl/, 'xmas'],
+  [/kochkurs|kochschule/, 'cooking'],
+  [/töpfer|keramik/, 'pottery'],
   [/bowling/, 'bowling'],
   [/museum/, 'museum'],
   [/galerie/, 'gallery'],
@@ -655,6 +676,7 @@ export function isXmasSeason(iso) {
 
 export function catForStep(step, iso) {
   if (step.place) return null;
+  if (/^(anfahrt|rückfahrt|fahrt|zugfahrt)\b/i.test(step.t ?? '')) return null; // Weg dorthin, kein eigener Ort
   // In der Adventszeit: Punsch, Glühwein & Co. auf dem Weihnachtsmarkt
   if (isXmasSeason(iso) && /punsch|glühwein|heiße schokolade|weihnacht|christkindl/i.test(`${step.t} ${step.q ?? ''}`)) return 'xmas';
   if (!step.q) return null;
