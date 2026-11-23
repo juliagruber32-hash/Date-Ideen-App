@@ -1,0 +1,17 @@
+{
+  "name": "Date-Ideen – Zeit zu zweit",
+  "short_name": "Date-Ideen",
+  "description": "Fertige Dates passend zu Budget und Wetter, mit gemeinsamem Kalender und Listen.",
+  "lang": "de",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#fbf6f2",
+  "theme_color": "#e0546b",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
