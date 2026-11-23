@@ -249,3 +249,57 @@ create policy "öffentliche fotos löschen" on storage.objects for delete to aut
 drop policy if exists "öffentliche fotos lesen" on storage.objects;
 create policy "öffentliche fotos lesen" on storage.objects for select to authenticated
   using (bucket_id = 'public-photos');
+
+-- =====================================================================
+-- Konten: Benutzername zu jedem Konto (Anmeldung per E-Mail + Passwort)
+-- =====================================================================
+
+create table if not exists public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  username text not null unique check (username ~ '^[a-z0-9._-]{3,20}$'),
+  created_at timestamptz not null default now()
+);
+alter table public.profiles enable row level security;
+
+drop policy if exists "eigenes profil lesen" on public.profiles;
+create policy "eigenes profil lesen" on public.profiles for select
+  using (id = auth.uid() or exists (
+    select 1 from public.members m1 join public.members m2 on m1.couple_id = m2.couple_id
+     where m1.user_id = auth.uid() and m2.user_id = profiles.id));
+
+-- Profil automatisch beim Registrieren anlegen (Benutzername aus den Anmeldedaten)
+create or replace function public.handle_new_user()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.profiles (id, username)
+  values (new.id, lower(new.raw_user_meta_data->>'username'))
+  on conflict (id) do nothing;
+  return new;
+end $$;
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created after insert on auth.users
+  for each row execute function public.handle_new_user();
+
+-- Ist ein Benutzername noch frei? (verrät nichts außer ja/nein)
+create or replace function public.username_available(name text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select lower(name) ~ '^[a-z0-9._-]{3,20}$'
+     and not exists (select 1 from profiles where username = lower(name));
+$$;
+grant execute on function public.username_available(text) to anon, authenticated;
+
+-- Konto und alle eigenen Daten endgültig löschen
+create or replace function public.delete_my_account()
+returns void language plpgsql security definer set search_path = public as $$
+declare me uuid := auth.uid();
+begin
+  if me is null then raise exception 'nicht angemeldet'; end if;
+  delete from docs where owner = me;
+  delete from community_ratings where user_id = me;
+  delete from community_reports where user_id = me;
+  delete from community_ideas where author = me;
+  delete from members where user_id = me;
+  delete from couples c where not exists (select 1 from members m where m.couple_id = c.id);
+  delete from auth.users where id = me;
+end $$;
+grant execute on function public.delete_my_account() to authenticated;

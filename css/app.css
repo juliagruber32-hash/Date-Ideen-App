@@ -801,3 +801,21 @@ label.btn.busy { pointer-events: none; opacity: .8; }
   .idea:hover, .feed-card:hover, .place:hover, .reco:hover { border-color: color-mix(in srgb, var(--taupe) 70%, var(--line)); box-shadow: var(--shadow); }
 }
 @media print { .view > * { animation: none !important; } }
+
+
+/* ---------- Konto ---------- */
+body.auth-screen .tabbar { display: none; }
+body.auth-screen .view { padding-bottom: 40px; }
+.auth { display: flex; flex-direction: column; gap: 20px; padding-top: 6vh; }
+.auth-brand { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; padding-bottom: 6px; }
+.brand-mark.big { width: 64px; height: 64px; padding: 12px; margin-bottom: 6px; }
+.wordmark { font-size: 3rem; color: var(--accent); line-height: 1; }
+.tagline { font-family: var(--font-display); font-style: italic; color: var(--muted); font-size: 1.15rem; }
+.pw-row { display: flex; align-items: center; gap: 6px; }
+.pw-row .input { flex: 1; min-width: 0; }
+.at { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--muted); font-weight: 600; }
+.input-ico .at + .input { padding-left: 34px; }
+.linkish.center { align-self: center; }
+.gift-mark.small { width: 52px; height: 52px; border-radius: 50%; align-self: center; }
+.gift-mark.small .ico { width: 26px; height: 26px; }
+.join-other summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; margin-bottom: 8px; }

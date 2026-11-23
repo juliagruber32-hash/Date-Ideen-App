@@ -57,44 +57,132 @@ function mergeDeep(a, b) {
   return out;
 }
 
+/* ------------------------------------------------------------ Konten (E-Mail + Passwort) */
+
+const clients = new Map();
+export async function getClient(cfg) {
+  if (!clients.has(cfg.url)) {
+    const lib = await loadLib();
+    clients.set(cfg.url, lib.createClient(cfg.url, cfg.key, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: 'dately-auth' } }));
+  }
+  return clients.get(cfg.url);
+}
+
+const appUrl = () => `${location.origin}${location.pathname}`;
+
+function authError(error) {
+  const m = error?.message ?? '';
+  if (/invalid login credentials/i.test(m)) return 'E-Mail oder Passwort stimmt nicht.';
+  if (/email not confirmed/i.test(m)) return 'Bitte bestätige zuerst deine E-Mail-Adresse – der Link ist in deinem Postfach.';
+  if (/already registered|already been registered|user already exists/i.test(m)) return 'Für diese E-Mail-Adresse gibt es schon ein Konto. Melde dich an.';
+  if (/password should be|weak password|at least/i.test(m)) return 'Das Passwort ist zu schwach – bitte mindestens 8 Zeichen.';
+  if (/rate limit|too many/i.test(m)) return 'Zu viele Versuche. Bitte warte ein paar Minuten.';
+  if (/invalid.*email|unable to validate email/i.test(m)) return 'Diese E-Mail-Adresse ist ungültig.';
+  if (/signups not allowed|signup.*disabled/i.test(m)) return 'Registrieren ist in Supabase ausgeschaltet (Authentication → Sign In / Providers → Email).';
+  return m || 'Das hat nicht geklappt. Bitte versuche es noch einmal.';
+}
+
+export async function currentSession(cfg) {
+  const client = await getClient(cfg);
+  const { data } = await client.auth.getSession();
+  return data.session ?? null;
+}
+
+export async function onAuthChange(cfg, cb) {
+  const client = await getClient(cfg);
+  client.auth.onAuthStateChange((event, session) => cb(event, session));
+}
+
+export const validUsername = (u) => /^[a-z0-9._-]{3,20}$/.test(u);
+
+/** Registrieren. Gibt { session } zurück; session ist null, wenn die E-Mail erst bestätigt werden muss. */
+export async function signUp(cfg, { email, password, username, invite }) {
+  const client = await getClient(cfg);
+  const name = username.trim().toLowerCase();
+  if (!validUsername(name)) throw new Error('Benutzername: 3–20 Zeichen, nur Buchstaben, Zahlen, Punkt, Strich oder Unterstrich.');
+  const free = await client.rpc('username_available', { name });
+  if (free.error) throw new Error(/function|schema cache/i.test(free.error.message) ? 'Die Datenbank ist noch nicht vollständig eingerichtet (setup.sql erneut ausführen).' : authError(free.error));
+  if (!free.data) throw new Error('Dieser Benutzername ist schon vergeben.');
+  const { data, error } = await client.auth.signUp({
+    email: email.trim(),
+    password,
+    options: { data: { username: name, ...(invite ? { invite } : {}) }, emailRedirectTo: appUrl() },
+  });
+  if (error) throw new Error(authError(error));
+  // Supabase verrät bei schon bestehender E-Mail aus Sicherheitsgründen nichts – dann fehlen Identitäten.
+  if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+    throw new Error('Für diese E-Mail-Adresse gibt es schon ein Konto. Melde dich an.');
+  }
+  return { session: data.session };
+}
+
+export async function signIn(cfg, { email, password }) {
+  const client = await getClient(cfg);
+  const { data, error } = await client.auth.signInWithPassword({ email: email.trim(), password });
+  if (error) throw new Error(authError(error));
+  return data.session;
+}
+
+export async function resetPassword(cfg, email) {
+  const client = await getClient(cfg);
+  const { error } = await client.auth.resetPasswordForEmail(email.trim(), { redirectTo: appUrl() });
+  if (error) throw new Error(authError(error));
+}
+
+export async function updatePassword(cfg, password) {
+  const client = await getClient(cfg);
+  const { error } = await client.auth.updateUser({ password });
+  if (error) throw new Error(authError(error));
+}
+
+export async function signOut(cfg) {
+  const client = await getClient(cfg);
+  await client.auth.signOut();
+}
+
+export async function deleteAccount(cfg) {
+  const client = await getClient(cfg);
+  const { error } = await client.rpc('delete_my_account');
+  if (error) throw new Error(`Löschen fehlgeschlagen: ${error.message}`);
+  await client.auth.signOut();
+}
+
 /**
- * Verbindet sich mit Supabase. Legt bei Bedarf ein Paar an oder tritt mit Code bei.
- * cfg: { url, key, code?, coupleId? }. Gibt { db, uid, cfg } zurück.
+ * Mit dem angemeldeten Konto verbinden: Paar finden, beitreten oder anlegen.
+ * cfg: { url, key, code?, coupleId? }. Gibt { db, uid, user, cfg, community, photos } zurück.
  */
 export async function connectSupabase(cfg) {
-  const lib = await loadLib();
-  const client = lib.createClient(cfg.url, cfg.key, { auth: { persistSession: true, autoRefreshToken: true, storageKey: 'date-ideen-auth' } });
-
-  let { data: { session } } = await client.auth.getSession();
-  if (!session) {
-    const r = await client.auth.signInAnonymously();
-    if (r.error) {
-      throw new Error(/anonymous/i.test(r.error.message)
-        ? 'In Supabase ist die anonyme Anmeldung noch aus. Schalte sie unter Authentication → Sign In / Providers → „Allow anonymous sign-ins“ ein.'
-        : `Anmeldung fehlgeschlagen: ${r.error.message}`);
-    }
-    session = r.data.session;
-  }
+  const client = await getClient(cfg);
+  const { data: { session } } = await client.auth.getSession();
+  if (!session) throw Object.assign(new Error('Bitte melde dich an.'), { code: 'auth' });
   const uid = session.user.id;
+  const um = session.user.user_metadata ?? {};
+  const prof = await client.from('profiles').select('username').eq('id', uid).maybeSingle();
+  const user = { id: uid, email: session.user.email, username: prof.data?.username ?? um.username ?? '' };
 
-  // Paar anlegen oder beitreten
+  // Paar: Einladung > gespeichertes Paar > bestehende Mitgliedschaft > neues Paar
   let coupleId = cfg.coupleId;
-  let code = cfg.code;
-  if (coupleId) {
-    const { data } = await client.from('members').select('couple_id').eq('couple_id', coupleId).eq('user_id', uid).maybeSingle();
-    if (!data) coupleId = null; // z. B. neues Gerät mit anderer Anmeldung
-  }
-  if (!coupleId && code) {
+  let code = cfg.code ?? um.invite ?? null;
+  if (code) {
     const { data, error } = await client.rpc('join_couple', { invite: code });
     if (error) throw new Error(/nicht gefunden/.test(error.message) ? 'Einladungscode nicht gefunden.' : `Beitritt fehlgeschlagen: ${error.message}`);
     coupleId = data;
+    if (um.invite) client.auth.updateUser({ data: { invite: null } }).catch(() => {});
+  } else if (coupleId) {
+    const { data } = await client.from('members').select('couple_id').eq('couple_id', coupleId).eq('user_id', uid).maybeSingle();
+    if (!data) coupleId = null;
+  }
+  if (!coupleId) {
+    const { data } = await client.from('members').select('couple_id, joined_at').eq('user_id', uid).order('joined_at', { ascending: false }).limit(1);
+    coupleId = data?.[0]?.couple_id ?? null;
   }
   if (!coupleId) {
     const { data, error } = await client.rpc('create_couple');
     if (error) throw new Error(/function|does not exist|schema cache/i.test(error.message) ? 'Die Datenbank ist noch nicht eingerichtet. Führe setup.sql im SQL Editor aus.' : `Anlegen fehlgeschlagen: ${error.message}`);
     coupleId = data.id;
-    code = data.code;
   }
+  const c = await client.from('couples').select('code').eq('id', coupleId).maybeSingle();
+  code = c.data?.code ?? code;
   const saved = { url: cfg.url, key: cfg.key, coupleId, code };
   saveConfig(saved);
 
@@ -186,7 +274,7 @@ export async function connectSupabase(cfg) {
     };
   };
 
-  return { db: { doc, collection }, uid, cfg: saved, community: communityApi(client, uid), photos: photoApi(client, uid, coupleId) };
+  return { db: { doc, collection }, uid, user, cfg: saved, community: communityApi(client, uid), photos: photoApi(client, uid, coupleId) };
 }
 
 /* ------------------------------------------------------------ Fotos */

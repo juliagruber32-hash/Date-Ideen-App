@@ -7,7 +7,7 @@ import { googleDetails } from './gplaces.js';
 import * as photos from './photos.js';
 import { SUPABASE } from './config.js';
 import * as gcal from './gcal.js';
-import { connectSupabase, getConfig, inviteLink, readInvite, saveConfig } from './remote.js';
+import { connectSupabase, currentSession, deleteAccount, getConfig, inviteLink, onAuthChange, readInvite, resetPassword, saveConfig, signIn, signOut, signUp, updatePassword } from './remote.js';
 import { nearSpecial, specialsOn, upcomingSpecials } from './special.js';
 import { glyph, icon } from './icons.js';
 import {
@@ -21,6 +21,8 @@ const root = $('#view');
 const tempIdeas = new Map(); // Ideen aus der Ortssuche, die noch nicht gespeichert sind
 const ideaById = (id) => tempIdeas.get(id) ?? allIdeas().find((i) => i.id === id);
 let remoteError = null;
+// Konto-Zustand (nur mit Supabase): needed = Anmeldung erforderlich
+const auth = { cfg: null, user: null, needed: false, mode: null, info: '', error: '' };
 
 // Sitzungszustand des aktuellen Planungsablaufs (wird nicht gespeichert).
 const session = { ctx: null, weather: null, shown: new Set(), current: [], exhausted: false, requestId: null, pollId: null };
@@ -33,11 +35,14 @@ const RENDER = {};
 let current = { name: 'start', param: null };
 
 function go(name, param = null) {
+  if (auth.needed && name !== 'konto') name = 'konto';
   current = { name, param };
   render(true);
 }
 
 function render(scrollTop = false) {
+  if (auth.needed && current.name !== 'konto') current = { name: 'konto', param: null };
+  document.body.classList.toggle('auth-screen', current.name === 'konto');
   formDirty = false;
   pendingRender = false;
   setExtraIdeas([...S().ideas, ...S().favorites.filter((f) => f.idea).map((f) => ({ ...f.idea, id: f.ideaId }))]);
@@ -76,6 +81,7 @@ const isTyping = () => {
 store.onChange((source) => {
   if (source === 'error' && store.syncInfo().writeError) toast(store.syncInfo().writeError);
   if (source === 'local') return;
+  autoClaim();
   autoReveal();
   if (isTyping() || formDirty) pendingRender = true;
   else render();
@@ -399,18 +405,46 @@ async function syncGcal() {
 
 /* ================================================================ Einstellungen: Verbindungen */
 
-async function connectRemote(cfg, announce = false) {
+let connecting = null; // nur ein Verbindungsaufbau gleichzeitig (sonst entstehen doppelte Paare)
+function connectRemote(cfg, announce = false) {
+  if (!connecting) connecting = doConnectRemote(cfg, announce).finally(() => (connecting = null));
+  return connecting;
+}
+
+async function doConnectRemote(cfg, announce) {
   remoteError = null;
+  auth.cfg = cfg;
   try {
-    const { db, uid, community: api, photos: photosApi } = await connectSupabase(cfg);
+    const { db, uid, user, community: api, photos: photosApi } = await connectSupabase(cfg);
+    auth.user = user;
+    auth.needed = false;
     store.attach(db, uid, { backend: 'supabase' });
     community.api = api;
     photos.setRemote(photosApi);
-    if (announce) toast('Verbunden! Wähle jetzt, wer du bist.');
+    if (announce) toast(`Willkommen${user.username ? `, @${user.username}` : ''}!`);
+    if (current.name === 'konto') current = { name: 'start', param: null };
   } catch (e) {
-    remoteError = e.message;
+    if (e.code === 'auth') {
+      auth.needed = true;
+      current = { name: 'konto', param: null };
+    } else remoteError = e.message;
   }
-  render();
+  render(true);
+}
+
+/** Nach dem ersten Anmelden automatisch „Ich bin“ setzen und den Benutzernamen als Namen übernehmen. */
+let autoClaimed = false;
+function autoClaim() {
+  const sync = store.syncInfo();
+  if (autoClaimed || !auth.user || sync.backend !== 'supabase' || !sync.ready || myRole()) return;
+  autoClaimed = true;
+  const m = S().settings.members ?? {};
+  const role = !m.a ? 'a' : !m.b ? 'b' : null;
+  if (!role) return;
+  store.claimRole(role);
+  const key = role === 'a' ? 'nameA' : 'nameB';
+  const u = auth.user.username;
+  if (u && !S().settings[key]) store.update((st) => (st.settings[key] = u.charAt(0).toUpperCase() + u.slice(1)));
 }
 
 function sharingHTML() {
@@ -436,7 +470,20 @@ function sharingHTML() {
         <small class="muted">Schick den Link per WhatsApp oder Mail. Wer ihn öffnet, ist mit euch verbunden – schick ihn also nur an die Person, mit der du Dately nutzt.</small>
       </div>
       ${sync.writeError ? `<p class="warn-text">${esc(sync.writeError)}</p>` : ''}
-      <button class="btn ghost danger" id="disconnect" type="button">Auf diesem Gerät trennen</button>`;
+      <details class="join-other">
+        <summary>Einladung von jemand anderem bekommen?</summary>
+        <div class="row gap"><input class="input" id="join-code" placeholder="Einladungscode oder -link" autocomplete="off"><button class="btn" id="join-btn" type="button">Beitreten</button></div>
+      </details>
+    </section>
+    <section class="panel form">
+      <div class="panel-head">${icon('user')}<h2>Dein Konto</h2></div>
+      <p>Angemeldet als <strong>@${esc(auth.user?.username ?? '')}</strong><br><small class="muted">${esc(auth.user?.email ?? '')}</small></p>
+      <div class="row gap wrap">
+        <button class="btn" id="logout" type="button">Abmelden</button>
+        <button class="btn ghost" id="pw-reset" type="button">Passwort ändern</button>
+      </div>
+      <button class="btn ghost danger" id="delete-account" type="button">${icon('trash')}Konto löschen</button>
+      <small class="muted">Löscht dein Konto, deine geheimen Daten, Bewertungen und geteilten Ideen endgültig. Gemeinsame Dates bleiben für die andere Person erhalten.</small>`;
   }
   return `
     <p>Gerade liegen die Daten nur auf diesem Gerät. Mit einem kostenlosen Supabase-Projekt seht ihr beide dieselben Dates, Listen und Abstimmungen.</p>
@@ -459,9 +506,42 @@ function bindSharing() {
       toast('Link markiert – jetzt kopieren');
     }
   });
-  $('#disconnect')?.addEventListener('click', () => {
-    saveConfig(null);
+  $('#logout')?.addEventListener('click', async () => {
+    await signOut(auth.cfg).catch(() => {});
+    store.reset();
     location.reload();
+  });
+  $('#pw-reset')?.addEventListener('click', async (e) => {
+    await withBusy(e.currentTarget, async () => {
+      try {
+        await resetPassword(auth.cfg, auth.user.email);
+        toast('Link zum Ändern des Passworts ist per E-Mail unterwegs');
+      } catch (err) {
+        toast(err.message);
+      }
+    });
+  });
+  const del = $('#delete-account');
+  if (del) armed(del, async () => {
+    try {
+      await deleteAccount(auth.cfg);
+      store.reset();
+      const c = getConfig();
+      if (c) saveConfig({ url: c.url, key: c.key });
+      location.reload();
+    } catch (err) {
+      toast(err.message);
+    }
+  }, 'Nochmal tippen: Konto endgültig löschen');
+  $('#join-btn')?.addEventListener('click', async (e) => {
+    const v = $('#join-code').value.trim();
+    const code = readInvite(v.includes('#') ? v.slice(v.indexOf('#')) : '')?.code ?? v;
+    if (!code) return;
+    await withBusy(e.currentTarget, async () => {
+      const c = getConfig();
+      saveConfig({ url: c.url, key: c.key, code, coupleId: null });
+      location.reload();
+    });
   });
   $('#sb-connect')?.addEventListener('click', async (e) => {
     const url = $('#sb-url').value.trim().replace(/\/+$/, '');
@@ -471,7 +551,8 @@ function bindSharing() {
       remoteError = 'Bitte Project URL und Schlüssel aus Supabase eintragen.';
       return render();
     }
-    await withBusy(e.currentTarget, () => connectRemote({ url, key, code: code || null, coupleId: null }, true));
+    saveConfig({ url, key, code: code || null, coupleId: null });
+    await withBusy(e.currentTarget, () => startAccount({ url, key, code: code || null, coupleId: null }));
   });
 }
 
@@ -1620,6 +1701,164 @@ function recommendationsHTML() {
           </button>`).join('')}
       </div>
     </section>`;
+}
+
+/* ================================================================ Konto: Anmelden & Registrieren */
+
+const invitePending = () => {
+  const c = getConfig();
+  return !!(c?.code && !c?.coupleId);
+};
+
+RENDER.konto = () => {
+  const mode = auth.mode ?? (invitePending() ? 'registrieren' : 'anmelden');
+  const tabs = `
+    <nav class="seg-tabs" role="tablist">
+      <button role="tab" data-amode="anmelden" aria-selected="${mode === 'anmelden'}">Anmelden</button>
+      <button role="tab" data-amode="registrieren" aria-selected="${mode === 'registrieren'}">Konto erstellen</button>
+    </nav>`;
+  const pw = (id, label, auto) => `
+    <div class="field"><label class="label" for="${id}">${label}</label>
+      <div class="pw-row"><input class="input" id="${id}" type="password" autocomplete="${auto}" minlength="8" required>
+      <button type="button" class="icon-btn small" data-show="${id}" aria-label="Passwort anzeigen">${icon('eye')}</button></div></div>`;
+  const forms = {
+    anmelden: `
+      <form class="panel form" id="auth-form" novalidate>
+        <div class="field"><label class="label" for="a-email">E-Mail-Adresse</label><input class="input" id="a-email" type="email" autocomplete="email" inputmode="email" required></div>
+        ${pw('a-pw', 'Passwort', 'current-password')}
+        <button class="btn primary big" type="submit">Anmelden</button>
+        <button class="linkish small center" type="button" data-amode="vergessen">Passwort vergessen?</button>
+      </form>`,
+    registrieren: `
+      <form class="panel form" id="auth-form" novalidate>
+        <div class="field"><label class="label" for="a-user">Benutzername</label>
+          <div class="input-ico"><span class="at">@</span><input class="input" id="a-user" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="20" required placeholder="z. B. sam.m"></div>
+          <small class="muted">3–20 Zeichen: Buchstaben, Zahlen, Punkt, Strich, Unterstrich.</small></div>
+        <div class="field"><label class="label" for="a-email">E-Mail-Adresse</label><input class="input" id="a-email" type="email" autocomplete="email" inputmode="email" required></div>
+        ${pw('a-pw', 'Passwort (mindestens 8 Zeichen)', 'new-password')}
+        <button class="btn primary big" type="submit">Konto erstellen</button>
+      </form>`,
+    vergessen: `
+      <form class="panel form" id="auth-form" novalidate>
+        <p>Gib deine E-Mail-Adresse ein. Wir schicken dir einen Link, mit dem du ein neues Passwort festlegst.</p>
+        <div class="field"><label class="label" for="a-email">E-Mail-Adresse</label><input class="input" id="a-email" type="email" autocomplete="email" inputmode="email" required></div>
+        <button class="btn primary big" type="submit">Link senden</button>
+        <button class="linkish small center" type="button" data-amode="anmelden">Zurück zur Anmeldung</button>
+      </form>`,
+    'neues-passwort': `
+      <form class="panel form" id="auth-form" novalidate>
+        <p>Lege dein neues Passwort fest.</p>
+        ${pw('a-pw', 'Neues Passwort (mindestens 8 Zeichen)', 'new-password')}
+        <button class="btn primary big" type="submit">Passwort speichern</button>
+      </form>`,
+    bestaetigen: `
+      <section class="panel stack center">
+        <div class="gift-mark small">${icon('check')}</div>
+        <h2>Fast geschafft</h2>
+        <p>Wir haben eine E-Mail an <strong>${esc(auth.info)}</strong> geschickt. Tippe auf den Link darin – danach bist du angemeldet.</p>
+        <p class="muted small">Nichts angekommen? Schau im Spam-Ordner nach.</p>
+        <button class="btn" type="button" data-amode="anmelden">Ich habe bestätigt – anmelden</button>
+      </section>`,
+  };
+
+  root.innerHTML = `
+    <section class="auth">
+      <div class="auth-brand">
+        ${icon('rings', 'brand-mark big')}
+        <h1 class="wordmark">Dately</h1>
+        <p class="tagline">Made for moments.</p>
+      </div>
+      ${invitePending() && mode !== 'bestaetigen' ? `<div class="banner neutral-row">${icon('users')}<span>Du wurdest eingeladen. Erstelle ein Konto oder melde dich an – dann seid ihr verbunden.</span></div>` : ''}
+      ${mode === 'anmelden' || mode === 'registrieren' ? tabs : ''}
+      ${auth.error ? `<p class="warn-text" role="alert">${esc(auth.error)}</p>` : ''}
+      ${auth.info && mode !== 'bestaetigen' ? `<p class="hint" role="status">${esc(auth.info)}</p>` : ''}
+      ${forms[mode] ?? forms.anmelden}
+      <p class="muted small center">Mit dem Konto speichert Dately eure gemeinsamen Dates, Listen und Fotos sicher – nur ihr zwei seht sie.</p>
+    </section>`;
+
+  on('[data-amode]', 'click', (_, el) => {
+    auth.mode = el.dataset.amode;
+    auth.error = '';
+    auth.info = '';
+    render();
+  });
+  on('[data-show]', 'click', (_, el) => {
+    const input = $(`#${el.dataset.show}`);
+    input.type = input.type === 'password' ? 'text' : 'password';
+  });
+  $('#auth-form')?.addEventListener('input', () => $('.auth .warn-text')?.remove());
+  $('#auth-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = e.submitter ?? $('#auth-form button[type=submit]');
+    const email = $('#a-email')?.value.trim();
+    const password = $('#a-pw')?.value ?? '';
+    auth.error = '';
+    await withBusy(btn, async () => {
+      try {
+        if (mode === 'anmelden') {
+          if (!email || !password) throw new Error('Bitte E-Mail und Passwort eingeben.');
+          await signIn(auth.cfg, { email, password });
+          auth.mode = null;
+          await connectRemote(auth.cfg, true);
+        } else if (mode === 'registrieren') {
+          if (password.length < 8) throw new Error('Das Passwort braucht mindestens 8 Zeichen.');
+          if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error('Bitte eine gültige E-Mail-Adresse eingeben.');
+          const { session } = await signUp(auth.cfg, { email, password, username: $('#a-user').value, invite: getConfig()?.code ?? null });
+          if (session) {
+            auth.mode = null;
+            await connectRemote(auth.cfg, true);
+          } else {
+            auth.mode = 'bestaetigen';
+            auth.info = email;
+            render();
+          }
+        } else if (mode === 'vergessen') {
+          if (!email) throw new Error('Bitte deine E-Mail-Adresse eingeben.');
+          await resetPassword(auth.cfg, email);
+          auth.mode = 'anmelden';
+          auth.info = 'Wenn es ein Konto mit dieser Adresse gibt, ist der Link jetzt unterwegs.';
+          render();
+        } else if (mode === 'neues-passwort') {
+          if (password.length < 8) throw new Error('Das Passwort braucht mindestens 8 Zeichen.');
+          await updatePassword(auth.cfg, password);
+          auth.mode = null;
+          toast('Neues Passwort gespeichert');
+          await connectRemote(auth.cfg);
+        }
+      } catch (err) {
+        auth.error = err.message;
+        render();
+      }
+    });
+  });
+};
+
+/** Supabase ist eingerichtet: angemeldet → verbinden, sonst Anmeldung zeigen. */
+async function startAccount(cfg) {
+  auth.cfg = cfg;
+  try {
+    await onAuthChange(cfg, (event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        auth.needed = true;
+        auth.mode = 'neues-passwort';
+        current = { name: 'konto', param: null };
+        render();
+      } else if (event === 'SIGNED_IN' && auth.needed && auth.mode !== 'neues-passwort') {
+        // z. B. nach Klick auf den Bestätigungslink
+        auth.mode = null;
+        connectRemote(cfg, true);
+      }
+    });
+    const session = await currentSession(cfg);
+    if (session && !/type=recovery/.test(location.hash)) return connectRemote(cfg);
+    auth.needed = true;
+    if (/type=recovery/.test(location.hash)) auth.mode = 'neues-passwort';
+    current = { name: 'konto', param: null };
+    render(true);
+  } catch (e) {
+    remoteError = e.message;
+    render();
+  }
 }
 
 /* ================================================================ 1. Start */
@@ -3348,13 +3587,12 @@ RENDER.mehr = () => {
   if (invite) {
     history.replaceState(null, '', location.pathname);
     saveConfig({ ...invite, coupleId: null });
-    current = { name: 'mehr', param: null };
   }
   render();
   autoReveal();
   if (await store.connect()) return render();
   let cfg = getConfig();
   if (!cfg?.url && SUPABASE.url && SUPABASE.key) cfg = { url: SUPABASE.url, key: SUPABASE.key, coupleId: null, code: null };
-  if (cfg?.url && cfg?.key) await connectRemote(cfg, !!invite);
+  if (cfg?.url && cfg?.key) await startAccount(cfg);
   refreshGpsSilently();
 })();

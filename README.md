@@ -34,12 +34,20 @@ wie eine echte App installieren.
 Damit ihr beide dieselben Dates, Listen und Abstimmungen seht und Überraschungen geheim bleiben:
 
 1. Auf **supabase.com** ein kostenloses Konto anlegen (z. B. mit GitHub anmelden).
-2. **New project**: Name `date-ideen`, ein Datenbank-Passwort ausdenken (wird nicht weiter gebraucht),
+2. **New project**: Name `dately`, ein Datenbank-Passwort generieren lassen (wird nicht weiter gebraucht),
    Region **Central EU (Frankfurt)** → **Create new project**. Kurz warten.
 3. Links **SQL Editor** → **New query**. Den kompletten Inhalt der Datei
    [`supabase/setup.sql`](supabase/setup.sql) hineinkopieren → **Run**. Es sollte „Success“ erscheinen.
-4. Links **Authentication** → **Sign In / Providers** (manchmal „Providers“) → **Allow anonymous sign-ins**
-   einschalten → **Save**.
+4. **Konten einstellen** – links **Authentication**:
+   - **Sign In / Providers → Email**: muss eingeschaltet sein (Standard). Hier entscheidest du bei
+     **„Confirm email“**, ob neue Konten ihre E-Mail-Adresse erst per Link bestätigen müssen (empfohlen).
+   - **URL Configuration**: bei **Site URL** `https://juliagruber32-hash.github.io/Date-Ideen-App/` eintragen
+     und dieselbe Adresse unter **Redirect URLs** hinzufügen → **Save**. Sonst führen die Links in den
+     Bestätigungs- und „Passwort vergessen“-Mails ins Leere.
+   - Optional **Emails → Templates**: die Texte der Mails auf Deutsch übersetzen.
+   - Gut zu wissen: Der eingebaute Mail-Versand von Supabase schickt nur wenige Mails pro Stunde. Für euch zwei
+     reicht das. Sollen viele Leute Dately nutzen, unter **Emails → SMTP Settings** einen Mail-Dienst wie
+     Brevo oder Resend (beide mit kostenlosem Kontingent) eintragen.
 5. Oben auf **Connect** tippen (oder **Project Settings → API Keys**). Kopiere:
    - **Project URL** (sieht aus wie `https://abcd1234.supabase.co`)
    - **Publishable key** bzw. **anon public** key
@@ -48,9 +56,9 @@ Damit ihr beide dieselben Dates, Listen und Abstimmungen seht und Überraschunge
    (oder Claude schicken, dann trägt Claude sie ein). Dann verbindet sich die App für alle automatisch –
    auch für andere Paare, die eure Webseite nutzen. Beide Werte sind öffentlich gedacht, geschützt wird
    über die Zugriffsregeln aus `setup.sql`.
-7. Unter „Ich bin“ deinen Namen wählen.
-8. Den **Einladungslink** kopieren und der anderen Person schicken. Wer ihn öffnet, ist mit euch verbunden
-   und wählt dann unter „Ich bin“ den eigenen Namen.
+7. In Dately ein **Konto erstellen** (Benutzername, E-Mail, Passwort). Danach unter **Zahnrad → Gemeinsam nutzen**
+   den **Einladungslink** kopieren und der anderen Person schicken. Sie erstellt über den Link ihr eigenes Konto
+   und ist danach automatisch mit dir verbunden.
 
 Gut zu wissen: Kostenlose Supabase-Projekte pausieren nach etwa einer Woche ohne Nutzung. Dann im
 Supabase-Dashboard auf **Restore** tippen – die Daten bleiben erhalten.
@@ -142,7 +150,7 @@ index.html              App-Hülle, Tab-Leiste
 css/app.css             Design (hell/dunkel)
 js/app.js               Bildschirme und Abläufe
 js/store.js             Datenhaltung: lokal, Claude-DB oder Supabase; feldgenaue Synchronisierung
-js/remote.js            Supabase-Anbindung (anonyme Anmeldung, Paar-Code, Live-Updates)
+js/remote.js            Supabase-Anbindung (Konten mit E-Mail + Passwort, Paar-Code, Live-Updates)
 js/places.js            GPS, Ortsname, Overpass-Ortssuche, Öffnungszeiten
 js/gcal.js              Google Kalender (lesen, eintragen, Vorlage-Link)
 js/gplaces.js           Google-Bewertungen und Fotos (optional, eigener Schlüssel)
