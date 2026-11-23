@@ -2,7 +2,7 @@ import * as store from './store.js';
 import { isHiddenFromMe, myRole, nameOf, other } from './store.js';
 import { geocode, getWeather, manualWeather } from './weather.js';
 import { allIdeas, buildPlan, combineWishes, defaultStart, ideaDuration, loadIdeas, MOODS, moodLabel, REACH, recommend, rhythmStatus, setExtraIdeas, suggest, toICS } from './engine.js';
-import { appleMapsLink, CATEGORIES, categoryById, directionsLink, distanceKm, fmtKm, fmtMin, formatHours, hoursOn, isOpenAt, locate, mapLink, placeName, reservationLinks, searchMixed, searchNearby, travelEstimates } from './places.js';
+import { appleMapsLink, CATEGORIES, catForStep, categoryById, directionsLink, distanceKm, fmtKm, fmtMin, formatHours, hoursOn, isOpenAt, locate, mapLink, placeName, reservationLinks, searchMixed, searchNearby, travelEstimates } from './places.js';
 import { googleDetails } from './gplaces.js';
 import * as photos from './photos.js';
 import { SUPABASE } from './config.js';
@@ -11,7 +11,7 @@ import { connectSupabase, currentSession, deleteAccount, getConfig, inviteLink, 
 import { nearSpecial, specialsOn, upcomingSpecials } from './special.js';
 import { glyph, icon } from './icons.js';
 import {
-  $, $$, addDays, daysBetween, esc, fmtDate, fmtDuration, fmtEuro, fmtShort, isoDate, MONTHS,
+  $, $$, addDays, addMinutes, daysBetween, esc, fmtDate, fmtDuration, fmtEuro, fmtShort, isoDate, MONTHS,
   parseISO, relDay, toast, today, uid, WD_SHORT, WEEKDAYS,
 } from './util.js';
 
@@ -699,7 +699,7 @@ RENDER.entdecken = () => {
   if (d.tab === 'gemerkt') return renderSaved(head + tabs);
 
   const center = discoverCenter();
-  const cats = CATEGORIES.filter((c) => !d.mood || c.moods.includes(d.mood));
+  const cats = CATEGORIES.filter((c) => !c.hidden && (!d.mood || c.moods.includes(d.mood)));
   if (!cats.some((c) => c.id === d.cat)) d.cat = cats[0]?.id ?? 'restaurant';
   const cat = categoryById(d.cat);
   let results = d.results ?? [];
@@ -780,8 +780,8 @@ RENDER.entdecken = () => {
       }
     });
   });
-  on('[data-open-place]', 'click', (_, el) => go('ort', el.dataset.openPlace));
-  on('[data-open-place]', 'keydown', (e, el) => e.key === 'Enter' && go('ort', el.dataset.openPlace));
+  on('[data-open-place]', 'click', (_, el) => (session.ortBack = null, go('ort', el.dataset.openPlace)));
+  on('[data-open-place]', 'keydown', (e, el) => e.key === 'Enter' && (session.ortBack = null, go('ort', el.dataset.openPlace)));
   if (center && !d.results && !d.loading && !d.error) load();
 };
 
@@ -813,7 +813,7 @@ RENDER.ort = (id) => {
   const apple = /iPhone|iPad|Mac/.test(navigator.userAgent);
 
   root.innerHTML = `
-    ${topbar({ title: '', back: ['entdecken', '', 'Entdecken'] })}
+    ${topbar({ title: '', back: session.ortBack ?? ['entdecken', '', 'Entdecken'] })}
     <div class="hero-img ${img ? '' : 'noimg'}">
       ${img ? `<img src="${esc(img)}" alt="${esc(p.name)}" referrerpolicy="no-referrer" onerror="this.parentNode.classList.add('noimg');this.remove()">` : ''}
       <span class="thumb-emoji" aria-hidden="true">${glyph(cat.emoji)}</span>
@@ -1551,7 +1551,7 @@ function renderForYou(head) {
     const idea = favRegistry.get(el.dataset.feedPlan) ?? ideaById(el.dataset.feedPlan);
     if (idea) planIdeaNow(idea, el);
   });
-  on('[data-open-place]', 'click', (_, el) => go('ort', el.dataset.openPlace));
+  on('[data-open-place]', 'click', (_, el) => (session.ortBack = null, go('ort', el.dataset.openPlace)));
 }
 
 /* ================================================================ Entdecken: Gemerkt */
@@ -1934,6 +1934,15 @@ function inboxItems() {
         <div class="inbox-ico">${icon('vote')}</div>
         <div class="grow"><strong>Abstimmung für ${relDay(p.ctx.date) ?? fmtShort(p.ctx.date)}</strong><p>${label}</p></div>
         <button class="btn ${!st.mineDone || st.bothDone ? 'primary' : ''} sm" data-open-poll="${p.id}">${!st.mineDone ? 'Abstimmen' : 'Öffnen'}</button>
+      </article>`);
+  }
+
+  for (const d of s.dates.filter((x) => role && dateIsOver(x) && !isHiddenFromMe(x) && !x.ratings?.[role] && daysBetween(parseISO(x.date), today()) <= 21).slice(0, 2)) {
+    items.push(`
+      <article class="inbox-item accent">
+        <div class="inbox-ico">${icon('heart')}</div>
+        <div class="grow"><strong>Wie war „${esc(dateTitle(d))}“?</strong><p>${relDay(d.date) ?? fmtShort(d.date)} · Bewertet euer Date – Dately lernt, was euch gefällt.</p></div>
+        <button class="btn primary sm" data-open-date="${d.id}">Bewerten</button>
       </article>`);
   }
 
@@ -2333,10 +2342,10 @@ RENDER.suggest = () => {
 
 /* ================================================================ 3. Plan */
 
-function timeline(plan) {
+function timeline(plan, extra = () => '') {
   return `
     <ol class="timeline">
-      ${plan.steps.map((s) => `
+      ${plan.steps.map((s, i) => `
         <li>
           <time>${s.time}</time>
           <div class="tl-body">
@@ -2344,6 +2353,7 @@ function timeline(plan) {
             ${s.note ? `<p class="note-text">${esc(s.note)}</p>` : ''}
             ${s.place ? placeLine(s.place, plan.date, s.time) : ''}
             ${s.links?.length ? `<div class="links">${s.links.map((l) => `<a class="link" href="${esc(l.href)}" target="_blank" rel="noopener">${esc(l.label)}${icon('external')}</a>`).join('')}</div>` : ''}
+            ${extra(i)}
           </div>
         </li>`).join('')}
       <li class="end"><time>${plan.end}</time><div class="tl-body"><span class="muted">Ende</span></div></li>
@@ -2373,8 +2383,41 @@ RENDER.plan = (ideaId) => {
   const role = myRole();
   const partner = other(role);
   const fromPoll = !!session.pollId;
-  const draft = (drafts[ideaId] ??= { start: defaultStart(idea, ctx.daytime), surprise: !fromPoll, hint: '' });
-  const plan = buildPlan(idea, { ...ctx, start: draft.start }, S().settings, session.weather);
+  const draft = (drafts[ideaId] ??= { start: defaultStart(idea, ctx.daytime), surprise: !fromPoll, hint: '', picks: {}, near: null, openAlt: null });
+  const stepCats = idea.steps.map(catForStep);
+  const center = discoverCenter();
+  const wantsPlaces = stepCats.some(Boolean) && ctx.reach !== 0 && !store.inArtifact();
+  if (wantsPlaces && center && !draft.near && !draft.nearLoading) loadStepPlaces(idea, draft, stepCats, center, ctx);
+  // Gewählte Orte in die Stationen einsetzen
+  const withPicks = {
+    ...idea,
+    steps: idea.steps.map((s, i) => {
+      const p = draft.picks[i] && placeIndex.get(draft.picks[i]);
+      return p ? { ...s, t: `${s.t}: ${p.name}`, place: { name: p.name, street: p.street, city: p.city, lat: p.lat, lon: p.lon, website: p.website, hours: p.hours, price: p.price, image: p.image, category: p.category } } : s;
+    }),
+  };
+  const plan = buildPlan(withPicks, { ...ctx, start: draft.start }, S().settings, session.weather);
+  const stepExtra = (i) => {
+    if (!stepCats[i] || !wantsPlaces) return '';
+    if (!center) return `<p class="muted small">Erlaube den Standort oder trag eine Stadt ein, dann schlägt Dately hier konkrete Orte vor.</p>`;
+    if (draft.nearLoading && !draft.near) return `<p class="muted small"><span class="spinner tiny"></span> Suche passende Orte in der Nähe …</p>`;
+    const list = draft.near?.[i] ?? [];
+    if (!list.length) return draft.near ? '<p class="muted small">Keine passenden Orte in der Nähe gefunden.</p>' : '';
+    const pick = draft.picks[i];
+    return `
+      <div class="alt-row">
+        <button type="button" class="linkish small" data-open-place="${esc(pick)}" data-from-plan>Details & Fotos</button>
+        ${list.length > 1 ? `<button type="button" class="linkish small" data-alt="${i}">${draft.openAlt === i ? 'Schließen' : `Andere Orte (${list.length - 1})`}</button>` : ''}
+      </div>
+      ${draft.openAlt === i ? `<div class="alt-list">${list.map((p) => {
+        const when = new Date(`${plan.date}T${plan.steps[i].time}:00`);
+        const h = hoursOn(p.hours, when);
+        return `<button type="button" class="alt ${p.id === pick ? 'on' : ''}" data-pick-step="${i}" data-pick-place="${esc(p.id)}">
+          <span class="grow"><strong>${esc(p.name)}</strong><small class="muted">${fmtKm(p.distFromPrev ?? p.km)}${h ? ` · ${esc(h)}` : ''}${p.cuisine ? ` · ${esc(p.cuisine)}` : ''}</small></span>
+          ${p.id === pick ? icon('check') : ''}
+        </button>`;
+      }).join('')}</div>` : ''}`;
+  };
 
   root.innerHTML = `
     ${topbar({ title: '', back: fromPoll ? ['poll', session.pollId, 'Abstimmung'] : session.backTo ?? ['suggest', '', 'Vorschläge'] })}
@@ -2384,7 +2427,7 @@ RENDER.plan = (ideaId) => {
       <label for="p-start" class="label">Startzeit</label>
       <input type="time" id="p-start" class="input narrow" value="${plan.start}">
     </div>
-    ${timeline(plan)}
+    ${timeline(plan, stepExtra)}
     ${plan.todos.length ? `<p class="hint">${icon('bell')} Vorher erledigen: ${plan.todos.map(esc).join(', ')}</p>` : ''}
 
     ${fromPoll ? '' : `
@@ -2408,6 +2451,20 @@ RENDER.plan = (ideaId) => {
     if (!e.target.value) return;
     draft.start = e.target.value;
     render();
+  });
+  on('[data-alt]', 'click', (_, el) => {
+    const i = Number(el.dataset.alt);
+    draft.openAlt = draft.openAlt === i ? null : i;
+    render();
+  });
+  on('[data-pick-step]', 'click', (_, el) => {
+    draft.picks[Number(el.dataset.pickStep)] = el.dataset.pickPlace;
+    draft.openAlt = null;
+    render();
+  });
+  on('[data-from-plan]', 'click', (_, el) => {
+    session.ortBack = ['plan', ideaId, 'Plan'];
+    go('ort', el.dataset.openPlace);
   });
   $('#p-surprise')?.addEventListener('change', (e) => {
     draft.surprise = e.target.checked;
@@ -2444,13 +2501,61 @@ RENDER.plan = (ideaId) => {
   });
 };
 
+/** Für jede Station Orte in der Nähe suchen und automatisch den besten wählen:
+ *  zur geplanten Zeit geöffnet, möglichst nah – ab der zweiten Station nah an der vorherigen. */
+async function loadStepPlaces(idea, draft, stepCats, center, ctx) {
+  draft.nearLoading = true;
+  const ids = [...new Set(stepCats.filter(Boolean))];
+  try {
+    const groups = await searchMixed(ids, center, ctx.reach === 2 ? 25000 : 6000);
+    draft.near = {};
+    const used = new Set();
+    let prev = center;
+    let t = draft.start;
+    idea.steps.forEach((s, i) => {
+      const cat = stepCats[i];
+      if (cat) {
+        const when = new Date(`${ctx.date}T${t}:00`);
+        const list = (groups[cat] ?? [])
+          .filter((p) => !used.has(p.id))
+          .map((p) => ({ ...p, distFromPrev: distanceKm(prev, p), open: isOpenAt(p.hours, when) }))
+          .filter((p) => p.open !== false)
+          .sort((a, b) => (b.open === true) - (a.open === true) || a.distFromPrev - b.distFromPrev)
+          .slice(0, 5);
+        list.forEach((p) => placeIndex.set(p.id, p));
+        draft.near[i] = list;
+        if (list[0]) {
+          draft.picks[i] ??= list[0].id;
+          used.add(draft.picks[i]);
+          prev = placeIndex.get(draft.picks[i]) ?? prev;
+        }
+      }
+      t = addMinutes(t, s.min);
+    });
+  } catch {
+    draft.near = {};
+  }
+  draft.nearLoading = false;
+  if (current.name === 'plan') render();
+}
+
+/** Ist das Date vorbei (Datum vergangen oder heute nach dem Ende)? */
+function dateIsOver(d) {
+  const t = isoDate(today());
+  if (d.date < t) return true;
+  if (d.date > t) return false;
+  const now = new Date();
+  const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  return d.end && d.end > d.start ? hhmm >= d.end : false;
+}
+
 /* ================================================================ Gespeichertes Date */
 
 RENDER.date = (id) => {
   const d = S().dates.find((x) => x.id === id);
   if (!d) return go('dates');
   const role = myRole();
-  const past = d.date < isoDate(today());
+  const past = dateIsOver(d);
 
   if (isHiddenFromMe(d)) {
     const n = daysBetween(today(), parseISO(d.date));

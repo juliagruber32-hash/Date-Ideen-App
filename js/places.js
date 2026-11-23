@@ -56,6 +56,13 @@ export const CATEGORIES = [
   { id: 'park', moods: ['entspannt','romantisch'], label: 'Parks & Gärten', emoji: '🌳', filters: ['["leisure"="park"]["name"]', '["leisure"="garden"]["garden:type"="botanical"]'], place: 'draußen', times: ['tag', 'abend'], cost: 0, plan: [['Spaziergang', 90]] },
   { id: 'viewpoint', moods: ['romantisch','abenteuerlich'], label: 'Aussichtspunkte', emoji: '🌅', filters: ['["tourism"="viewpoint"]'], place: 'draußen', times: ['abend', 'tag'], cost: 0, plan: [['Aussicht genießen', 60]] },
   { id: 'spa', moods: ['entspannt','romantisch'], label: 'Therme & Sauna', emoji: '♨️', filters: ['["leisure"~"^(water_park|sauna)$"]', '["amenity"="public_bath"]'], place: 'drinnen', times: ['tag', 'abend'], cost: 70, plan: [['Therme & Sauna', 240]] },
+  // Zusätzliche Kategorien nur für Plan-Stationen (nicht in der Entdecken-Liste)
+  { id: 'beergarden', hidden: true, moods: [], label: 'Biergärten', emoji: '🍺', filters: ['["amenity"="biergarten"]', '["beer_garden"="yes"]["amenity"]'], place: 'draußen', times: ['tag', 'abend'], cost: 30, food: true, plan: [['Biergarten', 90]] },
+  { id: 'bookshop', hidden: true, moods: [], label: 'Buchhandlungen', emoji: '📚', filters: ['["shop"="books"]'], place: 'drinnen', times: ['tag'], cost: 30, plan: [['Buchhandlung', 45]] },
+  { id: 'karaoke', hidden: true, moods: [], label: 'Karaoke', emoji: '🎤', filters: ['["amenity"="karaoke_box"]', '["karaoke"="yes"]["amenity"]'], place: 'drinnen', times: ['abend'], cost: 40, plan: [['Karaoke', 120]] },
+  { id: 'arcade', hidden: true, moods: [], label: 'Spielhallen', emoji: '🕹️', filters: ['["leisure"="amusement_arcade"]', '["sport"="laser_tag"]'], place: 'drinnen', times: ['tag', 'abend'], cost: 40, plan: [['Arcade', 90]] },
+  { id: 'boat', hidden: true, moods: [], label: 'Bootsverleih', emoji: '🚣', filters: ['["amenity"="boat_rental"]', '["shop"="boat"]["rental"]'], place: 'draußen', times: ['tag'], cost: 30, plan: [['Boot', 60]] },
+  { id: 'chocolate', hidden: true, moods: [], label: 'Schokolade', emoji: '🍫', filters: ['["shop"="chocolate"]', '["shop"="confectionery"]'], place: 'drinnen', times: ['tag'], cost: 20, plan: [['Schokolade', 30]] },
   { id: 'icerink', moods: ['aktiv','romantisch'], label: 'Eislaufen', emoji: '⛸️', filters: ['["leisure"="ice_rink"]'], place: 'drinnen', times: ['tag', 'abend'], cost: 25, plan: [['Eislaufen', 90], ['Punsch', 30]] },
 ];
 export const categoryById = (id) => CATEGORIES.find((c) => c.id === id);
@@ -331,4 +338,41 @@ export async function searchMixed(catIds, center, radius) {
   await addWikidataImages(Object.values(groups).flat());
   memo.set(key, groups);
   return groups;
+}
+
+/* ------------------------------------------------------------ Welche Ortsart passt zu einer Plan-Station? */
+
+const STEP_RULES = [
+  [/bowling/, 'bowling'],
+  [/museum/, 'museum'],
+  [/galerie/, 'gallery'],
+  [/biergarten|einkehr/, 'beergarden'],
+  [/eisdiele|\beis\b|dessert/, 'icecream'],
+  [/café|cafe|kaffee|frühstück|brunch|smoothie|heiße schokolade/, 'cafe'],
+  [/rooftop|cocktail|bar\b|live musik|drink|aperitif|punsch/, 'bar'],
+  [/wein/, 'wine'],
+  [/restaurant|dining|burger|tapas|essen|abendessen|mittagessen|hauptgang|vorspeise/, 'restaurant'],
+  [/kino/, 'cinema'],
+  [/theater|comedy|vorstellung/, 'theatre'],
+  [/bowling/, 'bowling'],
+  [/escape/, 'escape'],
+  [/boulder|kletter/, 'climbing'],
+  [/minigolf/, 'minigolf'],
+  [/therme|sauna|day spa|spa\b/, 'spa'],
+  [/eislauf|eisstadion/, 'icerink'],
+  [/zoo|tierpark/, 'zoo'],
+  [/botanischer garten|park\b|picknick/, 'park'],
+  [/aussicht|sonnenuntergang/, 'viewpoint'],
+  [/buchhandlung/, 'bookshop'],
+  [/karaoke/, 'karaoke'],
+  [/arcade|spielhalle|lasertag/, 'arcade'],
+  [/bootsverleih|tretboot|kanu/, 'boat'],
+  [/chocolaterie/, 'chocolate'],
+];
+
+/** Ortsart für eine Station – nur wenn sie außer Haus stattfindet (Suchbegriff vorhanden). */
+export function catForStep(step) {
+  if (!step.q || step.place) return null;
+  const text = step.q.toLowerCase();
+  return STEP_RULES.find(([re]) => re.test(text))?.[1] ?? null;
 }

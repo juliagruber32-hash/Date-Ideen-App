@@ -186,11 +186,15 @@ export function defaultStart(idea, daytime) {
 const mapsSearch = (q) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
 
 /** Links für eine Station (Ortssuche und/oder Webseite). */
-export function stepLinks(step, idea, { city, vegan }) {
+export function stepLinks(step, idea, opts) {
+  const { city, vegan } = opts;
   const links = [];
   if (step.place) {
     links.push({ href: step.place.website || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(step.place.name + ' ' + (step.place.street ?? ''))}`, label: step.place.website ? 'Webseite' : 'Auf der Karte' });
     links.push({ href: `https://www.google.com/maps/dir/?api=1&destination=${step.place.lat},${step.place.lon}`, label: 'Route' });
+    const q = encodeURIComponent(`${step.place.name} ${step.place.street ?? ''} ${step.place.city ?? opts.city ?? ''}`.trim());
+    links.push({ href: `https://www.google.com/maps/search/?api=1&query=${q}`, label: 'Google-Bewertungen' });
+    if (step.food) links.push({ href: `https://www.opentable.de/s?covers=2&term=${encodeURIComponent(`${step.place.name} ${step.place.city ?? opts.city ?? ''}`.trim())}`, label: 'Reservieren' });
     return links;
   }
   if (step.q) {
