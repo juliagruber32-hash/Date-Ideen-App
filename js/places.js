@@ -272,16 +272,18 @@ async function nomiPump() {
   nomiBusy = false;
 }
 
-async function nominatimCategory(catId, center, radius, prio = 0, wideOnly = false) {
+async function nominatimCategory(catId, center, radius, prio = 0, wideOnly = false, fast = false) {
   const cat = categoryById(catId);
   const out = [];
   const seen = new Set();
   let calls = 0;
   let errors = 0;
   // Erst im engen Umkreis suchen (Nominatim sortiert nicht nach Entfernung), dann weiter
-  const steps = wideOnly ? [radius] : [...new Set([Math.min(radius, 8000), Math.min(radius, 20000), radius])];
+  // Schnell-Modus (Umgebung erkunden): ein Ausschnitt, höchstens zwei Suchbegriffe
+  const steps = wideOnly || fast ? [radius] : [...new Set([Math.min(radius, 8000), Math.min(radius, 20000), radius])];
+  const phrases = (NOMI[catId] ?? [cat.label]).slice(0, fast ? 2 : 9);
   for (const r of steps) {
-    for (const q of NOMI[catId] ?? [cat.label]) {
+    for (const q of phrases) {
       calls++;
       const list = await nominatimOnce(q, center, r, prio).catch(() => {
         errors++;
@@ -303,7 +305,7 @@ async function nominatimCategory(catId, center, radius, prio = 0, wideOnly = fal
         seen.add(p.name);
         out.push(p);
       }
-      if (out.length >= 10) break;
+      if (out.length >= 10 || (fast && out.length)) break; // Schnell-Modus: zweiten Begriff nur, wenn der erste nichts fand
     }
     if (out.length >= 8) break; // genug Auswahl – sonst im größeren Umkreis weitersuchen
   }
@@ -312,9 +314,9 @@ async function nominatimCategory(catId, center, radius, prio = 0, wideOnly = fal
   return res;
 }
 
-async function nominatimGroups(catIds, center, radius, prio = 0) {
+async function nominatimGroups(catIds, center, radius, prio = 0, fast = false) {
   const groups = {};
-  await Promise.all(catIds.map(async (id) => (groups[id] = await nominatimCategory(id, center, radius, prio))));
+  await Promise.all(catIds.map(async (id) => (groups[id] = await nominatimCategory(id, center, radius, prio, false, fast))));
   // Nur wenn keine einzige Anfrage durchging, gilt die Suche als fehlgeschlagen (sonst: wirklich nichts in der Nähe)
   Object.defineProperty(groups, 'failed', { value: catIds.every((id) => groups[id].failed) });
   await addWikidataImages(Object.values(groups).flat());
@@ -588,7 +590,7 @@ function matchesFilter(tags, filter) {
 }
 
 /** Mehrere Kategorien in einer Abfrage. Gibt Orte gruppiert nach Kategorie zurück. */
-export async function searchMixed(catIds, center, radius, prio = 0) {
+export async function searchMixed(catIds, center, radius, prio = 0, { fast = false } = {}) {
   const key = `mix|${catIds.join(',')}|${center.lat.toFixed(3)}|${center.lon.toFixed(3)}|${radius}`;
   if (memo.has(key)) return memo.get(key);
   const count = (g) => Object.values(g).reduce((a, x) => a + x.length, 0);
@@ -601,7 +603,7 @@ export async function searchMixed(catIds, center, radius, prio = 0) {
       .catch(() => viaNomi);
   } else {
     groups = await viaOverpass.catch(() => null);
-    if (!groups || !count(groups)) groups = await nominatimGroups(catIds, center, radius, prio);
+    if (!groups || !count(groups)) groups = await nominatimGroups(catIds, center, radius, prio, fast);
   }
   if (!groups || groups.failed) throw new Error('Ortssuche gerade nicht erreichbar.');
   memo.set(key, groups);

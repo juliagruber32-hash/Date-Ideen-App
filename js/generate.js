@@ -46,7 +46,7 @@ function mainCategories({ moods, daytime, date, weather, place, budget = Infinit
   ids = ids.filter((id) => !['openair', 'lake'].includes(id) || isSummer(date));
   if (weather?.known && weather.wet) ids = ids.filter((id) => categoryById(id).place === 'drinnen');
   // Winterabende: keine Aussichtspunkte, Parks & Co. (Weihnachtsmarkt und Eislaufen bleiben)
-  if (isWinter(date) || month(date) === 11) ids = ids.filter((id) => !['minigolf', 'lake', 'boat', 'openair'].includes(id)); // draußen, im Winter meist zu
+  if (isWinter(date) || month(date) === 11) ids = ids.filter((id) => !['minigolf', 'lake', 'boat', 'openair', 'beergarden'].includes(id)); // draußen, im Winter meist zu
   if (daytime === 'abend' && (isWinter(date) || month(date) === 11)) ids = ids.filter((id) => !['park', 'viewpoint', 'lake', 'minigolf', 'zoo', 'boat', 'openair'].includes(id));
   if (place) ids = ids.filter((id) => categoryById(id).place === place);
   const affordable = ids.filter((id) => categoryById(id).cost <= budget);
@@ -108,11 +108,14 @@ export function buildGeneratedIdea(main, follow, pairing, { start, date }) {
  */
 export async function generateLocalDates(opts) {
   const { center, radiusKm = 15, daytime = 'abend', date, moods = [], weather, place = null, onlyCategory = null, count = 4, mainList = null, budget = Infinity, prio = 0 } = opts;
-  const pairOf = (catId) => PAIRINGS[catId] ?? [['cafe', 'Kaffee danach', 45], ['restaurant', 'Essen danach', 75]];
+  const cold = isWinter(date) || month(date) === 11; // Biergärten & Co. haben im Winter meist zu
+  const pairOf = (catId) => (PAIRINGS[catId] ?? [['cafe', 'Kaffee danach', 45], ['restaurant', 'Essen danach', 75]]).filter((x) => !cold || !['beergarden', 'park', 'icecream'].includes(x[0])).concat(cold ? [['cafe', 'Aufwärmen im Café', 45], ['restaurant', 'Essen danach', 75]] : []);
   const mains = mainList ? ['suche'] : onlyCategory ? [onlyCategory] : mainCategories({ moods, daytime, date, weather, place, budget }).slice(0, 5);
   const followSrc = mainList ? [...new Set(mainList.map((p) => p.category))] : mains;
   const follows = [...new Set(followSrc.flatMap((id) => pairOf(id).map((p) => p[0])))].filter((id) => id !== 'xmas' || isXmasSeason(date));
-  const groups = await searchMixed([...new Set([...(mainList ? [] : mains), ...follows])], center, radiusKm * 1000, prio);
+  const need = [...new Set([...(mainList ? [] : mains), ...follows])];
+  // Bereits erkundete Umgebung nutzen, sonst suchen
+  const groups = opts.groups && need.every((id) => id in opts.groups) ? opts.groups : await searchMixed(need, center, radiusKm * 1000, prio);
   const startOf = (catId) => {
     const t = categoryById(catId)?.times ?? [daytime];
     return (t.includes(daytime) ? daytime : t[0]) === 'abend' ? '18:30' : '14:00';

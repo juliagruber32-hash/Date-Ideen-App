@@ -4,6 +4,10 @@ import { addMinutes, daysBetween, parseISO, today } from './util.js';
 
 let ideasCache = null;
 let extraIdeas = [];
+let availability = null; // (idee) => false, wenn es den nötigen Ort in der Umgebung nicht gibt
+export function setAvailability(fn) {
+  availability = fn;
+}
 
 /** Eingebaute Ideen aus data/ideas.json. */
 export async function loadIdeas() {
@@ -115,6 +119,7 @@ function inSeason(idea, iso) {
 
 function fits(idea, ctx, weather, useMood = true) {
   if (!inSeason(idea, ctx.date)) return false;
+  if (availability && availability(idea) === false) return false;
   if (useMood && ctx.mood && !(idea.moods ?? []).includes(ctx.mood)) return false;
   if (useMood && ctx.moods?.length && !(idea.moods ?? []).some((m) => ctx.moods.includes(m))) return false;
   if (ctx.placePref && idea.place !== ctx.placePref) return false;

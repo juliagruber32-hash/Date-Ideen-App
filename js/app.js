@@ -1,6 +1,7 @@
 import * as store from './store.js';
 import { isHiddenFromMe, myRole, nameOf, other } from './store.js';
 import { geocode, getWeather, manualWeather } from './weather.js';
+import { setAvailability } from './engine.js';
 import { allIdeas, buildPlan, combineWishes, setPreferences, defaultStart, ideaDuration, loadIdeas, MOODS, moodLabel, REACH, recommend, rhythmStatus, setExtraIdeas, suggest, toICS } from './engine.js';
 import { searchNotable } from './places.js';
 import { appleMapsLink, CATEGORIES, CUISINES, catForStep, isXmasSeason, categoryById, directionsLink, distanceKm, fmtKm, fmtMin, formatHours, hoursOn, isOpenAt, locate, mapLink, placeName, reservationLinks, searchByName, searchMixed, searchNearby, travelEstimates } from './places.js';
@@ -8,6 +9,7 @@ import { googleDetails, googleSearch } from './gplaces.js';
 import { generateLocalDates, travelLine } from './generate.js';
 import { eventWhen, fetchEvents, ideaFromEvent } from './events.js';
 import { findImage, topicFor } from './images.js';
+import { areaProgress, ensureArea, getArea, onAreaChange } from './area.js';
 import * as photos from './photos.js';
 import { SUPABASE } from './config.js';
 import * as gcal from './gcal.js';
@@ -50,6 +52,7 @@ function render(scrollTop = false) {
   formDirty = false;
   pendingRender = false;
   setPreferences(S().settings.prefs);
+  setAvailability(ideaAvailable);
   setExtraIdeas([...S().ideas, ...S().favorites.filter((f) => f.idea).map((f) => ({ ...f.idea, id: f.ideaId }))]);
   $$('.tabbar button').forEach((b) => b.toggleAttribute('aria-current', b.dataset.tab === TAB_OF[current.name]));
   if (!scrollTop) {
@@ -649,6 +652,67 @@ function bindGoogleSettings() {
 const discover = { tab: 'fuereuch', query: '', search: null, searchLoading: false, cat: 'restaurant', radius: 15000, results: null, error: null, loading: false, cuisine: '', mood: '', sort: 'beste', community: null, cError: null, cLoading: false, myRatings: {} };
 const placeIndex = new Map(); // id -> Ort (für die Detailansicht)
 
+/* --- Umgebung: erst schauen, was es gibt, dann Dates daraus bilden --------- */
+
+const GOOGLE_FINDABLE = new Set(['rooftop', 'livemusic', 'botanic', 'blacklight', 'xmas', 'karaoke', 'escape', 'climbing', 'cooking', 'pottery', 'arcade', 'bowling', 'spa', 'icerink', 'boat', 'bookshop']);
+const feedRadiusKm = () => (feedFilter.radiusInit ? feedFilter.radiusKm : L().lastSearch?.radiusKm ?? feedFilter.radiusKm) || 15;
+function currentArea() {
+  const c = discoverCenter();
+  return c && !store.inArtifact() ? getArea(c, feedRadiusKm()) : null;
+}
+
+/** Gibt es für die Hauptstation dieser Idee einen Ort im Umkreis? (null = noch unbekannt) */
+function ideaAvailable(idea) {
+  if (idea.reach === 0 || idea.custom || idea.generated || idea.event) return true;
+  const a = currentArea();
+  if (!a) return null;
+  const main = idea.steps.map((s) => catForStep(s, isoDate(today()))).find(Boolean);
+  if (!main || !(main in a.cats)) return null;
+  if (a.cats[main].length) return true;
+  const fb = categoryById(main)?.fallback;
+  if (fb && a.cats[fb]?.length) return true;
+  return S().settings.googlePlacesKey && GOOGLE_FINDABLE.has(main) ? null : false;
+}
+
+/** Umgebung im Hintergrund erkunden, sobald Ort und Umkreis bekannt sind. */
+function kickArea() {
+  const c = discoverCenter();
+  const r = feedRadiusKm();
+  if (!c || !r || store.inArtifact() || areaProgress()) return;
+  if (getArea(c, r)?.done) return;
+  ensureArea(c, r, isoDate(today())).catch(() => {});
+}
+
+onAreaChange((a, finished) => {
+  const el = document.getElementById('area-progress');
+  const pr = areaProgress();
+  if (!finished && el && pr) el.textContent = `Dately erkundet eure Umgebung … (${pr.done}/${pr.total})`;
+  if (finished) {
+    discover.feed = null;
+    discover.gen = null;
+    discover.near = null;
+    if (current.name === 'entdecken' && !formDirty) render();
+  }
+});
+
+const AREA_LABELS = { restaurant: 'Restaurants', cafe: 'Cafés', bar: 'Bars', cinema: 'Kinos', museum: 'Museen', theatre: 'Theater', spa: 'Thermen', icerink: 'Eishallen', bowling: 'Bowling', escape: 'Escape Rooms', climbing: 'Boulderhallen', zoo: 'Zoos & Tierparks', xmas: 'Weihnachtsmärkte', minigolf: 'Minigolf', gallery: 'Galerien', park: 'Parks', viewpoint: 'Aussichtspunkte', beergarden: 'Biergärten', wine: 'Weinbars', icecream: 'Eisdielen', botanic: 'Botanische Gärten', livemusic: 'Live-Musik', rooftop: 'Rooftop-Bars', cooking: 'Kochkurse', pottery: 'Töpfereien', arcade: 'Lasertag', blacklight: 'Schwarzlicht-Minigolf', lake: 'Badeseen' };
+
+function areaSection() {
+  const c = discoverCenter();
+  const r = feedRadiusKm();
+  if (!c || !r || store.inArtifact()) return '';
+  const a = getArea(c, r);
+  const pr = areaProgress();
+  const counts = a ? Object.keys(AREA_LABELS).filter((id) => a.cats[id]?.length).map((id) => [id, a.cats[id].length]) : [];
+  return `
+    <section class="stack area">
+      <h2 class="section-title">Bei euch im Umkreis von ${r} km</h2>
+      ${pr ? `<p class="muted small"><span class="spinner tiny"></span> <span id="area-progress">Dately erkundet eure Umgebung … (${pr.done}/${pr.total})</span></p>` : ''}
+      ${counts.length ? `<div class="area-chips">${counts.map(([id, n]) => `<button type="button" class="area-chip" data-area-cat="${id}">${esc(AREA_LABELS[id])} <strong>${n >= 15 ? '15+' : n}</strong></button>`).join('')}</div>` : !pr ? '<p class="muted small">Noch nicht erkundet.</p>' : ''}
+      ${a?.done ? '<p class="muted small">Vorschläge gibt es nur für Dates, die hier auch wirklich möglich sind.</p>' : ''}
+    </section>`;
+}
+
 function discoverCenter() {
   const g = L().geo;
   if (g && Date.now() - g.at < 6 * 3600 * 1000) return { lat: g.lat, lon: g.lon, name: g.name, gps: true };
@@ -819,7 +883,8 @@ RENDER.entdecken = () => {
   const center = discoverCenter();
   const m = today().getMonth() + 1;
   const seasonOk = (c) => !c.seasonal || (c.seasonal === 'summer' ? m >= 6 && m <= 8 : isXmasSeason(isoDate(today())));
-  const cats = CATEGORIES.filter((c) => !c.hidden && seasonOk(c) && (!d.mood || c.moods.includes(d.mood)));
+  const area = currentArea();
+  const cats = CATEGORIES.filter((c) => (!c.hidden || c.id === d.cat) && seasonOk(c) && (!d.mood || c.moods.includes(d.mood)) && !(area && area.cats[c.id]?.length === 0));
   if (!cats.some((c) => c.id === d.cat)) d.cat = cats[0]?.id ?? 'restaurant';
   const cat = categoryById(d.cat);
   let results = d.results ?? [];
@@ -1703,7 +1768,8 @@ async function loadGenerated() {
     const prefPlace = feedFilter.place || null;
     const budget = feedFilter.budget ?? L().lastSearch.budget ?? 200;
     d.genError = null;
-    const all = await generateLocalDates({ center, radiusKm: feedFilter.radiusKm || 15, daytime: feedFilter.daytime, date: feedDate(), moods: preferredMoods(), weather: d.feedWeather, place: prefPlace, count: 6, budget });
+    const area = currentArea();
+    const all = await generateLocalDates({ center, radiusKm: feedFilter.radiusKm || 15, daytime: feedFilter.daytime, date: feedDate(), moods: preferredMoods(), weather: d.feedWeather, place: prefPlace, count: 6, budget, groups: area?.done ? area.cats : null });
     const fits = all.filter((i) => i.cost <= budget * 1.2);
     // Lieber etwas über Budget zeigen als gar nichts
     d.gen = (fits.length ? fits : [...all].sort((a, b) => a.cost - b.cost)).slice(0, 4);
@@ -1752,6 +1818,7 @@ function renderForYou(head) {
       if (current.name === 'entdecken') render();
     }).catch(() => {});
   }
+  kickArea();
   if (!d.feed && !d.feedLoading) loadFeed();
   if (center && !d.gen && !d.genLoading && !store.inArtifact() && feedFilter.radiusKm !== 0) loadGenerated();
   if (center && S().settings.ticketmasterKey && !d.events && !d.eventsLoading && !store.inArtifact()) loadEvents();
@@ -1793,6 +1860,8 @@ function renderForYou(head) {
     </section>
 
     ${w?.known ? `<p class="weather-line">${icon(weatherGlyph(w))} ${relDay(feedDate()) ?? fmtShort(feedDate())} ${daytimeLabel(f.daytime)}: ${esc(w.label)}${w.temp != null ? `, ${w.temp}°` : ''}${w.wet ? ' – Ideen für drinnen' : ''}</p>` : ''}
+
+    ${f.radiusKm !== 0 ? areaSection() : ''}
 
     ${center && f.radiusKm !== 0 && !store.inArtifact() ? `
     <section class="stack">
@@ -1842,6 +1911,12 @@ function renderForYou(head) {
     </section>` : ''}`;
 
   bindDiscoverTabs();
+  on('[data-area-cat]', 'click', (_, el) => {
+    d.tab = 'orte';
+    d.cat = el.dataset.areaCat;
+    d.results = null;
+    render(true);
+  });
   $('#gen-retry')?.addEventListener('click', () => {
     d.gen = null;
     d.genError = null;
@@ -2504,6 +2579,7 @@ function nextPlanner() {
 }
 
 RENDER.start = () => {
+  kickArea();
   const s = S();
   const f = { ...L().lastSearch };
   const role = myRole();
@@ -3176,7 +3252,10 @@ async function loadStepPlaces(steps, draft, stepCats, center, ctx) {
   const ids = [...new Set(stepCats.filter(Boolean))];
   try {
     const radius = (ctx.radiusKm || reachToKm(ctx.reach) || 15) * 1000;
-    const groups = { ...(await searchMixed(ids, center, radius, 2)) };
+    const area = currentArea();
+    const known = area ? ids.filter((id) => area.cats[id]?.length) : [];
+    const unknown = ids.filter((id) => !known.includes(id));
+    const groups = { ...Object.fromEntries(known.map((id) => [id, area.cats[id]])), ...(unknown.length ? await searchMixed(unknown, center, radius, 2) : {}) };
     // Hauptorte, die im Umkreis fehlen (z. B. Lasertag, Kochkurs), etwas weiter weg suchen
     // Wenig Auswahl beim Hauptort (z. B. nur 2 Museen)? Zum Tauschen auch Orte etwas weiter weg anbieten
     const firstCat = stepCats.find(Boolean);
