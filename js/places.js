@@ -243,7 +243,7 @@ const NOMI_TYPES = {
 
 /** Eine Nominatim-Anfrage; wichtige Anfragen (prio) kommen zuerst dran. */
 function nominatimOnce(q, center, radius, prio = 0) {
-  radius = Math.min(radius, 40000);
+  radius = Math.min(radius, 80000);
   return new Promise((resolve, reject) => {
     nomiWaiting.push({ q, center, radius, prio, resolve, reject });
     nomiWaiting.sort((x, y) => y.prio - x.prio);
@@ -272,14 +272,14 @@ async function nomiPump() {
   nomiBusy = false;
 }
 
-async function nominatimCategory(catId, center, radius, prio = 0) {
+async function nominatimCategory(catId, center, radius, prio = 0, wideOnly = false) {
   const cat = categoryById(catId);
   const out = [];
   const seen = new Set();
   let calls = 0;
   let errors = 0;
   // Erst im engen Umkreis suchen (Nominatim sortiert nicht nach Entfernung), dann weiter
-  const steps = [...new Set([Math.min(radius, 8000), Math.min(radius, 20000), radius])];
+  const steps = wideOnly ? [radius] : [...new Set([Math.min(radius, 8000), Math.min(radius, 20000), radius])];
   for (const r of steps) {
     for (const q of NOMI[catId] ?? [cat.label]) {
       calls++;
@@ -295,18 +295,19 @@ async function nominatimCategory(catId, center, radius, prio = 0) {
         };
         if (['bus_stop', 'platform', 'station', 'stop_position', 'parking'].includes(x.type)) continue;
         if (!['amenity', 'leisure', 'tourism', 'shop', 'craft', 'club', 'sport', 'natural'].includes(x.category)) continue;
-        if (catId === 'zoo' && x.extratags?.zoo === 'enclosure') continue; // nur ein Gehege, kein Tierpark
+        if (catId === 'zoo' && (x.extratags?.zoo === 'enclosure' || /^(tier|wild|vogel)?gehege$/i.test(x.name ?? ''))) continue; // nur ein Gehege, kein Tierpark
         if (NOMI_TYPES[catId] && !q.startsWith('[') && !NOMI_TYPES[catId].includes(x.type)) continue;
         const p = toPlace(el, cat, center);
         if (!p || seen.has(p.name) || p.km * 1000 > radius) continue;
+        p.importance = Number(x.importance) || 0;
         seen.add(p.name);
         out.push(p);
       }
-      if (out.length >= 5) break;
+      if (out.length >= 10) break;
     }
-    if (out.length >= 3) break;
+    if (out.length >= 8) break; // genug Auswahl – sonst im größeren Umkreis weitersuchen
   }
-  const res = out.sort((a, b) => a.km - b.km).slice(0, 12);
+  const res = (wideOnly ? out.sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0)) : out.sort((a, b) => a.km - b.km)).slice(0, 15);
   if (calls && errors === calls) Object.defineProperty(res, 'failed', { value: true });
   return res;
 }
@@ -318,6 +319,15 @@ async function nominatimGroups(catIds, center, radius, prio = 0) {
   Object.defineProperty(groups, 'failed', { value: catIds.every((id) => groups[id].failed) });
   await addWikidataImages(Object.values(groups).flat());
   return groups;
+}
+
+/** Bekannteste Orte einer Art im großen Umkreis (Nominatim sortiert nach Bedeutung), z. B. Deutsches Museum. */
+export async function searchNotable(categoryId, center, radius) {
+  const key = `notable|${categoryId}|${center.lat.toFixed(2)}|${center.lon.toFixed(2)}|${radius}`;
+  if (memo.has(key)) return memo.get(key);
+  const list = await nominatimCategory(categoryId, center, radius, 2, true);
+  memo.set(key, list);
+  return list;
 }
 
 export async function searchNearby(categoryId, center, radius, cuisineId = '') {

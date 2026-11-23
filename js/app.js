@@ -2,6 +2,7 @@ import * as store from './store.js';
 import { isHiddenFromMe, myRole, nameOf, other } from './store.js';
 import { geocode, getWeather, manualWeather } from './weather.js';
 import { allIdeas, buildPlan, combineWishes, setPreferences, defaultStart, ideaDuration, loadIdeas, MOODS, moodLabel, REACH, recommend, rhythmStatus, setExtraIdeas, suggest, toICS } from './engine.js';
+import { searchNotable } from './places.js';
 import { appleMapsLink, CATEGORIES, CUISINES, catForStep, isXmasSeason, categoryById, directionsLink, distanceKm, fmtKm, fmtMin, formatHours, hoursOn, isOpenAt, locate, mapLink, placeName, reservationLinks, searchByName, searchMixed, searchNearby, travelEstimates } from './places.js';
 import { googleDetails, googleSearch } from './gplaces.js';
 import { generateLocalDates, travelLine } from './generate.js';
@@ -781,7 +782,7 @@ async function planIdeaNow(idea, el) {
   tempIdeas.set(idea.id, idea);
   const ls = L().lastSearch;
   await withBusy(el, async () => {
-    await prepareSession({ date: idea.fixedDate ?? (idea.generated && idea.date) ?? resolveDate(ls), daytime: idea.times?.includes(ls.daytime) ? ls.daytime : idea.times?.[0] ?? 'abend', budget: Math.max(ls.budget, idea.cost ?? 0), reach: 2, radiusKm: feedFilter.radiusKm || 15 }, null);
+    await prepareSession({ date: idea.fixedDate ?? (idea.generated && idea.date) ?? resolveDate(ls), daytime: idea.times?.includes(ls.daytime) ? ls.daytime : idea.times?.[0] ?? 'abend', budget: Math.max(ls.budget, idea.cost ?? 0), reach: 2, radiusKm: (feedFilter.radiusInit ? feedFilter.radiusKm : L().lastSearch?.radiusKm) || 15 }, null);
     drafts[idea.id] = { start: idea.fixedStart ?? defaultStart(idea, session.ctx.daytime), surprise: true, hint: '', picks: {}, near: null, openAlt: null, duration: idea.fixedStart || idea.reach === 0 ? null : feedFilter.duration, variant: 0 };
     session.backTo = [current.name, current.param ?? '', current.name === 'ort' ? 'Ort' : 'Entdecken'];
     go('plan', idea.id);
@@ -1737,6 +1738,11 @@ async function loadEvents() {
 
 function renderForYou(head) {
   const d = discover;
+  // Zuletzt gewählten Umkreis übernehmen (auch nach dem Neuladen)
+  if (!feedFilter.radiusInit) {
+    feedFilter.radiusInit = true;
+    if (L().lastSearch?.radiusKm != null) feedFilter.radiusKm = L().lastSearch.radiusKm;
+  }
   const center = discoverCenter();
   if (!center && !d.autoLocTried && !store.inArtifact()) {
     d.autoLocTried = true;
@@ -1861,7 +1867,11 @@ function renderForYou(head) {
   bindChips(panel, 'ff-daytime', (v) => (f.daytime = v));
   bindChips(panel, 'ff-mood', (v) => (f.mood = v));
   bindChips(panel, 'ff-place', (v) => (f.place = v));
-  bindRadius(panel, 'ff-reach', (km) => (f.radiusKm = km));
+  bindRadius(panel, 'ff-reach', (km) => {
+    f.radiusKm = km;
+    L().lastSearch = { ...L().lastSearch, radiusKm: km };
+    store.saveLocal();
+  });
   bindChips(panel, 'ff-dur', (v) => (f.duration = v ? Number(v) : null));
   $('#ff-budget').addEventListener('input', (e) => {
     f.budget = Number(e.target.value);
@@ -3168,6 +3178,13 @@ async function loadStepPlaces(steps, draft, stepCats, center, ctx) {
     const radius = (ctx.radiusKm || reachToKm(ctx.reach) || 15) * 1000;
     const groups = { ...(await searchMixed(ids, center, radius, 2)) };
     // Hauptorte, die im Umkreis fehlen (z. B. Lasertag, Kochkurs), etwas weiter weg suchen
+    // Wenig Auswahl beim Hauptort (z. B. nur 2 Museen)? Zum Tauschen auch Orte etwas weiter weg anbieten
+    const firstCat = stepCats.find(Boolean);
+    if (firstCat && radius < 80000) {
+      const more = { [firstCat]: await searchNotable(firstCat, center, Math.min(radius * 2, 80000)).catch(() => []) };
+      const have = new Set((groups[firstCat] ?? []).map((p) => p.name));
+      groups[firstCat] = [...(groups[firstCat] ?? []), ...(more[firstCat] ?? []).filter((p) => !have.has(p.name))];
+    }
     const far = ids.filter((id) => !groups[id]?.length && !categoryById(id)?.fallback && !['xmas', 'karaoke', 'bookshop', 'chocolate', 'boat', 'supermarket'].includes(id));
     if (far.length && radius < 60000) {
       const wider = await searchMixed(far, center, Math.min(radius * 3, 60000), 2).catch(() => ({}));
@@ -3240,8 +3257,20 @@ async function loadStepPlaces(steps, draft, stepCats, center, ctx) {
           .filter((p) => !used.has(p.id))
           .map((p) => ({ ...p, distFromPrev: distanceKm(prev, p), open: isOpenAt(p.hours, when) }))
           .filter((p) => p.open !== false || p.id === draft.picks[i])
-          .sort((a, b) => (b.id === draft.picks[i]) - (a.id === draft.picks[i]) || (b.open === true) - (a.open === true) || a.distFromPrev - b.distFromPrev)
-          .slice(0, 6);
+          // Hauptort: zuerst im gewählten Umkreis; bekannte Orte weiter weg kommen unten dazu
+          .filter((p) => cat !== firstCat || p.km * 1000 <= radius || p.id === draft.picks[i])
+          // Nähe zählt am meisten; bestätigt geöffnete Orte bekommen 1,5 km Vorsprung
+          .sort((a, b) => (b.id === draft.picks[i]) - (a.id === draft.picks[i]) || (a.distFromPrev - (a.open === true ? 1.5 : 0)) - (b.distFromPrev - (b.open === true ? 1.5 : 0)))
+          .slice(0, 7);
+        // Beim Hauptort zusätzlich bekannte Orte etwas weiter weg anbieten (z. B. Deutsches Museum)
+        if (cat === firstCat) {
+          const fame = (p) => (p.importance ?? 0) + (p.wikipedia ? 0.05 : 0);
+          const inList = new Set(list.map((p) => p.id));
+          const notable = pool.filter((p) => !inList.has(p.id) && !used.has(p.id) && fame(p) > 0.25)
+            .sort((a, b) => fame(b) - fame(a)).slice(0, 5)
+            .map((p) => ({ ...p, distFromPrev: distanceKm(prev, p), open: isOpenAt(p.hours, when), notable: true }));
+          list.push(...notable.filter((p) => p.open !== false).sort((a, b) => a.distFromPrev - b.distFromPrev));
+        }
         // Gleiche Ortsart wie die Station davor (z. B. Lasertag & Arcade): denselben Ort nehmen
         if (i > 0 && stepCats[i - 1] === cat && draft.picks[i - 1] && !draft.picks[i]) draft.picks[i] = draft.picks[i - 1];
         list.forEach((p) => placeIndex.set(p.id, p));
