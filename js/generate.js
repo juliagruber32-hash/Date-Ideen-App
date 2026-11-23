@@ -45,6 +45,8 @@ function mainCategories({ moods, daytime, date, weather, place, budget = Infinit
   ids = ids.filter((id) => id !== 'xmas' || isXmasSeason(date));
   ids = ids.filter((id) => !['openair', 'lake'].includes(id) || isSummer(date));
   if (weather?.known && weather.wet) ids = ids.filter((id) => categoryById(id).place === 'drinnen');
+  // Winterabende: keine Aussichtspunkte, Parks & Co. (Weihnachtsmarkt und Eislaufen bleiben)
+  if (daytime === 'abend' && (isWinter(date) || month(date) === 11)) ids = ids.filter((id) => !['park', 'viewpoint', 'lake', 'minigolf', 'zoo', 'boat', 'openair'].includes(id));
   if (place) ids = ids.filter((id) => categoryById(id).place === place);
   const affordable = ids.filter((id) => categoryById(id).cost <= budget);
   if (affordable.length >= 2) ids = affordable;

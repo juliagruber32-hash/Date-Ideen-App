@@ -75,7 +75,7 @@ const memo = new Map();
 
 /** Orte einer Kategorie im Umkreis (Meter). Sortiert nach Entfernung. */
 // Mehrere Overpass-Server: fällt einer aus, wird der nächste gefragt.
-const OVERPASS = [
+let OVERPASS = [
   'https://overpass-api.de/api/interpreter',
   'https://overpass.private.coffee/api/interpreter',
   'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
@@ -87,8 +87,33 @@ const MAX_PARALLEL = 2;
 let active = 0;
 const waiting = [];
 let overpassDownUntil = 0; // nach einem Ausfall für ein paar Minuten direkt die Ausweich-Suche nehmen
-function overpass(query, prio = 0) {
-  if (Date.now() < overpassDownUntil) return Promise.reject(new Error('Ortssuche gerade nicht erreichbar.'));
+let health = null;
+let healthAt = 0;
+
+/** Kurzer Test (max. 6 s), ob ein Overpass-Server antwortet – sonst gleich die Ausweich-Suche. */
+function overpassHealthy() {
+  if (health && Date.now() - healthAt < 5 * 60 * 1000) return health;
+  healthAt = Date.now();
+  health = Promise.any(OVERPASS.map(async (url) => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 6000);
+    try {
+      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'data=' + encodeURIComponent('[out:json][timeout:5];node(1);out ids;'), signal: ctrl.signal });
+      if (!res.ok) throw new Error(String(res.status));
+      return url;
+    } finally {
+      clearTimeout(timer);
+    }
+  })).then((url) => {
+    // Den Server, der zuerst antwortet, zuerst fragen
+    OVERPASS.sort((a, b) => (b === url) - (a === url));
+    return true;
+  }, () => false);
+  return health;
+}
+
+async function overpass(query, prio = 0) {
+  if (Date.now() < overpassDownUntil || !(await overpassHealthy())) throw new Error('Ortssuche gerade nicht erreichbar.');
   return new Promise((resolve, reject) => {
     waiting.push({ query, prio, resolve, reject });
     waiting.sort((x, y) => y.prio - x.prio);
@@ -511,30 +536,36 @@ function matchesFilter(tags, filter) {
 export async function searchMixed(catIds, center, radius, prio = 0) {
   const key = `mix|${catIds.join(',')}|${center.lat.toFixed(3)}|${center.lon.toFixed(3)}|${radius}`;
   if (memo.has(key)) return memo.get(key);
+  const count = (g) => Object.values(g).reduce((a, x) => a + x.length, 0);
+  const viaOverpass = overpassGroups(catIds, center, radius, prio);
+  let groups;
+  if (prio >= 2) {
+    // Geöffneter Plan: beide Dienste gleichzeitig fragen, das erste brauchbare Ergebnis zählt
+    const viaNomi = nominatimGroups(catIds, center, radius, prio).then((g) => (count(g) ? g : Promise.reject(new Error('leer'))));
+    groups = await Promise.any([viaOverpass.then((g) => (count(g) ? g : Promise.reject(new Error('leer')))), viaNomi]).catch(() => null);
+  } else {
+    groups = await viaOverpass.catch(() => null);
+    if (!groups || !count(groups)) groups = await nominatimGroups(catIds, center, radius, prio);
+  }
+  if (!groups || !count(groups)) throw new Error('Ortssuche gerade nicht erreichbar.');
+  memo.set(key, groups);
+  return groups;
+}
+
+async function overpassGroups(catIds, center, radius, prio) {
   const groups = Object.fromEntries(catIds.map((id) => [id, []]));
-  let failed = false;
   for (const r of radiusLadder(radius)) {
     const missing = catIds.filter((id) => groups[id].length < 3);
     if (!missing.length) break;
     let found;
     try {
       found = await mixedOnce(missing, center, r, prio);
-    } catch {
-      failed = true;
-      break; // Dienst antwortet nicht – mit dem bisher Gefundenen bzw. der Ausweich-Suche weitermachen
+    } catch (e) {
+      if (!Object.values(groups).some((g) => g.length)) throw e;
+      break; // mit dem bisher Gefundenen weitermachen
     }
     for (const id of missing) if (found[id].length >= groups[id].length) groups[id] = found[id];
   }
-  let total = Object.values(groups).reduce((a, g) => a + g.length, 0);
-  if (failed && !total) {
-    // Hauptdienst nicht erreichbar → Ausweich-Suche
-    Object.assign(groups, await nominatimGroups(catIds, center, radius, prio));
-    total = Object.values(groups).reduce((a, g) => a + g.length, 0);
-    if (!total) throw new Error('Ortssuche gerade nicht erreichbar.');
-    memo.set(key, groups);
-    return groups;
-  }
-  if (!failed) memo.set(key, groups);
   return groups;
 }
 
