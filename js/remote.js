@@ -178,7 +178,7 @@ export async function connectSupabase(cfg) {
   }
   if (!coupleId) {
     const { data, error } = await client.rpc('create_couple');
-    if (error) throw new Error(/function|does not exist|schema cache/i.test(error.message) ? 'Die Datenbank ist noch nicht eingerichtet. Führe setup.sql im SQL Editor aus.' : `Anlegen fehlgeschlagen: ${error.message}`);
+    if (error) throw new Error(/create_couple|schema cache|could not find the function/i.test(error.message) ? 'Die Datenbank ist noch nicht eingerichtet. Führe setup.sql im SQL Editor aus.' : `Anlegen fehlgeschlagen. Die Datenbank meldet: ${error.message}`);
     coupleId = data.id;
   }
   const c = await client.from('couples').select('code').eq('id', coupleId).maybeSingle();

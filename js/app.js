@@ -1720,7 +1720,7 @@ RENDER.konto = () => {
   const pw = (id, label, auto) => `
     <div class="field"><label class="label" for="${id}">${label}</label>
       <div class="pw-row"><input class="input" id="${id}" type="password" autocomplete="${auto}" minlength="8" required>
-      <button type="button" class="icon-btn small" data-show="${id}" aria-label="Passwort anzeigen">${icon('eye')}</button></div></div>`;
+      <button type="button" class="icon-btn small pw-toggle" data-show="${id}" aria-pressed="false" aria-label="Passwort anzeigen">${icon('eye')}</button></div></div>`;
   const forms = {
     anmelden: `
       <form class="panel form" id="auth-form" novalidate>
@@ -1784,7 +1784,11 @@ RENDER.konto = () => {
   });
   on('[data-show]', 'click', (_, el) => {
     const input = $(`#${el.dataset.show}`);
-    input.type = input.type === 'password' ? 'text' : 'password';
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    el.innerHTML = icon(show ? 'eyeOff' : 'eye');
+    el.setAttribute('aria-pressed', String(show));
+    el.setAttribute('aria-label', show ? 'Passwort verbergen' : 'Passwort anzeigen');
   });
   $('#auth-form')?.addEventListener('input', () => $('.auth .warn-text')?.remove());
   $('#auth-form')?.addEventListener('submit', async (e) => {

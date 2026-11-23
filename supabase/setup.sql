@@ -1,7 +1,7 @@
 -- Date-Ideen-App: gemeinsamer Speicher für Paare.
 -- In Supabase: SQL Editor -> New query -> alles einfügen -> Run.
 
-create extension if not exists pgcrypto;
+-- Keine Erweiterungen nötig: gen_random_uuid() ist in Postgres eingebaut.
 
 create table if not exists public.couples (
   id uuid primary key default gen_random_uuid(),
@@ -61,7 +61,7 @@ returns json language plpgsql security definer set search_path = public as $$
 declare c uuid; k text;
 begin
   if auth.uid() is null then raise exception 'nicht angemeldet'; end if;
-  k := upper(substr(encode(gen_random_bytes(9), 'hex'), 1, 12));
+  k := upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 12));
   insert into couples(code) values (k) returning couples.id into c;
   insert into members(couple_id, user_id) values (c, auth.uid());
   return json_build_object('id', c, 'code', k);
