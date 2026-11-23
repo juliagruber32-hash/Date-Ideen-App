@@ -1700,11 +1700,17 @@ async function loadGenerated() {
   try {
     if (!d.feedWeather) d.feedWeather = await getWeather(center, feedDate(), feedFilter.daytime).catch(() => ({ known: false }));
     const prefPlace = feedFilter.place || null;
-    d.gen = await generateLocalDates({ center, radiusKm: feedFilter.radiusKm || 15, daytime: feedFilter.daytime, date: feedDate(), moods: preferredMoods(), weather: d.feedWeather, place: prefPlace, count: 4 });
-    d.gen = d.gen.filter((i) => i.cost <= (feedFilter.budget ?? L().lastSearch.budget ?? 200) * 1.2);
+    const budget = feedFilter.budget ?? L().lastSearch.budget ?? 200;
+    d.genError = null;
+    const all = await generateLocalDates({ center, radiusKm: feedFilter.radiusKm || 15, daytime: feedFilter.daytime, date: feedDate(), moods: preferredMoods(), weather: d.feedWeather, place: prefPlace, count: 6, budget });
+    const fits = all.filter((i) => i.cost <= budget * 1.2);
+    // Lieber etwas über Budget zeigen als gar nichts
+    d.gen = (fits.length ? fits : [...all].sort((a, b) => a.cost - b.cost)).slice(0, 4);
+    d.genOverBudget = !fits.length && all.length > 0;
     d.gen.forEach((i) => tempIdeas.set(i.id, i));
-  } catch {
+  } catch (e) {
     d.gen = [];
+    d.genError = e.message || 'Ortssuche gerade nicht erreichbar.';
   }
   d.genLoading = false;
   if (current.name === 'entdecken') render();
@@ -1787,7 +1793,9 @@ function renderForYou(head) {
       <h2 class="section-title">Neu für euch in der Nähe</h2>
       <p class="muted small">Von Dately zusammengestellt – aus echten Orten im Umkreis von ${f.radiusKm} km, passend zu euren Vorlieben${isXmasSeason(feedDate()) ? ' und zur Adventszeit' : ''}.</p>
       ${d.genLoading && !d.gen ? '<div class="loading"><span class="spinner"></span>Stelle Dates zusammen …</div>'
-        : d.gen?.length ? d.gen.map(feedCard).join('') : '<p class="muted">Gerade nichts Passendes im Umkreis gefunden – vergrößert den Umkreis im Filter.</p>'}
+        : d.genError ? `<p class="muted">Die Kartendaten sind gerade nicht erreichbar (${esc(d.genError)}).</p><button class="btn soft" id="gen-retry">${icon('repeat')}Nochmal versuchen</button>`
+          : d.gen?.length ? `${d.genOverBudget ? `<p class="muted small">Im Budget von ${budget} € gab es nichts – hier die günstigsten Dates.</p>` : ''}${d.gen.map(feedCard).join('')}`
+            : '<p class="muted">Gerade nichts Passendes im Umkreis gefunden – vergrößert den Umkreis oder das Budget im Filter.</p>'}
       ${d.gen?.length ? `<button class="btn soft" id="gen-more">${icon('dice')}Neue Kombinationen</button>` : ''}
     </section>` : ''}
 
@@ -1828,6 +1836,11 @@ function renderForYou(head) {
     </section>` : ''}`;
 
   bindDiscoverTabs();
+  $('#gen-retry')?.addEventListener('click', () => {
+    d.gen = null;
+    d.genError = null;
+    render();
+  });
   $('#gen-more')?.addEventListener('click', () => {
     d.gen = null;
     render();

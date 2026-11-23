@@ -81,24 +81,39 @@ const OVERPASS = [
   'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
 ];
 
-async function overpass(query) {
+// Anfragen nacheinander stellen: Die Server erlauben nur wenige gleichzeitige Anfragen pro Gerät.
+let queue = Promise.resolve();
+function overpass(query) {
+  const run = queue.then(() => overpassNow(query));
+  queue = run.catch(() => {});
+  return run;
+}
+
+async function overpassNow(query) {
   let last = 'Ortssuche gerade nicht erreichbar.';
-  for (const url of OVERPASS) {
-    try {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 20000);
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'data=' + encodeURIComponent(query),
-        signal: ctrl.signal,
-      });
-      clearTimeout(timer);
-      if (res.ok) return await res.json();
-      last = res.status === 429 ? 'Zu viele Anfragen – bitte kurz warten.' : last;
-    } catch {
-      /* nächsten Server versuchen */
+  for (let round = 0; round < 2; round++) {
+    for (const url of OVERPASS) {
+      try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 45000); // große Umkreise brauchen Zeit
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'data=' + encodeURIComponent(query),
+          signal: ctrl.signal,
+        });
+        clearTimeout(timer);
+        if (res.ok) {
+          const json = await res.json();
+          if (json.remark && /timed out|runtime error/i.test(json.remark) && !json.elements?.length) continue;
+          return json;
+        }
+        if (res.status === 429) last = 'Zu viele Anfragen – bitte kurz warten.';
+      } catch {
+        /* nächsten Server versuchen */
+      }
     }
+    await new Promise((r) => setTimeout(r, 2500)); // kurz warten, dann noch einmal alle Server
   }
   throw new Error(last);
 }
@@ -388,6 +403,7 @@ export async function searchMixed(catIds, center, radius) {
   const key = `mix|${catIds.join(',')}|${center.lat.toFixed(3)}|${center.lon.toFixed(3)}|${radius}`;
   if (memo.has(key)) return memo.get(key);
   const groups = Object.fromEntries(catIds.map((id) => [id, []]));
+  let failed = false;
   for (const r of radiusLadder(radius)) {
     const missing = catIds.filter((id) => groups[id].length < 3);
     if (!missing.length) break;
@@ -395,11 +411,14 @@ export async function searchMixed(catIds, center, radius) {
     try {
       found = await mixedOnce(missing, center, r);
     } catch {
+      failed = true;
       continue; // ein Server-Fehler soll nicht alles verwerfen – nächste Stufe versuchen
     }
     for (const id of missing) if (found[id].length >= groups[id].length) groups[id] = found[id];
   }
-  memo.set(key, groups);
+  const total = Object.values(groups).reduce((a, g) => a + g.length, 0);
+  if (failed && !total) throw new Error('Ortssuche gerade nicht erreichbar.');
+  if (!failed) memo.set(key, groups);
   return groups;
 }
 

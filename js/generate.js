@@ -40,12 +40,14 @@ const isSummer = (iso) => month(iso) >= 6 && month(iso) <= 8;
 const isWinter = (iso) => month(iso) === 12 || month(iso) <= 2;
 
 /** Welche Arten von Hauptorten kommen in Frage? */
-function mainCategories({ moods, daytime, date, weather, place }) {
+function mainCategories({ moods, daytime, date, weather, place, budget = Infinity }) {
   let ids = Object.keys(PAIRINGS).filter((id) => categoryById(id) && categoryById(id).times.includes(daytime));
   ids = ids.filter((id) => id !== 'xmas' || isXmasSeason(date));
   ids = ids.filter((id) => !['openair', 'lake'].includes(id) || isSummer(date));
   if (weather?.known && weather.wet) ids = ids.filter((id) => categoryById(id).place === 'drinnen');
   if (place) ids = ids.filter((id) => categoryById(id).place === place);
+  const affordable = ids.filter((id) => categoryById(id).cost <= budget);
+  if (affordable.length >= 2) ids = affordable;
   const score = (id) => {
     const c = categoryById(id);
     let s = Math.random() * 0.6;
@@ -102,9 +104,9 @@ export function buildGeneratedIdea(main, follow, pairing, { start, date }) {
  * opts: { center, radiusKm, daytime, date, moods, weather, place, onlyCategory, count }
  */
 export async function generateLocalDates(opts) {
-  const { center, radiusKm = 15, daytime = 'abend', date, moods = [], weather, place = null, onlyCategory = null, count = 4, mainList = null } = opts;
+  const { center, radiusKm = 15, daytime = 'abend', date, moods = [], weather, place = null, onlyCategory = null, count = 4, mainList = null, budget = Infinity } = opts;
   const pairOf = (catId) => PAIRINGS[catId] ?? [['cafe', 'Kaffee danach', 45], ['restaurant', 'Essen danach', 75]];
-  const mains = mainList ? ['suche'] : onlyCategory ? [onlyCategory] : mainCategories({ moods, daytime, date, weather, place }).slice(0, 4);
+  const mains = mainList ? ['suche'] : onlyCategory ? [onlyCategory] : mainCategories({ moods, daytime, date, weather, place, budget }).slice(0, 5);
   const followSrc = mainList ? [...new Set(mainList.map((p) => p.category))] : mains;
   const follows = [...new Set(followSrc.flatMap((id) => pairOf(id).map((p) => p[0])))].filter((id) => id !== 'xmas' || isXmasSeason(date));
   const groups = await searchMixed([...new Set([...(mainList ? [] : mains), ...follows])], center, radiusKm * 1000);
@@ -131,7 +133,9 @@ export async function generateLocalDates(opts) {
       }
       // Passenden zweiten Ort möglichst nah am Hauptort suchen
       let best = null;
+      const mainCost = main.price?.amount != null ? main.price.amount * 2 : categoryById(main.category)?.cost ?? 0;
       for (const pairing of pairOf(main.category)) {
+        if (mainCost + Math.min(categoryById(pairing[0])?.cost ?? 0, 40) > budget * 1.2) continue; // zu teuer
         const followAt = new Date(`${day}T${addMinutes(startTime, MAIN_MIN[main.category] ?? 90)}:00`);
         const cands = (groups[pairing[0]] ?? [])
           .filter((f) => f.id !== main.id && !used.has(f.id) && isOpenAt(f.hours, followAt) !== false)
