@@ -689,7 +689,7 @@ function renderSettings() {
     <section class="card form">
       <h2>Ihr zwei</h2>
       <div class="row gap">
-        <label class="field grow"><span class="label">Name 1</span><input class="input" data-set="nameA" value="${esc(st.nameA)}" placeholder="z. B. Julia"></label>
+        <label class="field grow"><span class="label">Name 1</span><input class="input" data-set="nameA" value="${esc(st.nameA)}" placeholder="z. B. Sam"></label>
         <label class="field grow"><span class="label">Name 2</span><input class="input" data-set="nameB" value="${esc(st.nameB)}" placeholder="z. B. Alex"></label>
       </div>
       <label class="field"><span class="label">Stadt (für Wetter & Orte)</span>
