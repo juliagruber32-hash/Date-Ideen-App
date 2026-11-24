@@ -1,5 +1,5 @@
 // Service Worker: App offline verfügbar machen. Wetter-Anfragen gehen immer ins Netz.
-const VERSION = 'v53';
+const VERSION = 'v54';
 const SHELL = [
   './',
   'index.html',
@@ -22,7 +22,18 @@ const SHELL = [
   'js/images.js',
   'js/area.js',
   'js/taste.js',
+  'js/legal.js',
   'js/vendor/supabase.js',
+  'js/vendor/leaflet/leaflet.js',
+  'js/vendor/leaflet/leaflet.css',
+  'css/fonts.css',
+  'fonts/CormorantGaramond-italic-400-latin-ext.woff2',
+  'fonts/CormorantGaramond-italic-400-latin.woff2',
+  'fonts/CormorantGaramond-normal-500-latin-ext.woff2',
+  'fonts/CormorantGaramond-normal-500-latin.woff2',
+  'fonts/DMSans-normal-400-latin-ext.woff2',
+  'fonts/DMSans-normal-400-latin.woff2',
+  'fonts/Italiana-normal-400-latin.woff2',
   'data/ideas.json',
   'manifest.webmanifest',
   'icons/icon.svg',

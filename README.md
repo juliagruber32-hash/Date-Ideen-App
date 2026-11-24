@@ -154,6 +154,48 @@ Ideen werden nach drei Meldungen automatisch ausgeblendet; löschen kannst du si
 **Table Editor → community_ideas**. Wenn die App öffentlich beworben wird, braucht sie in Deutschland und
 Österreich ein Impressum und eine Datenschutzerklärung.
 
+## Veröffentlichen – kostenlos
+
+Alles hier geht ohne laufende Kosten. Reihenfolge einhalten, Häkchen setzen:
+
+**1. Datenbank-Rechte (Pflicht)**
+- [ ] Supabase → SQL Editor → Inhalt von [`supabase/grants.sql`](supabase/grants.sql) → **Run**
+  (Zugriffsrechte, Fehlerprotokoll, Aufräumen leerer Paare).
+
+**2. Rechtliches (Pflicht in Deutschland)**
+- [ ] In [`js/legal.js`](js/legal.js) Name, Anschrift, E-Mail und Supabase-Region eintragen (alles in `[eckigen Klammern]`).
+- [ ] Impressum, Datenschutzerklärung und Nutzungsbedingungen von einer fachkundigen Person prüfen lassen
+  (die Texte sind sorgfältige Vorlagen, aber keine Rechtsberatung).
+- [ ] Supabase → **Settings → Legal Documents**: den Vertrag zur Auftragsverarbeitung (DPA) abschließen (kostenlos).
+- [ ] Prüfen, dass das Supabase-Projekt in der EU liegt (Project Settings → General → Region, z. B. Frankfurt).
+
+**3. E-Mails zuverlässig verschicken (kostenlos bis 300 E-Mails/Tag)**
+Ohne eigenen Versand schickt Supabase nur wenige E-Mails pro Stunde – bei mehreren neuen Nutzern kommen Bestätigungen nicht an.
+- [ ] Kostenloses Konto bei **Brevo** (brevo.com) anlegen → *SMTP & API* → SMTP-Zugang erzeugen.
+- [ ] Supabase → **Authentication → Emails → SMTP Settings** → *Enable custom SMTP*:
+  Host `smtp-relay.brevo.com`, Port `587`, Benutzer und Passwort aus Brevo, Absender z. B. `Datewell`.
+- [ ] **Authentication → Emails → Templates**: „Confirm signup“ und „Reset password“ durch
+  [`supabase/email/bestaetigen.html`](supabase/email/bestaetigen.html) und [`supabase/email/passwort.html`](supabase/email/passwort.html) ersetzen
+  (Betreffzeilen stehen jeweils oben in der Datei).
+- [ ] **Authentication → URL Configuration**: *Site URL* = Adresse der App, unter *Redirect URLs* dieselbe Adresse eintragen.
+
+**4. Kosten im Griff (Google)**
+- [ ] Google Cloud → **Abrechnung → Budgets & Benachrichtigungen**: Budget **1 €** mit E-Mail-Warnung anlegen.
+- [ ] Supabase → Edge Functions → Secrets: `GOOGLE_DAILY_LIMIT` = `150`. Google gewährt pro Monat ein kostenloses Kontingent;
+  mit dem Tageslimit bleibt ihr darunter. Ohne Google-Schlüssel funktioniert alles weiter (mit OpenStreetMap-Daten).
+
+**5. Gratis-Grenzen kennen**
+- Supabase Free: 500 MB Datenbank, 1 GB Fotos, 50.000 aktive Nutzer im Monat. Ein Projekt ohne jede Nutzung wird nach
+  7 Tagen pausiert – im Dashboard mit einem Klick fortsetzbar.
+- GitHub Pages: kostenlos für öffentliche Projekte. Im Projekt liegen keine Geheimnisse (der Supabase-Schlüssel in `config.js` ist öffentlich gedacht).
+- OpenStreetMap-Dienste sind für kleine Apps frei nutzbar; Datewell fragt sie sparsam an und merkt sich Ergebnisse auf dem Server.
+
+**6. Vor dem Start testen**
+- [ ] Zwei neue Testkonten anlegen, verbinden (Einladungslink), Namen eintragen, abmelden, auf einem anderen Gerät anmelden: alles muss da sein.
+- [ ] Ein Date planen, Überraschung prüfen (die andere Person darf nichts sehen), Mitteilungen testen.
+- [ ] Ein paar befreundete Paare einladen und Feedback sammeln.
+- Fehler aus der App landen in Supabase in der Tabelle `client_errors` (Table Editor).
+
 ## Funktionen
 
 | Bereich | Inhalt |

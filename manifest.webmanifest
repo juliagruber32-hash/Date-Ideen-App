@@ -1,7 +1,7 @@
 {
   "name": "Datewell – For the moments that matter.",
   "short_name": "Datewell",
-  "description": "Dates planen, erleben und als Fotobuch erinnern – für euch zwei.",
+  "description": "Dates planen, erleben und erinnern – für euch zwei.",
   "lang": "de",
   "start_url": "./",
   "scope": "./",
@@ -29,6 +29,36 @@
       "src": "icons/icon.svg",
       "sizes": "any",
       "type": "image/svg+xml"
+    }
+  ],
+  "id": "./",
+  "categories": [
+    "lifestyle",
+    "social",
+    "entertainment"
+  ],
+  "orientation": "portrait",
+  "prefer_related_applications": false,
+  "shortcuts": [
+    {
+      "name": "Neues Date planen",
+      "url": "./#neu",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Date-Match",
+      "url": "./#entdecken",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     }
   ]
 }

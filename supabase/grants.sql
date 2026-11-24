@@ -38,3 +38,27 @@ where not exists (select 1 from public.docs d where d.couple_id = c.id)
     join public.members older on older.user_id = m.user_id and older.couple_id <> m.couple_id and older.joined_at < m.joined_at
     where m.couple_id = c.id
   );
+
+-- Fehlerprotokoll der App (ohne Inhalte eurer Dates): Nutzer dürfen nur schreiben, nicht lesen.
+create table if not exists public.client_errors (
+  id bigint generated always as identity primary key,
+  at timestamptz not null default now(),
+  user_id uuid default auth.uid(),
+  version text,
+  screen text,
+  message text,
+  stack text
+);
+alter table public.client_errors enable row level security;
+drop policy if exists "fehler melden" on public.client_errors;
+create policy "fehler melden" on public.client_errors for insert to authenticated
+  with check (user_id = auth.uid() and char_length(coalesce(message, '')) <= 600 and char_length(coalesce(stack, '')) <= 2000);
+grant insert on public.client_errors to authenticated;
+
+-- Fehlerprotokoll nach 90 Tagen löschen (falls pg_cron aktiv ist, z. B. durch notify.sql)
+do $$
+begin
+  perform cron.unschedule(jobid) from cron.job where jobname = 'datewell-errors-cleanup';
+  perform cron.schedule('datewell-errors-cleanup', '23 4 * * *', 'delete from public.client_errors where at < now() - interval ''90 days''');
+exception when others then null;
+end $$;

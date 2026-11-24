@@ -470,3 +470,9 @@ export async function callNotify(cfg, body) {
   if (data?.error) throw new Error(data.error);
   return data;
 }
+
+/** Technische Fehlermeldung speichern (ohne Inhalte), damit Fehler behoben werden können. */
+export async function logClientError(cfg, entry) {
+  const c = await getClient(cfg);
+  await c.from('client_errors').insert(entry);
+}

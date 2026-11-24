@@ -2,6 +2,7 @@ import * as store from './store.js';
 import { isHiddenFromMe, myRole, nameOf, other } from './store.js';
 import { geocode, geocodeList, getWeather, manualWeather } from './weather.js';
 import { setAvailability } from './engine.js';
+import { agbHTML, datenschutzHTML, impressumHTML, legalComplete } from './legal.js';
 import { allIdeas, buildPlan, combineWishes, setPreferences, defaultStart, ideaDuration, loadIdeas, MOODS, moodLabel, REACH, recommend, rhythmStatus, setExtraIdeas, suggest, toICS } from './engine.js';
 import { isCasualFood, searchNotable } from './places.js';
 import { appleMapsLink, CATEGORIES, CUISINES, catForStep, isXmasSeason, categoryById, directionsLink, distanceKm, fmtKm, fmtMin, formatHours, hoursOn, isOpenAt, locate, mapLink, placeName, reservationLinks, searchByName, searchMixed, searchNearby, travelEstimates } from './places.js';
@@ -15,7 +16,7 @@ import { buildProfile, learnScore, mainCat } from './taste.js';
 import * as photos from './photos.js';
 import { SUPABASE } from './config.js';
 import * as gcal from './gcal.js';
-import { callNotify, callPlaces, connectSupabase, currentSession, deleteAccount, getConfig, getRemember, lastEmail, setRemember, inviteLink, onAuthChange, readInvite, resetPassword, saveConfig, signIn, signOut, signUp, updatePassword } from './remote.js';
+import { callNotify, callPlaces, connectSupabase, currentSession, logClientError, deleteAccount, getConfig, getRemember, lastEmail, setRemember, inviteLink, onAuthChange, readInvite, resetPassword, saveConfig, signIn, signOut, signUp, updatePassword } from './remote.js';
 import { nearSpecial, specialsOn, upcomingSpecials } from './special.js';
 import { glyph, icon } from './icons.js';
 import {
@@ -38,8 +39,10 @@ const drafts = {}; // ungespeicherte Eingaben auf dem Plan-Bildschirm, pro Idee
 
 /* ================================================================ Navigation */
 
-const TAB_OF = { start: 'start', suggest: 'start', plan: 'start', poll: 'start', match: 'start', neu: 'start', entdecken: 'entdecken', idee: 'entdecken', ort: 'entdecken', teilen: 'entdecken', kosten: 'dates', rueckblick: 'dates', kalender: 'kalender', listen: 'listen', dates: 'dates', date: 'dates', mehr: 'mehr' };
+const TAB_OF = { start: 'start', suggest: 'start', plan: 'start', poll: 'start', match: 'start', neu: 'start', impressum: 'mehr', datenschutz: 'mehr', agb: 'mehr', entdecken: 'entdecken', idee: 'entdecken', ort: 'entdecken', teilen: 'entdecken', kosten: 'dates', rueckblick: 'dates', kalender: 'kalender', listen: 'listen', dates: 'dates', date: 'dates', mehr: 'mehr' };
 const RENDER = {};
+// Ohne Anmeldung erreichbar: Anmeldung und rechtliche Seiten
+const OPEN_ROUTES = new Set(['konto', 'impressum', 'datenschutz', 'agb']);
 let current = { name: 'start', param: null };
 
 /* --- Navigation: Seite in der Adresse merken, Zurück per Wischen ------------- */
@@ -55,7 +58,7 @@ function parseHash(h = location.hash) {
 }
 
 function go(name, param = null, { replace = false } = {}) {
-  if (auth.needed && name !== 'konto') name = 'konto';
+  if (auth.needed && !OPEN_ROUTES.has(name)) name = 'konto';
   current = { name, param };
   if (name !== 'konto') {
     if (replace) history.replaceState({ dately: true, idx: navIdx }, '', hashOf(current));
@@ -113,7 +116,7 @@ window.addEventListener('popstate', (e) => {
 })();
 
 function render(scrollTop = false) {
-  if (auth.needed && current.name !== 'konto') current = { name: 'konto', param: null };
+  if (auth.needed && !OPEN_ROUTES.has(current.name)) current = { name: 'konto', param: null };
   document.body.classList.toggle('auth-screen', current.name === 'konto');
   formDirty = false;
   pendingRender = false;
@@ -652,6 +655,18 @@ async function doConnectRemote(cfg, announce) {
   }
   render(current.name === 'konto');
 }
+// Fehlerprotokoll: höchstens 5 Meldungen pro Sitzung, nur mit Konto, ohne Inhalte
+const APP_VERSION = 'v54';
+let errorsSent = 0;
+function reportError(err) {
+  if (!auth.user || !auth.cfg || errorsSent >= 5 || navigator.onLine === false) return;
+  const message = String(err?.message ?? err ?? '').slice(0, 600);
+  if (!message || /Failed to fetch|NetworkError|Load failed|AbortError|ResizeObserver/i.test(message)) return;
+  errorsSent++;
+  logClientError(auth.cfg, { version: APP_VERSION, screen: current.name, message, stack: String(err?.stack ?? '').slice(0, 2000) }).catch(() => {});
+}
+window.addEventListener('error', (e) => reportError(e.error ?? e.message));
+window.addEventListener('unhandledrejection', (e) => reportError(e.reason));
 let connectTries = 0;
 let retryConnect = null;
 // Sobald wieder Netz da ist bzw. die App wieder geöffnet wird: Verbindung erneut aufbauen
@@ -2717,6 +2732,8 @@ RENDER.konto = () => {
       ${auth.info && mode !== 'bestaetigen' ? `<p class="hint" role="status">${esc(auth.info)}</p>` : ''}
       ${forms[mode] ?? forms.anmelden}
       <p class="muted small center">Mit dem Konto speichert Datewell eure gemeinsamen Dates, Listen und Fotos sicher – nur ihr zwei seht sie.</p>
+      ${mode === 'registrieren' ? '<p class="muted small center">Mit der Registrierung akzeptierst du die <a href="#agb" data-legal="agb">Nutzungsbedingungen</a>. Wie wir mit Daten umgehen, steht in der <a href="#datenschutz" data-legal="datenschutz">Datenschutzerklärung</a>.</p>' : ''}
+      ${legalLinks()}
     </section>`;
 
   on('[data-amode]', 'click', (_, el) => {
@@ -2780,6 +2797,7 @@ RENDER.konto = () => {
       }
     });
   });
+  bindLegalLinks();
 };
 
 /** Supabase ist eingerichtet: angemeldet → verbinden, sonst Anmeldung zeigen. */
@@ -3665,10 +3683,10 @@ function loadLeaflet() {
   leafletLoading ??= new Promise((resolve, reject) => {
     const css = document.createElement('link');
     css.rel = 'stylesheet';
-    css.href = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css';
+    css.href = 'js/vendor/leaflet/leaflet.css';
     document.head.append(css);
     const js = document.createElement('script');
-    js.src = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js';
+    js.src = 'js/vendor/leaflet/leaflet.js';
     js.onload = () => resolve(window.L);
     js.onerror = () => reject(new Error('Karte konnte nicht geladen werden'));
     document.head.append(js);
@@ -4444,6 +4462,49 @@ RENDER.poll = (id) => {
     go('start');
   });
 };
+
+/* ================================================================ Rechtliches */
+
+const legalLinks = () => `<nav class="legal-links"><a href="#impressum" data-legal="impressum">Impressum</a> · <a href="#datenschutz" data-legal="datenschutz">Datenschutz</a> · <a href="#agb" data-legal="agb">Nutzungsbedingungen</a></nav>`;
+function bindLegalLinks() {
+  on('[data-legal]', 'click', (e, el) => {
+    e.preventDefault();
+    go(el.dataset.legal);
+  });
+}
+const LEGAL_PAGES = { impressum: ['Impressum', impressumHTML], datenschutz: ['Datenschutzerklärung', datenschutzHTML], agb: ['Nutzungsbedingungen', agbHTML] };
+for (const [route, [title, html]] of Object.entries(LEGAL_PAGES)) {
+  RENDER[route] = () => {
+    root.innerHTML = `
+      ${topbar({ title, back: [auth.needed ? 'konto' : 'mehr', '', auth.needed ? 'Anmelden' : 'Einstellungen'] })}
+      ${legalComplete() ? '' : '<div class="banner warn">Vorlage: Die Angaben in [eckigen Klammern] müssen vor der Veröffentlichung in js/legal.js ergänzt werden.</div>'}
+      <article class="panel legal">${html()}</article>
+      ${legalLinks()}`;
+    bindBack();
+    bindLegalLinks();
+  };
+}
+
+/** Alle eigenen Daten als Datei (Recht auf Datenübertragbarkeit). */
+function exportMyData() {
+  const st = S();
+  const data = {
+    exportiert: new Date().toISOString(),
+    app: 'Datewell',
+    konto: { email: auth.user?.email ?? null, rolle: myRole() },
+    einstellungen: st.settings,
+    dates: st.dates,
+    meine_geheimen_planungen: st.secrets,
+    termine: st.events,
+    ausgaben: st.expenses,
+    abstimmungen: st.polls,
+    wuensche: st.requests,
+    eigene_ideen: st.ideas,
+    favoriten: st.favorites,
+    listen: { todos: st.todos, einkauf: st.shopping },
+  };
+  saveFile(`datewell-meine-daten-${isoDate(today())}.json`, JSON.stringify(data, null, 2), 'application/json');
+}
 
 /* ================================================================ Date-Match (gemeinsam wischen) */
 
@@ -5443,7 +5504,10 @@ RENDER.mehr = () => {
     </section>
 
     <section class="panel form">
-      <div class="panel-head">${icon('download')}<h2>Daten</h2></div>
+      <div class="panel-head">${icon('download')}<h2>Daten & Rechtliches</h2></div>
+      <button class="btn" id="export-me" type="button">${icon('download')}Meine Daten herunterladen</button>
+      <small class="muted">Alle Daten, die Datewell zu dir speichert, als Datei – inklusive deiner geheimen Planungen.</small>
+      ${legalLinks()}
       <div class="row gap wrap">
         <button class="btn" id="export" type="button">${icon('download')}Backup speichern</button>
         <label class="btn" for="import">${icon('repeat')}Backup laden</label>
@@ -5556,9 +5620,11 @@ RENDER.mehr = () => {
       toast('Diese Datei ist kein Datewell-Backup');
     }
   });
+  $('#export-me')?.addEventListener('click', exportMyData);
+  bindLegalLinks();
   $('#export').addEventListener('click', () => {
     const { secrets, ...shared } = S();
-    saveFile(`dately-backup-${isoDate(today())}.json`, JSON.stringify(shared, null, 2), 'application/json');
+    saveFile(`datewell-backup-${isoDate(today())}.json`, JSON.stringify(shared, null, 2), 'application/json');
   });
   armed($('#reset'), () => {
     store.reset();
