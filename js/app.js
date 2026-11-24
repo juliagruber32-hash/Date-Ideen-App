@@ -1737,6 +1737,89 @@ function feedCard(i) {
     </article>`;
 }
 
+/* --- Bausteine für „Für euch“ ------------------------------------------------ */
+
+const secHead = (title, action = '') => `<div class="sec-head"><h2 class="section-title">${esc(title)}</h2>${action}</div>`;
+
+function ideaJobFor(i) {
+  const mp = i.mainPlace ?? i.steps?.find((s) => s.place?.lat != null)?.place;
+  const t = topicFor(i);
+  return mp ? { place: mp, topic: t } : t ? { topic: t } : null;
+}
+const ideaImg = (i) => i.photos?.[0] || i.image || i.steps?.find((s) => s.place?.image)?.place.image;
+
+/** Kurze Angaben: Entfernung, Preis, Dauer, Bewertung. */
+function ideaMeta(i) {
+  const r = communityRatingFor(i);
+  const t = i.travel?.find((x) => x.mode === (i.km < 1.5 ? 'walking' : 'driving'));
+  return [
+    i.eventWhenText,
+    i.km != null ? `${fmtKm(i.km)}${t ? ` · ${fmtMin(t.min)}` : ''}` : '',
+    fmtEuro(i.cost ?? 0),
+    i.event ? '' : fmtDuration(feedFilter.duration && i.reach !== 0 ? feedFilter.duration : ideaDuration(i)),
+    r ? `★ ${r.avg}` : i.rating?.count ? `★ ${String(i.rating.avg).replace('.', ',')}` : '',
+  ].filter(Boolean);
+}
+
+/** Große Fotokarte zum Durchwischen. */
+function heroCard(i) {
+  favRegistry.set(i.id, i);
+  const tag = i.event ? 'Veranstaltung' : i.generated ? 'In eurer Nähe' : '';
+  return `
+    <article class="hero-card" data-open-idea="${esc(i.id)}" role="button" tabindex="0">
+      ${thumb(ideaImg(i), i.emoji ?? '💡', 'cover', ideaJobFor(i), i)}
+      ${tag ? `<span class="hc-tag">${tag}</span>` : ''}
+      ${favBtn(i, 'fav-pos')}
+      <div class="hc-body">
+        <h3>${esc(i.title)}</h3>
+        <p class="hc-teaser">${esc(i.teaser ?? '')}</p>
+        <p class="hc-meta">${ideaMeta(i).map(esc).join(' · ')}</p>
+      </div>
+    </article>`;
+}
+
+/** Kompakte Zeile in der Ideen-Liste. */
+function ideaRow(i) {
+  favRegistry.set(i.id, i);
+  return `
+    <article class="idea-row" data-open-idea="${esc(i.id)}" role="button" tabindex="0">
+      ${thumb(ideaImg(i), i.emoji ?? '💡', 'row', ideaJobFor(i), i)}
+      <div class="grow">
+        <h3>${esc(i.title)}</h3>
+        <p class="clamp muted small">${esc(i.teaser ?? '')}</p>
+        <p class="ir-meta">${ideaMeta(i).map(esc).join(' · ')}</p>
+      </div>
+      ${favBtn(i)}
+    </article>`;
+}
+
+/** Kleine Karte im Karussell. */
+function miniCard(i) {
+  favRegistry.set(i.id, i);
+  return `
+    <article class="mini-card" data-open-idea="${esc(i.id)}" role="button" tabindex="0">
+      ${thumb(ideaImg(i), i.emoji ?? '💡', 'cover', ideaJobFor(i), i)}
+      <div class="mc-body"><h3>${esc(i.title)}</h3><p class="ir-meta">${ideaMeta(i).slice(0, 2).map(esc).join(' · ')}</p></div>
+    </article>`;
+}
+
+/** Kacheln: was es im Umkreis gibt. */
+function areaTiles() {
+  const c = discoverCenter();
+  const r = feedRadiusKm();
+  if (!c || !r || store.inArtifact()) return '';
+  const a = getArea(c, r);
+  const pr = areaProgress();
+  const counts = a ? Object.keys(AREA_LABELS).filter((id) => a.cats[id]?.length).map((id) => [id, a.cats[id].length]) : [];
+  if (!counts.length && !pr) return '';
+  return `
+    <section class="stack">
+      ${secHead(`Bei euch in der Nähe`, '<button type="button" class="linkish small" data-dtab="orte">Alle Orte</button>')}
+      ${pr ? `<p class="muted small"><span class="spinner tiny"></span> <span id="area-progress">Dately erkundet eure Umgebung … (${pr.done}/${pr.total})</span></p>` : ''}
+      ${counts.length ? `<div class="cat-row">${counts.map(([id, n]) => `<button type="button" class="cat-tile" data-area-cat="${id}">${glyph(categoryById(id)?.emoji ?? '📍')}<strong>${n >= 15 ? '15+' : n}</strong><span>${esc(AREA_LABELS[id])}</span></button>`).join('')}</div>` : ''}
+    </section>`;
+}
+
 /** Bewertung anderer Paare für ein Date mit demselben Hauptort (aus der Community). */
 function communityRatingFor(i) {
   const names = new Set((i.steps ?? []).map((s) => s.place?.name).filter(Boolean).map(norm));
@@ -1843,7 +1926,6 @@ function renderForYou(head) {
   if (!d.feed && !d.feedLoading) loadFeed();
   if (center && !d.gen && !d.genLoading && !store.inArtifact() && feedFilter.radiusKm !== 0) loadGenerated();
   if (center && S().settings.ticketmasterKey && !d.events && !d.eventsLoading && !store.inArtifact()) loadEvents();
-  if (center && !d.near && !d.nearLoading && !d.nearError) loadNear();
   const recos = recommend(S().dates.map(fullPlanOrMeta), 3);
   const topCommunity = (d.community ?? []).filter((r) => r.rating_count).sort((a, b) => b.avg_stars - a.avg_stars).slice(0, 3);
   if (community.api && !d.community && !d.cLoading) loadCommunity();
@@ -1851,18 +1933,19 @@ function renderForYou(head) {
   const budget = feedFilter.budget ?? L().lastSearch.budget ?? 60;
   const f = feedFilter;
 
+  const heroes = [...(d.gen ?? []), ...(d.events ?? []).slice(0, 2)];
+  const genBusy = center && f.radiusKm !== 0 && !store.inArtifact() && (d.genLoading && !d.gen);
+  const ctxParts = [center?.name ?? 'Standort wählen', f.radiusKm === 0 ? 'Zuhause' : `${f.radiusKm} km`, `${relDay(feedDate()) ?? fmtShort(feedDate())} ${daytimeLabel(f.daytime)}`, `bis ${budget} €`];
+  const extras = [f.mood ? moodLabel(f.mood) : '', f.place === 'drinnen' ? 'Drinnen' : f.place === 'draußen' ? 'Draußen' : '', f.duration ? durLabel(f.duration) : ''].filter(Boolean);
+
   root.innerHTML = `
     ${head}
-    <section class="filter-bar">
-      <button class="filter-chip" data-ftoggle>${icon('pin')}${esc(center?.name ?? 'Standort')}</button>
-      <button class="filter-chip" data-ftoggle>${f.daytime === 'abend' ? 'Abends' : 'Tagsüber'}</button>
-      <button class="filter-chip" data-ftoggle>bis ${budget} €</button>
-      <button class="filter-chip" data-ftoggle>${f.radiusKm === 0 ? 'Zuhause' : `${f.radiusKm} km`}</button>
-      ${f.mood ? `<button class="filter-chip on" data-ftoggle>${esc(moodLabel(f.mood))}</button>` : ''}
-      ${f.place ? `<button class="filter-chip on" data-ftoggle>${f.place === 'drinnen' ? 'Drinnen' : 'Draußen'}</button>` : ''}
-      ${f.duration ? `<button class="filter-chip on" data-ftoggle>${icon('clock')}${esc(durLabel(f.duration))}</button>` : ''}
-      <button class="filter-chip strong" data-ftoggle>${icon('more')}Filter</button>
-    </section>
+    <button type="button" class="ctx-strip" data-ftoggle aria-expanded="${f.open}">
+      <span class="ctx-main">${icon('pin')}<span>${ctxParts.map(esc).join(' · ')}</span></span>
+      ${w?.known ? `<span class="ctx-weather">${icon(weatherGlyph(w))}${w.temp != null ? `${w.temp}°` : ''}</span>` : ''}
+      <span class="ctx-filter">${icon('more')}${extras.length ? `<b>${extras.length}</b>` : ''}</span>
+    </button>
+    ${extras.length ? `<p class="ctx-extras">${extras.map(esc).join(' · ')}${w?.wet ? ' · bei Regen nur drinnen' : ''}</p>` : w?.wet ? '<p class="ctx-extras">Regen angesagt – Ideen für drinnen</p>' : ''}
     <section class="panel form filter-panel" ${f.open ? '' : 'hidden'}>
       <div class="field"><span class="label">Standort</span>
         <div class="row gap"><div class="input-ico grow">${icon('pin')}<input class="input" id="ff-city" value="${esc(center?.name ?? S().settings.city)}" placeholder="Stadt"></div>
@@ -1880,55 +1963,30 @@ function renderForYou(head) {
       <button type="button" class="btn primary" id="ff-apply">Anwenden</button>
     </section>
 
-    ${w?.known ? `<p class="weather-line">${icon(weatherGlyph(w))} ${relDay(feedDate()) ?? fmtShort(feedDate())} ${daytimeLabel(f.daytime)}: ${esc(w.label)}${w.temp != null ? `, ${w.temp}°` : ''}${w.wet ? ' – Ideen für drinnen' : ''}</p>` : ''}
-
-    ${f.radiusKm !== 0 ? areaSection() : ''}
-
-    ${center && f.radiusKm !== 0 && !store.inArtifact() ? `
+    ${heroes.length || genBusy ? `
     <section class="stack">
-      <h2 class="section-title">Neu für euch in der Nähe</h2>
-      <p class="muted small">Von Dately zusammengestellt – aus echten Orten im Umkreis von ${f.radiusKm} km, passend zu euren Vorlieben${isXmasSeason(feedDate()) ? ' und zur Adventszeit' : ''}.</p>
-      ${d.genLoading && !d.gen ? '<div class="loading"><span class="spinner"></span>Stelle Dates zusammen …</div>'
-        : d.genError ? `<p class="muted">Die Kartendaten sind gerade nicht erreichbar (${esc(d.genError)}).</p><button class="btn soft" id="gen-retry">${icon('repeat')}Nochmal versuchen</button>`
-          : d.gen?.length ? `${d.genOverBudget ? `<p class="muted small">Im Budget von ${budget} € gab es nichts – hier die günstigsten Dates.</p>` : ''}${d.gen.map(feedCard).join('')}`
-            : '<p class="muted">Gerade nichts Passendes im Umkreis gefunden – vergrößert den Umkreis oder das Budget im Filter.</p>'}
-      ${d.gen?.length ? `<button class="btn soft" id="gen-more">${icon('dice')}Neue Kombinationen</button>` : ''}
-    </section>` : ''}
+      ${secHead(isXmasSeason(feedDate()) ? 'Heute für euch · Adventszeit' : 'Heute für euch', d.gen?.length ? `<button type="button" class="linkish small" id="gen-more">${icon('dice')}Neu mischen</button>` : '')}
+      ${genBusy ? '<div class="loading"><span class="spinner"></span>Stelle Dates aus euren Orten zusammen …</div>' : `<div class="hero-row">${heroes.map(heroCard).join('')}</div>`}
+    </section>` : d.genError ? `<p class="muted small">Die Kartendaten sind gerade nicht erreichbar. <button type="button" class="linkish small" id="gen-retry">Nochmal versuchen</button></p>` : ''}
 
-    ${S().settings.ticketmasterKey ? `
-    <section class="stack">
-      <h2 class="section-title">Veranstaltungen in den nächsten 2 Wochen</h2>
-      ${d.eventsLoading && !d.events ? '<div class="loading"><span class="spinner"></span>Suche Veranstaltungen …</div>'
-        : d.eventsError ? `<p class="muted">${esc(d.eventsError)}</p>`
-          : d.events?.length ? d.events.slice(0, 6).map(feedCard).join('') : '<p class="muted">Keine Veranstaltungen im Umkreis gefunden.</p>'}
-    </section>` : ''}
+    ${f.radiusKm !== 0 ? areaTiles() : ''}
 
     <section class="stack">
-      <h2 class="section-title">Ideen, die zu euch passen</h2>
+      ${secHead('Ideen für euch', d.feed?.length ? `<button type="button" class="linkish small" id="feed-more">${icon('dice')}Andere</button>` : '')}
       ${d.feedLoading && !d.feed ? '<div class="loading"><span class="spinner"></span>Suche Ideen …</div>'
-        : d.feed?.length ? d.feed.map(feedCard).join('') : '<p class="muted">Keine Idee passt zu diesen Filtern. Erhöht das Budget oder ändert die Stimmung.</p>'}
-      ${d.feed?.length ? `<button class="btn soft" id="feed-more">${icon('dice')}Andere Ideen</button>` : ''}
+        : d.feed?.length ? `<div class="idea-rows">${d.feed.map(ideaRow).join('')}</div>` : '<p class="muted">Gerade passt nichts – lockert die Filter oben.</p>'}
     </section>
-
-    ${f.radiusKm === 0 ? '' : `
-    <section class="stack">
-      <div class="row between"><h2 class="section-title">In eurer Nähe</h2><button class="linkish small" data-dtab="orte">Alle Orte</button></div>
-      ${!center ? `<div class="empty"><p>${store.inArtifact() ? 'Orte in der Nähe gibt es in der Webseiten-Version.' : 'Erlaube den Standort oder trag oben eine Stadt ein, dann zeigt Dately Restaurants, Bars & Co. in eurer Nähe.'}</p></div>`
-        : d.nearLoading && !d.near ? '<div class="loading"><span class="spinner"></span>Suche Orte …</div>'
-          : d.nearError ? `<p class="muted">${esc(d.nearError)}</p>`
-            : d.near?.length ? `<div class="h-scroll">${d.near.map((p) => placeCard(p, true)).join('')}</div>` : '<p class="muted">Nichts in der Nähe gefunden.</p>'}
-    </section>`}
-
-    ${topCommunity.length ? `
-    <section class="stack">
-      <div class="row between"><h2 class="section-title">Beliebt bei anderen Paaren</h2><button class="linkish small" data-dtab="community">Alle</button></div>
-      ${topCommunity.map((r) => feedCard(communityIdea(r))).join('')}
-    </section>` : ''}
 
     ${recos.length ? `
     <section class="stack">
-      <h2 class="section-title">Weil es euch gefallen hat</h2>
-      ${recos.map(({ idea }) => feedCard(idea)).join('')}
+      ${secHead('Weil es euch gefallen hat')}
+      <div class="mini-row">${recos.map(({ idea }) => miniCard(idea)).join('')}</div>
+    </section>` : ''}
+
+    ${topCommunity.length ? `
+    <section class="stack">
+      ${secHead('Beliebt bei anderen Paaren', '<button type="button" class="linkish small" data-dtab="community">Alle</button>')}
+      <div class="mini-row">${topCommunity.map((r) => miniCard(communityIdea(r))).join('')}</div>
     </section>` : ''}`;
 
   bindDiscoverTabs();
@@ -1937,6 +1995,11 @@ function renderForYou(head) {
     d.cat = el.dataset.areaCat;
     d.results = null;
     render(true);
+  });
+  on('[data-open-idea]', 'click', (e, el) => {
+    if (e.target.closest('[data-fav]')) return;
+    const idea = favRegistry.get(el.dataset.openIdea) ?? ideaById(el.dataset.openIdea);
+    if (idea) planIdeaNow(idea, el);
   });
   $('#gen-retry')?.addEventListener('click', () => {
     d.gen = null;

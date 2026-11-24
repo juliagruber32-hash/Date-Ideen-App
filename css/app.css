@@ -881,3 +881,49 @@ body.auth-screen .view { padding-bottom: 40px; }
 /* Ohne Foto: kompaktes Symbol statt großer leerer Fläche */
 .thumb.hero.noimg { width: 84px; height: 84px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); }
 .thumb.hero.noimg .thumb-emoji .ico { width: 32px; height: 32px; }
+
+/* ---------- Entdecken · Für euch (neu) ---------- */
+.sec-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.sec-head .linkish { display: inline-flex; align-items: center; gap: 4px; }
+.sec-head .linkish .ico { width: 14px; height: 14px; }
+.ctx-strip { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border: 1px solid var(--line); background: var(--surface); border-radius: var(--r-md); font: inherit; color: var(--ink); text-align: left; cursor: pointer; }
+.ctx-main { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; font-size: 0.88rem; font-weight: 500; }
+.ctx-main span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctx-main .ico, .ctx-weather .ico, .ctx-filter .ico { width: 16px; height: 16px; flex: none; color: var(--muted); }
+.ctx-weather { display: inline-flex; align-items: center; gap: 4px; font-size: 0.85rem; color: var(--muted); flex: none; }
+.ctx-filter { display: inline-flex; align-items: center; gap: 4px; flex: none; padding-left: 10px; border-left: 1px solid var(--line); }
+.ctx-filter b { min-width: 18px; height: 18px; border-radius: 9px; background: var(--accent); color: var(--accent-ink); font-size: 0.7rem; display: grid; place-items: center; padding: 0 5px; }
+.ctx-extras { font-size: 0.8rem; color: var(--muted); margin-top: -8px; }
+
+.hero-row, .mini-row, .cat-row { display: grid; grid-auto-flow: column; gap: 12px; overflow-x: auto; margin-inline: calc(-1 * var(--gutter-l)) calc(-1 * var(--gutter-r)); padding: 2px var(--gutter-r) 6px var(--gutter-l); scroll-snap-type: x mandatory; scroll-padding-inline: var(--gutter-l); scrollbar-width: none; }
+.hero-row::-webkit-scrollbar, .mini-row::-webkit-scrollbar, .cat-row::-webkit-scrollbar { display: none; }
+.hero-row { grid-auto-columns: min(84%, 340px); }
+.mini-row { grid-auto-columns: min(46%, 190px); }
+.cat-row { grid-auto-columns: 92px; gap: 8px; }
+.hero-row > *, .mini-row > *, .cat-row > * { scroll-snap-align: start; }
+
+.hero-card, .mini-card, .idea-row { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; cursor: pointer; transition: transform .2s ease, box-shadow .2s ease; }
+.hero-card:active, .mini-card:active, .idea-row:active { transform: scale(0.985); }
+.thumb.cover { width: 100%; height: auto; aspect-ratio: 4 / 3; border-radius: 0; }
+.mini-card .thumb.cover { aspect-ratio: 1 / 1; }
+.hero-card .hc-body { padding: 12px 14px 14px; display: grid; gap: 4px; }
+.hero-card h3 { font-family: var(--font-display); font-weight: 400; font-size: 1.3rem; line-height: 1.2; }
+.hc-teaser { font-size: 0.86rem; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.hc-meta, .ir-meta { font-size: 0.8rem; font-weight: 600; color: var(--accent); }
+.hc-tag { position: absolute; top: 10px; left: 10px; background: color-mix(in srgb, var(--paper, #F3EFE8) 92%, transparent); color: var(--accent); font-size: 0.7rem; font-weight: 700; letter-spacing: .04em; padding: 4px 9px; border-radius: 99px; }
+.fav.fav-pos { position: absolute; top: 8px; right: 8px; background: color-mix(in srgb, var(--paper, #F3EFE8) 88%, transparent); }
+
+.idea-rows { display: grid; gap: 10px; }
+.idea-row { display: flex; align-items: center; gap: 12px; padding: 10px 10px 10px 10px; }
+.thumb.row { width: 76px; height: 76px; border-radius: 14px; flex: none; }
+.idea-row .grow { min-width: 0; display: grid; gap: 2px; }
+.idea-row h3 { font-size: 1rem; line-height: 1.25; }
+.clamp { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+
+.mini-card .mc-body { padding: 10px 12px 12px; display: grid; gap: 3px; }
+.mini-card h3 { font-size: 0.92rem; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+.cat-tile { display: grid; justify-items: center; align-content: start; gap: 3px; padding: 12px 6px 10px; border-radius: 16px; border: 1px solid var(--line); background: var(--surface); font: inherit; color: var(--ink); cursor: pointer; text-align: center; }
+.cat-tile .ico { width: 24px; height: 24px; color: var(--accent); stroke-width: 1.4; margin-bottom: 2px; }
+.cat-tile strong { font-size: 1rem; line-height: 1; }
+.cat-tile span { font-size: 0.72rem; color: var(--muted); line-height: 1.2; }
