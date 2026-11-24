@@ -396,9 +396,10 @@ function offlineNote() {
     el.setAttribute('role', 'status');
     document.body.append(el);
   }
-  const stale = store.syncInfo().stale || navigator.onLine === false;
+  const offline = navigator.onLine === false;
+  const stale = store.syncInfo().stale || offline || (!!remoteError && store.syncInfo().mode !== 'shared');
   el.hidden = !stale || current.name === 'konto';
-  el.innerHTML = `${icon('cloud')}<span>Offline – Änderungen werden gespeichert, sobald die Verbindung zurück ist.</span>`;
+  el.innerHTML = `${icon('cloud')}<span>${offline ? 'Offline – Änderungen werden gespeichert, sobald die Verbindung zurück ist.' : 'Verbindung zum Konto wird wiederhergestellt …'}</span>`;
 }
 window.addEventListener('online', () => offlineNote());
 window.addEventListener('offline', () => offlineNote());
@@ -635,14 +636,30 @@ async function doConnectRemote(cfg, announce) {
     enableServerPlaces(cfg);
     if (announce) toast('Willkommen bei Datewell!');
     if (current.name === 'konto') current = { name: 'start', param: null };
+    connectTries = 0;
+    clearTimeout(retryConnect);
   } catch (e) {
     if (e.code === 'auth') {
       auth.needed = true;
       current = { name: 'konto', param: null };
-    } else remoteError = e.message;
+    } else {
+      remoteError = e.message;
+      // Automatisch erneut versuchen: nach 3 s, 8 s, 20 s, dann alle 60 s
+      connectTries++;
+      clearTimeout(retryConnect);
+      retryConnect = setTimeout(() => connectRemote(cfg), [3000, 8000, 20000][connectTries - 1] ?? 60000);
+    }
   }
-  render(true);
+  render(current.name === 'konto');
 }
+let connectTries = 0;
+let retryConnect = null;
+// Sobald wieder Netz da ist bzw. die App wieder geöffnet wird: Verbindung erneut aufbauen
+const reconnectIfNeeded = () => {
+  if (auth.cfg && remoteError && store.syncInfo().mode !== 'shared') connectRemote(auth.cfg);
+};
+window.addEventListener('online', reconnectIfNeeded);
+document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && reconnectIfNeeded());
 
 /** Doppelte, noch unbeantwortete Umfragen derselben Art entfernen (ältere Versionen legten sie mehrfach an). */
 let surveysCleaned = false;
@@ -711,6 +728,13 @@ function sharingHTML() {
       <button class="btn ghost danger" id="delete-account" type="button">${icon('trash')}Konto löschen</button>
       <small class="muted">Löscht dein Konto, deine geheimen Daten, Bewertungen und geteilten Ideen endgültig. Gemeinsame Dates bleiben für die andere Person erhalten.</small>`;
   }
+  // Eingebautes Konto vorhanden, aber Verbindung gerade weg: Status statt Technik-Felder zeigen
+  if (SUPABASE.url && auth.cfg) {
+    return `
+      <p>${remoteError ? 'Die Verbindung zu eurem Konto ist gerade unterbrochen. Datewell versucht es automatisch weiter – eure Daten gehen nicht verloren.' : 'Verbindung zu eurem Konto wird hergestellt …'}</p>
+      ${remoteError ? `<p class="muted small">${esc(remoteError)}</p>` : ''}
+      <button class="btn primary" id="sb-retry" type="button">${icon('repeat')}Jetzt erneut verbinden</button>`;
+  }
   return `
     <p>Gerade liegen die Daten nur auf diesem Gerät. Mit einem kostenlosen Supabase-Projekt seht ihr beide dieselben Dates, Listen und Abstimmungen.</p>
     ${remoteError ? `<p class="warn-text">${esc(remoteError)}</p>` : ''}
@@ -768,6 +792,11 @@ function bindSharing() {
       saveConfig({ url: c.url, key: c.key, code, coupleId: null });
       location.reload();
     });
+  });
+  $('#sb-retry')?.addEventListener('click', async (e) => {
+    connectTries = 0;
+    await withBusy(e.currentTarget, () => connectRemote(auth.cfg));
+    toast(store.syncInfo().mode === 'shared' ? 'Verbunden' : 'Noch keine Verbindung – Datewell versucht es weiter.');
   });
   $('#sb-connect')?.addEventListener('click', async (e) => {
     const url = $('#sb-url').value.trim().replace(/\/+$/, '');

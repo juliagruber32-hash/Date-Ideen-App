@@ -2,7 +2,9 @@
 // Stellt dieselbe kleine Dokument-Schnittstelle bereit wie die Claude-Datenbank:
 // db.doc(path).set/update/delete/onSnapshot und db.collection(path).onSnapshot.
 
-const LIB = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js';
+// Bibliothek liegt in der App (wird offline zwischengespeichert); nur falls sie fehlt, vom CDN laden
+const LIB = new URL('./vendor/supabase.js', import.meta.url).href;
+const LIB_CDN = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js';
 const CFG_KEY = 'date-ideen.remote.v1';
 
 export function getConfig() {
@@ -43,11 +45,19 @@ function loadLib() {
     const s = document.createElement('script');
     s.src = LIB;
     s.onload = () => (window.supabase?.createClient ? resolve(window.supabase) : reject(new Error('Supabase konnte nicht geladen werden')));
-    s.onerror = () => reject(new Error('Supabase konnte nicht geladen werden (keine Verbindung?)'));
+    s.onerror = () => {
+      // Ersatz: vom CDN laden
+      const t = document.createElement('script');
+      t.src = LIB_CDN;
+      t.onload = () => (window.supabase?.createClient ? resolve(window.supabase) : reject(unavailable('Supabase konnte nicht geladen werden')));
+      t.onerror = () => reject(unavailable('Supabase konnte nicht geladen werden (keine Verbindung?)'));
+      document.head.append(t);
+    };
     document.head.append(s);
   });
 }
 
+const unavailable = (msg = 'Verbindung zu eurem Konto gerade nicht möglich.') => Object.assign(new Error(msg), { code: 'unavailable' });
 const errCode = (e) => (e?.code === '42501' || /row-level security/i.test(e?.message ?? '') ? 'invalid_argument' : 'unavailable');
 
 function mergeDeep(a, b) {
@@ -194,8 +204,19 @@ export async function deleteAccount(cfg) {
  */
 export async function connectSupabase(cfg) {
   const client = await getClient(cfg);
-  const { data: { session } } = await client.auth.getSession();
-  if (!session) throw Object.assign(new Error('Bitte melde dich an.'), { code: 'auth' });
+  const { data: sess, error: sessErr } = await client.auth.getSession();
+  const session = sess?.session;
+  if (!session) {
+    // Liegt eine Anmeldung auf dem Gerät, die nur wegen fehlendem Netz nicht erneuert werden konnte? Dann später erneut versuchen.
+    let stored = false;
+    try {
+      stored = !!(window.localStorage.getItem('dately-auth') || window.sessionStorage.getItem('dately-auth'));
+    } catch {
+      /* egal */
+    }
+    if (stored && (navigator.onLine === false || /fetch|network|timeout/i.test(sessErr?.message ?? ''))) throw unavailable();
+    throw Object.assign(new Error('Bitte melde dich an.'), { code: 'auth' });
+  }
   const uid = session.user.id;
   const um = session.user.user_metadata ?? {};
   const prof = await client.from('profiles').select('username').eq('id', uid).maybeSingle();
@@ -210,12 +231,24 @@ export async function connectSupabase(cfg) {
     coupleId = data;
     if (um.invite) client.auth.updateUser({ data: { invite: null } }).catch(() => {});
   } else if (coupleId) {
-    const { data } = await client.from('members').select('couple_id').eq('couple_id', coupleId).eq('user_id', uid).maybeSingle();
+    const { data, error } = await client.from('members').select('couple_id').eq('couple_id', coupleId).eq('user_id', uid).maybeSingle();
+    if (error) throw unavailable();
     if (!data) coupleId = null;
   }
   if (!coupleId) {
-    const { data } = await client.from('members').select('couple_id, joined_at').eq('user_id', uid).order('joined_at', { ascending: false }).limit(1);
+    const { data, error } = await client.from('members').select('couple_id, joined_at').eq('user_id', uid).order('joined_at', { ascending: true });
+    if (error) throw unavailable(); // nie wegen eines Netzaussetzers ein neues, leeres Paar anlegen
     coupleId = data?.[0]?.couple_id ?? null;
+    if ((data?.length ?? 0) > 1) {
+      // Mehrere Paare (z. B. durch einen früheren Verbindungsfehler): das Paar mit Partner bzw. mit Daten nehmen
+      const ids = data.map((x) => x.couple_id);
+      const [mem, docs] = await Promise.all([
+        client.from('members').select('couple_id').in('couple_id', ids),
+        client.from('docs').select('couple_id').in('couple_id', ids),
+      ]);
+      const score = (id) => (mem.data ?? []).filter((x) => x.couple_id === id).length * 1000 + (docs.data ?? []).filter((x) => x.couple_id === id).length;
+      coupleId = [...ids].sort((a, b) => score(b) - score(a))[0];
+    }
   }
   if (!coupleId) {
     const { data, error } = await client.rpc('create_couple');
@@ -233,9 +266,15 @@ export async function connectSupabase(cfg) {
   let loaded = false;
   const emit = () => loaded && subs.forEach((f) => f());
 
+  let retryTimer = null;
   async function refetch() {
-    const { data, error } = await client.from('docs').select('path,data').eq('couple_id', coupleId);
-    if (error) return;
+    clearTimeout(retryTimer);
+    const { data, error } = await client.from('docs').select('path,data').eq('couple_id', coupleId).then((r) => r, (e) => ({ error: e }));
+    if (error) {
+      // Kurz warten und erneut versuchen (schwaches Netz, App gerade aufgewacht …)
+      retryTimer = setTimeout(refetch, loaded ? 15000 : 3000);
+      return;
+    }
     cache.clear();
     for (const row of data) cache.set(row.path, row.data);
     loaded = true;
@@ -254,9 +293,14 @@ export async function connectSupabase(cfg) {
       emit();
     })
     .subscribe((status) => {
-      if (status === 'SUBSCRIBED') refetch();
+      live = status === 'SUBSCRIBED';
+      if (live) refetch();
     });
+  let live = false;
   await refetch();
+  // Fällt die Live-Verbindung aus, regelmäßig nachladen
+  setInterval(() => !live && document.visibilityState === 'visible' && refetch(), 30000);
+  window.addEventListener('online', () => refetch());
   document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && refetch());
   setInterval(refetch, 45000);
 
