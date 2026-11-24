@@ -1025,6 +1025,9 @@ RENDER.entdecken = () => {
 
 const PLACE_TILES = ['restaurant', 'cafe', 'bar', 'wine', 'cinema', 'museum', 'theatre', 'spa', 'icerink', 'bowling', 'escape', 'climbing', 'minigolf', 'zoo', 'park', 'viewpoint', 'gallery', 'beergarden', 'icecream', 'xmas', 'brewery', 'castle', 'karting', 'dance', 'livemusic', 'rooftop', 'cocktail', 'massage', 'planetarium', 'lake', 'openair'];
 
+// Ohne Filter: das Wichtigste in der Nähe
+const PLACE_DEFAULT = ['restaurant', 'cafe', 'bar', 'wine', 'museum', 'cinema', 'theatre', 'spa', 'bowling', 'escape', 'icerink'];
+
 function renderPlaces(head) {
   const d = discover;
   const center = discoverCenter();
@@ -1033,45 +1036,74 @@ function renderPlaces(head) {
   const seasonOk = (c) => !c.seasonal || (c.seasonal === 'summer' ? m >= 5 && m <= 9 : isXmasSeason(isoDate(today())));
   // Nur Arten zeigen, die es im Umkreis gibt (sofern schon erkundet)
   const tiles = PLACE_TILES.map(categoryById).filter((c) => c && seasonOk(c) && !(area && area.cats[c.id]?.length === 0));
-  d.sel ??= new Set([new Date().getHours() < 15 ? 'cafe' : 'restaurant']);
+  d.sel ??= new Set();
   d.cuis ??= new Set();
   for (const id of [...d.sel]) if (!tiles.some((c) => c.id === id)) d.sel.delete(id);
-  if (!d.sel.size && tiles[0]) d.sel.add(tiles[0].id);
   const km = Math.round(d.radius / 1000);
+  const count = d.sel.size + d.cuis.size + (d.openNow ? 1 : 0);
   const now = new Date();
   let list = d.results ?? [];
   if (d.openNow) list = list.filter((p) => isOpenAt(p.hours, now) === true);
+  const label = (id) => AREA_LABELS[id] ?? categoryById(id)?.label ?? id;
+  const cuisLabel = (id) => CUISINES.find((c) => c.id === id)?.label ?? id;
+  // Entwurf, solange das Filter-Menü offen ist (erst „Anzeigen“ übernimmt)
+  const dr = d.filterOpen ? (d.draft ??= { sel: new Set(d.sel), cuis: new Set(d.cuis), openNow: !!d.openNow }) : null;
 
   root.innerHTML = `
     ${head}
     <button type="button" class="ctx-strip" id="pl-loc" aria-expanded="${!!d.locOpen}">
       <span class="ctx-main">${icon('pin')}<span>${esc(center?.name ?? 'Standort wählen')} · ${km} km</span></span>
-      <span class="ctx-filter">${icon('more')}</span>
+      <span class="ctx-filter">${icon('sliders')}</span>
     </button>
     <section class="panel form" id="pl-loc-panel" ${d.locOpen ? '' : 'hidden'}>
       <div class="field"><span class="label">Standort</span>${locField('pl-city', center ? { name: center.name, sub: center.gps ? 'Aktueller Standort' : S().settings.geo?.sub ?? '' } : null)}</div>
       <div class="field"><span class="label">Umkreis</span>${radiusChips('radius', km)}</div>
     </section>
 
-    <div class="cat-row tiles-select" role="group" aria-label="Was sucht ihr? (mehrere möglich)">
-      ${tiles.map((c) => {
-        const n = area?.cats[c.id]?.length;
-        return `<button type="button" class="cat-tile ${d.sel.has(c.id) ? 'on' : ''}" data-tile="${c.id}" aria-pressed="${d.sel.has(c.id)}">${glyph(c.emoji)}${n ? `<strong>${n >= 15 ? '15+' : n}</strong>` : ''}<span>${esc(AREA_LABELS[c.id] ?? c.label)}</span></button>`;
-      }).join('')}
+    <div class="pl-bar">
+      <button type="button" class="pl-filter-btn ${count ? 'active' : ''}" id="pl-filter" aria-expanded="${!!d.filterOpen}">
+        ${icon('sliders')}<span>Filter</span>${count ? `<b>${count}</b>` : ''}${icon(d.filterOpen ? 'chevup' : 'chevdown')}
+      </button>
+      <button type="button" class="chip ${d.showMap ? 'on' : ''}" id="pl-map" aria-pressed="${!!d.showMap}">${icon('pin')}<span>Karte</span></button>
+      ${d.results ? `<span class="muted small pl-count">${list.length} ${list.length === 1 ? 'Ort' : 'Orte'}</span>` : ''}
     </div>
-    ${d.sel.has('restaurant') ? `
-    <div class="cuis-row" role="group" aria-label="Küche (mehrere möglich)">${CUISINES.map((c) => `<button type="button" class="chip ${d.cuis.has(c.id) ? 'on' : ''}" data-cuis="${c.id}" aria-pressed="${d.cuis.has(c.id)}"><span>${esc(c.label)}</span></button>`).join('')}</div>` : ''}
-    <div class="pl-tools">
-      <button type="button" class="chip ${d.openNow ? 'on' : ''}" id="pl-open" aria-pressed="${!!d.openNow}">${icon('clock')}<span>Jetzt geöffnet</span></button>
-      <button type="button" class="chip ${d.showMap ? 'on' : ''}" id="pl-map" aria-pressed="${!!d.showMap}">${icon('pin')}<span>${d.showMap ? 'Karte ausblenden' : 'Karte zeigen'}</span></button>
-      ${d.results ? `<span class="muted small grow right">${list.length} ${list.length === 1 ? 'Ort' : 'Orte'}</span>` : ''}
-    </div>
-    ${d.showMap && list.length ? '<div class="plan-map pl-map" id="pl-mapbox"></div>' : ''}
+
+    ${count && !d.filterOpen ? `
+    <div class="pl-active">
+      ${[...d.sel].map((id) => `<button type="button" class="act-chip" data-rm-cat="${id}">${esc(label(id))}${icon('x')}</button>`).join('')}
+      ${[...d.cuis].map((id) => `<button type="button" class="act-chip" data-rm-cuis="${id}">${esc(cuisLabel(id))}${icon('x')}</button>`).join('')}
+      ${d.openNow ? `<button type="button" class="act-chip" data-rm-open>Jetzt geöffnet${icon('x')}</button>` : ''}
+      <button type="button" class="linkish small" id="pl-clear">Alle löschen</button>
+    </div>` : !d.filterOpen ? '<p class="muted small">Ohne Filter: das Wichtigste in eurer Nähe.</p>' : ''}
+
+    ${dr ? `
+    <section class="panel pl-dropdown" id="pl-dropdown">
+      <div class="field">
+        <span class="label">Was sucht ihr? <small class="muted">(mehrere möglich)</small></span>
+        <div class="tile-grid">
+          ${tiles.map((c) => {
+            const n = area?.cats[c.id]?.length;
+            return `<button type="button" class="cat-tile ${dr.sel.has(c.id) ? 'on' : ''}" data-tile="${c.id}" aria-pressed="${dr.sel.has(c.id)}">${glyph(c.emoji)}<span>${esc(label(c.id))}</span>${n ? `<small>${n >= 15 ? '15+' : n}</small>` : ''}</button>`;
+          }).join('')}
+        </div>
+      </div>
+      <div class="field" id="pl-cuis-field" ${dr.sel.has('restaurant') ? '' : 'hidden'}>
+        <span class="label">Küche</span>
+        <div class="chips wrap">${CUISINES.map((c) => `<button type="button" class="chip ${dr.cuis.has(c.id) ? 'on' : ''}" data-cuis="${c.id}" aria-pressed="${dr.cuis.has(c.id)}"><span>${esc(c.label)}</span></button>`).join('')}</div>
+      </div>
+      <label class="switch"><input type="checkbox" id="pl-open" ${dr.openNow ? 'checked' : ''}><span><strong>Nur jetzt geöffnet</strong></span></label>
+      <div class="row gap pl-dd-actions">
+        <button type="button" class="btn ghost" id="pl-dd-clear">Alle löschen</button>
+        <button type="button" class="btn primary grow" id="pl-dd-apply">Anzeigen</button>
+      </div>
+    </section>` : ''}
+
+    ${d.showMap && list.length && !d.filterOpen ? '<div class="plan-map pl-map" id="pl-mapbox"></div>' : ''}
     <section class="stack" id="results">
       ${d.loading ? '<div class="loading"><span class="spinner"></span>Suche Orte …</div>'
         : d.error ? `<div class="empty"><p>${esc(d.error)}</p></div>`
           : !center ? '<div class="empty"><p>Wähle oben euren Standort, dann zeigt Datewell Orte in der Nähe.</p></div>'
-            : d.results ? (list.length ? `<div class="idea-rows">${list.map(placeRow).join('')}</div>` : `<div class="empty"><p>${d.openNow ? 'Gerade hat nichts davon geöffnet.' : 'Nichts gefunden.'} Vergrößere den Umkreis oder wähle etwas anderes.</p></div>`)
+            : d.results ? (list.length ? `<div class="idea-rows">${list.map(placeRow).join('')}</div>` : `<div class="empty"><p>${d.openNow ? 'Gerade hat nichts davon geöffnet.' : 'Nichts gefunden.'} Vergrößere den Umkreis oder ändere die Filter.</p></div>`)
               : ''}
       ${list.length ? '<p class="muted small center">Orte: OpenStreetMap. Tippe auf einen Ort für Anfahrt, Reservierung und Bewertungen.</p>' : ''}
     </section>`;
@@ -1083,7 +1115,7 @@ function renderPlaces(head) {
     d.error = null;
     render();
     try {
-      const ids = [...d.sel];
+      const ids = d.sel.size ? [...d.sel] : PLACE_DEFAULT.filter((id) => tiles.some((t) => t.id === id));
       const byCuisine = d.sel.has('restaurant') && d.cuis.size;
       const plain = byCuisine ? ids.filter((x) => x !== 'restaurant') : ids;
       const groups = plain.length ? await searchMixed(plain, c, d.radius, 1) : {};
@@ -1124,22 +1156,77 @@ function renderPlaces(head) {
     d.radius = k * 1000;
     load();
   });
+  $('#pl-filter').addEventListener('click', () => {
+    d.filterOpen = !d.filterOpen;
+    d.draft = null;
+    render();
+  });
+  // Im Menü: nur markieren, ohne neu zu laden (nichts springt)
   on('[data-tile]', 'click', (_, el) => {
     const id = el.dataset.tile;
-    if (d.sel.has(id) && d.sel.size > 1) d.sel.delete(id);
-    else d.sel.add(id);
-    if (!d.sel.has('restaurant')) d.cuis.clear();
-    load();
+    if (dr.sel.has(id)) dr.sel.delete(id);
+    else dr.sel.add(id);
+    el.classList.toggle('on', dr.sel.has(id));
+    el.setAttribute('aria-pressed', dr.sel.has(id));
+    const cf = $('#pl-cuis-field');
+    if (cf) cf.hidden = !dr.sel.has('restaurant');
+    if (!dr.sel.has('restaurant')) dr.cuis.clear();
+    updApply();
   });
   on('[data-cuis]', 'click', (_, el) => {
     const id = el.dataset.cuis;
-    if (d.cuis.has(id)) d.cuis.delete(id);
-    else d.cuis.add(id);
+    if (dr.cuis.has(id)) dr.cuis.delete(id);
+    else dr.cuis.add(id);
+    el.classList.toggle('on', dr.cuis.has(id));
+    el.setAttribute('aria-pressed', dr.cuis.has(id));
+    updApply();
+  });
+  $('#pl-open')?.addEventListener('change', (e) => {
+    dr.openNow = e.target.checked;
+    updApply();
+  });
+  function updApply() {
+    const n = dr.sel.size + dr.cuis.size + (dr.openNow ? 1 : 0);
+    const btn = $('#pl-dd-apply');
+    if (btn) btn.textContent = n ? `Anzeigen (${n} ${n === 1 ? 'Filter' : 'Filter'})` : 'Alles anzeigen';
+  }
+  if (dr) updApply();
+  $('#pl-dd-clear')?.addEventListener('click', () => {
+    dr.sel.clear();
+    dr.cuis.clear();
+    dr.openNow = false;
+    $$('#pl-dropdown .on').forEach((x) => x.classList.remove('on'));
+    $('#pl-open').checked = false;
+    $('#pl-cuis-field').hidden = true;
+    updApply();
+  });
+  $('#pl-dd-apply')?.addEventListener('click', () => {
+    d.sel = new Set(dr.sel);
+    d.cuis = new Set(dr.cuis);
+    d.openNow = dr.openNow;
+    d.filterOpen = false;
+    d.draft = null;
     load();
   });
-  $('#pl-open').addEventListener('click', () => {
-    d.openNow = !d.openNow;
+  // Aktive Filter einzeln entfernen
+  on('[data-rm-cat]', 'click', (_, el) => {
+    d.sel.delete(el.dataset.rmCat);
+    if (!d.sel.has('restaurant')) d.cuis.clear();
+    load();
+  });
+  on('[data-rm-cuis]', 'click', (_, el) => {
+    d.cuis.delete(el.dataset.rmCuis);
+    load();
+  });
+  on('[data-rm-open]', 'click', () => {
+    d.openNow = false;
     render();
+  });
+  $('#pl-clear')?.addEventListener('click', () => {
+    d.sel.clear();
+    d.cuis.clear();
+    d.openNow = false;
+    load();
   });
   $('#pl-map').addEventListener('click', () => {
     d.showMap = !d.showMap;
@@ -1147,7 +1234,7 @@ function renderPlaces(head) {
   });
   on('[data-open-place]', 'click', (_, el) => (session.ortBack = null, go('ort', el.dataset.openPlace)));
   on('[data-open-place]', 'keydown', (e, el) => e.key === 'Enter' && (session.ortBack = null, go('ort', el.dataset.openPlace)));
-  if (d.showMap && list.length) drawPlacesMap(list, center);
+  if (d.showMap && list.length && !d.filterOpen) drawPlacesMap(list, center);
   if (center && !d.results && !d.loading && !d.error) load();
 }
 
@@ -2214,7 +2301,7 @@ function renderForYou(head) {
     <button type="button" class="ctx-strip" data-ftoggle aria-expanded="${f.open}">
       <span class="ctx-main">${icon('pin')}<span>${ctxParts.map(esc).join(' · ')}</span></span>
       ${w?.known ? `<span class="ctx-weather">${icon(weatherGlyph(w))}${w.temp != null ? `${w.temp}°` : ''}</span>` : ''}
-      <span class="ctx-filter">${icon('more')}${extras.length ? `<b>${extras.length}</b>` : ''}</span>
+      <span class="ctx-filter">${icon('sliders')}${extras.length ? `<b>${extras.length}</b>` : ''}</span>
     </button>
     ${extras.length ? `<p class="ctx-extras">${extras.map(esc).join(' · ')}${w?.wet ? ' · bei Regen nur drinnen' : ''}</p>` : w?.wet ? '<p class="ctx-extras">Regen angesagt – Ideen für drinnen</p>' : ''}
     <section class="panel form filter-panel" ${f.open ? '' : 'hidden'}>
