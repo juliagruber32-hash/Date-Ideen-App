@@ -11,6 +11,7 @@ import { generateLocalDates, travelLine } from './generate.js';
 import { eventWhen, fetchEvents, ideaFromEvent } from './events.js';
 import { findImage, topicFor } from './images.js';
 import { areaProgress, ensureArea, getArea, onAreaChange } from './area.js';
+import { buildProfile, learnScore, mainCat } from './taste.js';
 import * as photos from './photos.js';
 import { SUPABASE } from './config.js';
 import * as gcal from './gcal.js';
@@ -54,6 +55,11 @@ function render(scrollTop = false) {
   pendingRender = false;
   setPreferences(S().settings.prefs);
   setAvailability(ideaAvailable);
+  try {
+    buildProfile({ dates: S().dates.map(fullPlanOrMeta), favorites: S().favorites, learn: S().settings.learn ?? {}, ideaById });
+  } catch {
+    /* Lernprofil ist optional */
+  }
   setExtraIdeas([...S().ideas, ...S().favorites.filter((f) => f.idea).map((f) => ({ ...f.idea, id: f.ideaId }))]);
   $$('.tabbar button').forEach((b) => b.toggleAttribute('aria-current', b.dataset.tab === TAB_OF[current.name]));
   if (!scrollTop) {
@@ -1737,6 +1743,25 @@ function feedCard(i) {
     </article>`;
 }
 
+/** Gezeigt, aber nicht gewählt → beim nächsten Mal etwas seltener vorschlagen. */
+function rememberSkips(list) {
+  if (!list.length) return;
+  store.update((s) => {
+    const L = (s.settings.learn ??= {});
+    L.skip ??= {};
+    L.catSkip ??= {};
+    const now = Date.now();
+    for (const i of list.slice(0, 8)) {
+      if (i.generated) {
+        const c = mainCat(i);
+        if (c) L.catSkip[c] = [Math.min((L.catSkip[c]?.[0] ?? 0) + 1, 6), now];
+      } else if (i.id && !i.event) {
+        L.skip[i.id] = [Math.min((L.skip[i.id]?.[0] ?? 0) + 1, 6), now];
+      }
+    }
+  });
+}
+
 /* --- Bausteine für „Für euch“ ------------------------------------------------ */
 
 const secHead = (title, action = '') => `<div class="sec-head"><h2 class="section-title">${esc(title)}</h2>${action}</div>`;
@@ -1761,10 +1786,20 @@ function ideaMeta(i) {
   ].filter(Boolean);
 }
 
+const shownWhy = new Set();
 /** Große Fotokarte zum Durchwischen. */
 function heroCard(i) {
   favRegistry.set(i.id, i);
   const tag = i.event ? 'Veranstaltung' : i.generated ? 'In eurer Nähe' : '';
+  // Begründung – jede höchstens einmal, damit nicht überall dasselbe steht
+  let why = learnScore(i, { date: feedDate(), weather: discover.feedWeather }).reason;
+  if (!why || shownWhy.has(why)) {
+    const prefMoods = preferredMoods();
+    const m = (i.moods ?? []).find((x) => prefMoods.includes(x));
+    why = i.generated ? 'Aus Orten in eurer Nähe zusammengestellt' : m ? `Passt zu eurer Vorliebe: ${moodLabel(m)}` : '';
+    if (shownWhy.has(why)) why = '';
+  }
+  if (why) shownWhy.add(why);
   return `
     <article class="hero-card" data-open-idea="${esc(i.id)}" role="button" tabindex="0">
       ${thumb(ideaImg(i), i.emoji ?? '💡', 'cover', ideaJobFor(i), i)}
@@ -1774,6 +1809,7 @@ function heroCard(i) {
         <h3>${esc(i.title)}</h3>
         <p class="hc-teaser">${esc(i.teaser ?? '')}</p>
         <p class="hc-meta">${ideaMeta(i).map(esc).join(' · ')}</p>
+        ${why ? `<p class="hc-why">${icon('sparkle')}${esc(why)}</p>` : ''}
       </div>
     </article>`;
 }
@@ -1947,6 +1983,7 @@ function renderForYou(head) {
   const ctxParts = [center?.name ?? 'Standort wählen', f.radiusKm === 0 ? 'Zuhause' : `${f.radiusKm} km`, `${relDay(feedDate()) ?? fmtShort(feedDate())} ${daytimeLabel(f.daytime)}`, `bis ${budget} €`];
   const extras = [f.mood ? moodLabel(f.mood) : '', f.place === 'drinnen' ? 'Drinnen' : f.place === 'draußen' ? 'Draußen' : '', f.duration ? durLabel(f.duration) : ''].filter(Boolean);
 
+  shownWhy.clear();
   root.innerHTML = `
     ${head}
     <button type="button" class="ctx-strip" data-ftoggle aria-expanded="${f.open}">
@@ -2064,6 +2101,7 @@ function renderForYou(head) {
     refresh();
   });
   $('#mix-all')?.addEventListener('click', async (e) => {
+    rememberSkips([...(d.gen ?? []), ...(d.feed ?? [])]);
     await withBusy(e.currentTarget, async () => {
       const shown = new Set((d.feed ?? []).map((i) => i.id));
       const res = await suggest(d.feedCtx, d.feedWeather, { count: 4, exclude: shown, dates: S().dates.map(fullPlanOrMeta) });
@@ -2556,6 +2594,94 @@ function bindOnboarding() {
 
 /* ================================================================ 1. Start */
 
+function greeting() {
+  const h = new Date().getHours();
+  return h < 5 ? 'Schöne Nacht' : h < 11 ? 'Guten Morgen' : h < 17 ? 'Hallo' : h < 22 ? 'Guten Abend' : 'Schöne Nacht';
+}
+
+/* --- Rundum-Service: Vorbereitung und Begleiter am Date-Tag ---------------- */
+
+/** Was vor dem Date zu tun ist – automatisch aus dem Plan abgeleitet. */
+function prepTasks(plan) {
+  const out = [];
+  const add = (text, href = '', label = '') => out.some((x) => x.text === text) || out.push({ text, href, label });
+  const firstTravel = plan.steps.find((x) => /^anfahrt/i.test(x.title ?? ''));
+  const firstPlace = plan.steps.find((x) => x.place?.lat != null)?.place;
+  if (firstTravel && firstPlace) add(`Um ${firstTravel.time} Uhr losfahren`, directionsLink(firstPlace, /zu fuß/i.test(firstTravel.note ?? '') ? 'walking' : 'driving'), 'Route');
+  for (const st of plan.steps) {
+    const p = st.place;
+    if (!p) continue;
+    const food = st.links?.some((l) => l.label === 'Reservieren') || ['restaurant', 'finedining', 'tapas', 'burger', 'brunch'].includes(p.category);
+    if (food) {
+      const res = p.reservationUrl || p.website || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${p.name} ${p.street ?? ''} reservieren`)}`;
+      add(`Tisch für ${st.time} Uhr reservieren: ${p.name}`, res, p.reservationUrl ? 'Reservieren' : p.website ? 'Webseite' : 'Suchen');
+    }
+    if (['escape', 'cooking', 'pottery', 'theatre', 'bowling', 'spa', 'arcade', 'blacklight'].includes(p.category)) {
+      add(`${['spa'].includes(p.category) ? 'Eintritt & Öffnungszeiten prüfen' : 'Termin buchen'}: ${p.name}`, p.website || mapLink(p), p.website ? 'Webseite' : 'Karte');
+    }
+  }
+  for (const t of plan.todos ?? []) add(t);
+  const w = plan.weather;
+  if (w?.temp != null && w.temp <= 5) add(`Warm anziehen – um die ${w.temp} °`);
+  if (w?.label && /regen|schauer|gewitter/i.test(w.label)) add('Regenschirm einpacken');
+  for (const x of plan.recipe?.ingredients ?? []) add(`Besorgen: ${x}`);
+  return out;
+}
+
+function prepPanel(plan, checks, attr, title) {
+  const tasks = prepTasks(plan);
+  if (!tasks.length) return '';
+  const done = tasks.filter((t) => checks?.[t.text]).length;
+  return `
+    <section class="panel prep">
+      <div class="panel-head">${icon('check')}<h2>${title}</h2><span class="prep-count">${done}/${tasks.length}</span></div>
+      <ul class="items">
+        ${tasks.map((t) => `
+          <li class="item ${checks?.[t.text] ? 'done' : ''}">
+            <label class="check"><input type="checkbox" ${attr}="${esc(t.text)}" ${checks?.[t.text] ? 'checked' : ''}><span class="grow">${esc(t.text)}</span></label>
+            ${t.href ? `<a class="link sm" href="${esc(t.href)}" target="_blank" rel="noopener">${esc(t.label || 'Öffnen')}${icon('external')}</a>` : ''}
+          </li>`).join('')}
+      </ul>
+    </section>`;
+}
+
+/** Karte auf der Startseite: heute oder morgen ist Date-Tag. */
+function dateDayCard() {
+  const t = isoDate(today());
+  const tm = isoDate(addDays(today(), 1));
+  const d = S().dates.filter((x) => (x.date === t || x.date === tm) && !dateIsOver(x)).sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start))[0];
+  if (!d) return '';
+  const when = d.date === t ? 'Heute' : 'Morgen';
+  if (isHiddenFromMe(d)) {
+    return `
+      <article class="dateday">
+        <p class="eyebrow">${when}, ${esc(d.start)} Uhr</p>
+        <h2>Überraschung von ${esc(nameOf(d.plannedBy))}</h2>
+        ${d.hint ? `<p class="muted">Hinweis: „${esc(d.hint)}“</p>` : '<p class="muted">Lass dich überraschen.</p>'}
+      </article>`;
+  }
+  const plan = fullPlan(d);
+  if (!plan) return '';
+  const now = new Date();
+  const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const next = d.date === t ? plan.steps.find((x, i) => (plan.steps[i + 1]?.time ?? plan.end) > hhmm && !/^(weg|anfahrt)/i.test(x.title)) : null;
+  const tasks = prepTasks(plan);
+  const checks = d.surprise ? S().secrets[d.id]?.checks : d.checks;
+  const open = tasks.filter((x) => !checks?.[x.text]).length;
+  const target = (next ?? plan.steps.find((x) => x.place))?.place;
+  return `
+    <article class="dateday">
+      <p class="eyebrow">${when}, ${esc(plan.start)}–${esc(plan.end)} Uhr</p>
+      <h2>${esc(plan.title)}</h2>
+      ${next ? `<p class="dd-next">${icon('clock')}<span>Als Nächstes · <strong>${esc(next.time)}</strong> ${esc(next.title)}</span></p>` : ''}
+      ${open ? `<p class="muted small">${open} ${open === 1 ? 'Sache' : 'Sachen'} noch vorzubereiten</p>` : tasks.length ? `<p class="muted small">${icon('check', 'inline')} Alles vorbereitet</p>` : ''}
+      <div class="row gap">
+        <button class="btn primary sm" data-open-date="${d.id}">${d.date === t ? 'Zum Date' : 'Vorbereiten'}</button>
+        ${target?.lat != null ? `<a class="btn sm" href="${esc(directionsLink(target, 'driving'))}" target="_blank" rel="noopener">${icon('route')}Route</a>` : ''}
+      </div>
+    </article>`;
+}
+
 function inboxItems() {
   const s = S();
   const role = myRole();
@@ -2697,11 +2823,12 @@ RENDER.start = () => {
     </header>
     <section class="hello">
       <p class="eyebrow">${hasNames ? `${esc(nameOf('a'))} & ${esc(nameOf('b'))}` : 'Zeit zu zweit'}</p>
-      <h1>${role ? `Hallo ${esc(nameOf(role))}.` : 'Worauf habt ihr Lust?'}</h1>
+      <h1>${role ? `${greeting()}, ${esc(nameOf(role))}.` : 'Worauf habt ihr Lust?'}</h1>
     </section>
 
     ${whoAmICard()}
     ${onboardingCard()}
+    ${dateDayCard()}
 
     ${inbox.length ? `<section class="stack"><h2 class="section-title">Für dich</h2>${inbox.join('')}</section>` : ''}
 
@@ -3604,23 +3731,9 @@ RENDER.date = (id) => {
       ${plan.communityId && community.api ? communityRateHTML(plan.communityId) : ''}` : ''}
     ${costSummaryHTML(d)}
     ${past || d.date === isoDate(today()) || Object.keys(d.photos ?? {}).length ? photosSectionHTML(d) : ''}
+    ${!past && mySurprise ? prepPanel(plan, secret?.checks, 'data-check', 'Deine geheime Vorbereitung') : ''}
+    ${!past && !d.surprise ? prepPanel(plan, d.checks, 'data-dcheck', 'Vorbereitung') : ''}
     ${timeline(plan)}
-    ${mySurprise && (plan.todos.length || plan.recipe) ? `
-      <section class="panel">
-        <div class="panel-head">${icon('list')}<h2>Deine geheime Checkliste</h2></div>
-        <ul class="items">
-          ${[...plan.todos, ...(plan.recipe?.ingredients ?? []).map((x) => `Besorgen: ${x}`)].map((t) => `
-            <li class="item ${secret.checks?.[t] ? 'done' : ''}"><label class="check"><input type="checkbox" data-check="${esc(t)}" ${secret.checks?.[t] ? 'checked' : ''}><span class="grow">${esc(t)}</span></label></li>`).join('')}
-        </ul>
-      </section>` : ''}
-    ${!d.surprise && (plan.todos.length || plan.recipe?.ingredients?.length) ? `
-      <section class="panel">
-        <div class="panel-head">${icon('cart')}<h2>Das braucht ihr</h2></div>
-        <ul class="items">
-          ${[...plan.todos, ...(plan.recipe?.ingredients ?? [])].map((t) => `
-            <li class="item ${d.checks?.[t] ? 'done' : ''}"><label class="check"><input type="checkbox" data-dcheck="${esc(t)}" ${d.checks?.[t] ? 'checked' : ''}><span class="grow">${esc(t)}</span></label></li>`).join('')}
-        </ul>
-      </section>` : ''}
     <div class="actions">
       ${calendarButtons()}
       <button class="btn" data-go-cost="${d.id}">${icon('wallet')}Ausgabe eintragen</button>

@@ -3,6 +3,7 @@
 
 import { categoryById, CATEGORIES, distanceKm, fmtKm, isOpenAt, isXmasSeason, searchMixed, travelEstimates, fmtMin } from './places.js';
 import { addMinutes } from './util.js';
+import { catBias, visitedRecently } from './taste.js';
 
 // Was passt danach? [Kategorie, Bezeichnung der Station, Minuten]
 const PAIRINGS = {
@@ -53,7 +54,7 @@ function mainCategories({ moods, daytime, date, weather, place, budget = Infinit
   if (affordable.length >= 2) ids = affordable;
   const score = (id) => {
     const c = categoryById(id);
-    let s = Math.random() * 0.6;
+    let s = Math.random() * 0.6 + catBias(id);
     s += 0.8 * (c.moods ?? []).filter((m) => moods.includes(m)).length;
     if (id === 'xmas' && isXmasSeason(date)) s += 1.5; // aktueller Anlass
     if (isSummer(date) && ['openair', 'lake', 'beergarden'].includes(id)) s += 1;
@@ -125,7 +126,7 @@ export async function generateLocalDates(opts) {
   for (const id of mains) {
     const many = !!(onlyCategory || mainList);
     const all = mainList ?? groups[id] ?? [];
-    const openNow = all.filter((p) => isOpenAt(p.hours, new Date(`${date}T${startOf(p.category)}:00`)) !== false);
+    const openNow = all.filter((p) => !visitedRecently(p.name) && isOpenAt(p.hours, new Date(`${date}T${startOf(p.category)}:00`)) !== false);
     const list = (many && !openNow.length ? all : openNow).slice(0, many ? 10 : 2);
     for (const main of list) {
       if (used.has(main.id)) continue;

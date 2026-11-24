@@ -929,3 +929,20 @@ body.auth-screen .view { padding-bottom: 40px; }
 .cat-tile span { font-size: 0.72rem; color: var(--muted); line-height: 1.2; }
 
 .hero-card .thumb.cover { aspect-ratio: 16 / 10; }
+
+.hc-why { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--muted); font-style: italic; }
+.hc-why .ico { width: 13px; height: 13px; color: var(--gold, var(--accent)); flex: none; }
+.prep .panel-head { align-items: center; }
+.prep-count { margin-left: auto; font-size: 0.8rem; font-weight: 700; color: var(--accent); background: var(--accent-soft, var(--surface-2)); padding: 3px 9px; border-radius: 99px; }
+.prep .item { display: flex; align-items: center; gap: 8px; }
+.prep .item .check { flex: 1; }
+.prep .link.sm { flex: none; font-size: 0.78rem; padding: 5px 10px; }
+.dateday { display: grid; gap: 6px; padding: 18px; border-radius: var(--r-lg); background: linear-gradient(150deg, #562F37, #3d2026); color: #F3EFE8; box-shadow: var(--shadow); }
+.dateday .eyebrow { color: color-mix(in srgb, #F3EFE8 70%, transparent); }
+.dateday h2 { font-family: var(--font-display); font-weight: 400; font-size: 1.55rem; line-height: 1.2; color: #F3EFE8; }
+.dateday .muted { color: color-mix(in srgb, #F3EFE8 72%, transparent); }
+.dd-next { display: flex; align-items: center; gap: 8px; font-size: 0.92rem; }
+.dd-next .ico { width: 16px; height: 16px; flex: none; }
+.dateday .btn:not(.primary) { background: color-mix(in srgb, #F3EFE8 14%, transparent); color: #F3EFE8; border-color: transparent; }
+.dateday .btn.primary { background: #F3EFE8; color: #562F37; }
+.dateday .row { margin-top: 6px; }

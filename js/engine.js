@@ -1,6 +1,7 @@
 // Vorschlags-Logik: Ideen filtern, bewerten, auswählen und zu einem Plan mit Uhrzeiten machen.
 
 import { addMinutes, daysBetween, parseISO, today } from './util.js';
+import { learnScore } from './taste.js';
 
 let ideasCache = null;
 let extraIdeas = [];
@@ -160,7 +161,7 @@ export function combineWishes(answers) {
 }
 
 function score(idea, ctx, weather, recent, profile) {
-  let s = Math.random() + tasteScore(idea, profile);
+  let s = Math.random() * 0.8 + tasteScore(idea, profile) + learnScore(idea, { date: ctx.date, weather }).score;
   if (ctx.moods?.length) s += 0.35 * (idea.moods ?? []).filter((m) => ctx.moods.includes(m)).length;
   if (ctx.moodsBoth?.length) s += 0.4 * (idea.moods ?? []).filter((m) => ctx.moodsBoth.includes(m)).length;
   if (idea.rating?.avg) s += (idea.rating.avg - 3) * 0.15; // Community-Bewertung
