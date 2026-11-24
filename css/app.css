@@ -1014,3 +1014,19 @@ body.auth-screen .view { padding-bottom: 40px; }
 .loc-opt small { font-size: 0.78rem; }
 .loc-confirm { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .loc-confirm .ico { color: var(--ok, #4f6b46); }
+
+/* Orte */
+.tiles-select .cat-tile.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); box-shadow: inset 0 0 0 1px var(--accent); }
+.tiles-select .cat-tile.on span { color: var(--ink); font-weight: 600; }
+.pl-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pl-tools .right { text-align: right; }
+.pl-tools .chip .ico { width: 15px; height: 15px; }
+.chip.on { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, var(--surface)); }
+.pl-map { height: 300px; }
+.idea-row > .ico:last-child { width: 18px; height: 18px; color: var(--muted); flex: none; }
+.ir-meta.closed { color: var(--muted); }
+
+.cuis-row { display: flex; gap: 6px; overflow-x: auto; flex-wrap: nowrap; margin-inline: calc(-1 * var(--gutter-l)) calc(-1 * var(--gutter-r)); padding: 0 var(--gutter-r) 4px var(--gutter-l); scrollbar-width: none; }
+.cuis-row::-webkit-scrollbar { display: none; }
+.cuis-row .chip { flex: none; white-space: nowrap; }
+.pl-tools .right { white-space: nowrap; margin-left: auto; }

@@ -953,35 +953,62 @@ RENDER.entdecken = () => {
   if (d.tab === 'community') return renderCommunity(head + tabs);
   if (d.tab === 'gemerkt') return renderSaved(head + tabs);
 
+  return renderPlaces(head + tabs);
+};
+
+/* --- Entdecken: Orte (mehrere Kategorien, Küchen, Karte) ------------------- */
+
+const PLACE_TILES = ['restaurant', 'cafe', 'bar', 'wine', 'cinema', 'museum', 'theatre', 'spa', 'icerink', 'bowling', 'escape', 'climbing', 'minigolf', 'zoo', 'park', 'viewpoint', 'gallery', 'beergarden', 'icecream', 'xmas', 'brewery', 'castle', 'karting', 'dance', 'livemusic', 'rooftop', 'cocktail', 'massage', 'planetarium', 'lake', 'openair'];
+
+function renderPlaces(head) {
+  const d = discover;
   const center = discoverCenter();
-  const m = today().getMonth() + 1;
-  const seasonOk = (c) => !c.seasonal || (c.seasonal === 'summer' ? m >= 6 && m <= 8 : isXmasSeason(isoDate(today())));
   const area = currentArea();
-  const cats = CATEGORIES.filter((c) => (!c.hidden || c.id === d.cat) && seasonOk(c) && (!d.mood || c.moods.includes(d.mood)) && !(area && area.cats[c.id]?.length === 0));
-  if (!cats.some((c) => c.id === d.cat)) d.cat = cats[0]?.id ?? 'restaurant';
-  const cat = categoryById(d.cat);
-  let results = d.results ?? [];
+  const m = today().getMonth() + 1;
+  const seasonOk = (c) => !c.seasonal || (c.seasonal === 'summer' ? m >= 5 && m <= 9 : isXmasSeason(isoDate(today())));
+  // Nur Arten zeigen, die es im Umkreis gibt (sofern schon erkundet)
+  const tiles = PLACE_TILES.map(categoryById).filter((c) => c && seasonOk(c) && !(area && area.cats[c.id]?.length === 0));
+  d.sel ??= new Set([new Date().getHours() < 15 ? 'cafe' : 'restaurant']);
+  d.cuis ??= new Set();
+  for (const id of [...d.sel]) if (!tiles.some((c) => c.id === id)) d.sel.delete(id);
+  if (!d.sel.size && tiles[0]) d.sel.add(tiles[0].id);
+  const km = Math.round(d.radius / 1000);
+  const now = new Date();
+  let list = d.results ?? [];
+  if (d.openNow) list = list.filter((p) => isOpenAt(p.hours, now) === true);
 
   root.innerHTML = `
-    ${head}${tabs}
-    <section class="panel locbar">
-      <div class="row gap">
-        ${icon('pin')}
-        <div class="grow"><strong>${center ? esc(center.name) : 'Kein Standort'}</strong><br><small class="muted">${center ? (center.gps ? 'Aktueller Standort' : 'Stadt aus den Einstellungen') : 'Erlaube den Standort oder trag eine Stadt ein'}</small></div>
-        <button class="btn sm" id="d-gps">${icon('locate')}Standort</button>
-      </div>
-      ${radiusChips('radius', Math.round(d.radius / 1000))}
+    ${head}
+    <button type="button" class="ctx-strip" id="pl-loc" aria-expanded="${!!d.locOpen}">
+      <span class="ctx-main">${icon('pin')}<span>${esc(center?.name ?? 'Standort wählen')} · ${km} km</span></span>
+      <span class="ctx-filter">${icon('more')}</span>
+    </button>
+    <section class="panel form" id="pl-loc-panel" ${d.locOpen ? '' : 'hidden'}>
+      <div class="field"><span class="label">Standort</span>${locField('pl-city', center ? { name: center.name, sub: center.gps ? 'Aktueller Standort' : S().settings.geo?.sub ?? '' } : null)}</div>
+      <div class="field"><span class="label">Umkreis</span>${radiusChips('radius', km)}</div>
     </section>
-    <div class="cat-scroll">${moodChips('mood', d.mood)}</div>
-    <div class="cat-scroll">${chips('cat', cats.map((c) => [c.id, c.label]), d.cat, 'cats')}</div>
-    ${cat.id === 'restaurant' ? `<div class="cat-scroll">${chips('cuisine', [['', 'Alle Küchen'], ...CUISINES.map((c) => [c.id, c.label])], d.cuisine, 'small-chips')}</div>` : ''}
+
+    <div class="cat-row tiles-select" role="group" aria-label="Was sucht ihr? (mehrere möglich)">
+      ${tiles.map((c) => {
+        const n = area?.cats[c.id]?.length;
+        return `<button type="button" class="cat-tile ${d.sel.has(c.id) ? 'on' : ''}" data-tile="${c.id}" aria-pressed="${d.sel.has(c.id)}">${glyph(c.emoji)}${n ? `<strong>${n >= 15 ? '15+' : n}</strong>` : ''}<span>${esc(AREA_LABELS[c.id] ?? c.label)}</span></button>`;
+      }).join('')}
+    </div>
+    ${d.sel.has('restaurant') ? `
+    <div class="cuis-row" role="group" aria-label="Küche (mehrere möglich)">${CUISINES.map((c) => `<button type="button" class="chip ${d.cuis.has(c.id) ? 'on' : ''}" data-cuis="${c.id}" aria-pressed="${d.cuis.has(c.id)}"><span>${esc(c.label)}</span></button>`).join('')}</div>` : ''}
+    <div class="pl-tools">
+      <button type="button" class="chip ${d.openNow ? 'on' : ''}" id="pl-open" aria-pressed="${!!d.openNow}">${icon('clock')}<span>Jetzt geöffnet</span></button>
+      <button type="button" class="chip ${d.showMap ? 'on' : ''}" id="pl-map" aria-pressed="${!!d.showMap}">${icon('pin')}<span>${d.showMap ? 'Karte ausblenden' : 'Karte zeigen'}</span></button>
+      ${d.results ? `<span class="muted small grow right">${list.length} ${list.length === 1 ? 'Ort' : 'Orte'}</span>` : ''}
+    </div>
+    ${d.showMap && list.length ? '<div class="plan-map pl-map" id="pl-mapbox"></div>' : ''}
     <section class="stack" id="results">
       ${d.loading ? '<div class="loading"><span class="spinner"></span>Suche Orte …</div>'
         : d.error ? `<div class="empty"><p>${esc(d.error)}</p></div>`
-          : !center ? '<div class="empty"><p>Tippe auf „Standort“, damit die App Orte in deiner Nähe findet.</p></div>'
-            : d.results ? (results.length ? `<div class="places">${results.map(placeCard).join('')}</div>` : `<div class="empty"><p>${d.cuisine ? `Keine Restaurants mit „${esc(CUISINES.find((c) => c.id === d.cuisine)?.label ?? '')}“ im Umkreis eingetragen.` : 'Nichts gefunden.'} Vergrößere den Umkreis oder wähle einen anderen Filter.</p></div>`)
+          : !center ? '<div class="empty"><p>Wähle oben euren Standort, dann zeigt Dately Orte in der Nähe.</p></div>'
+            : d.results ? (list.length ? `<div class="idea-rows">${list.map(placeRow).join('')}</div>` : `<div class="empty"><p>${d.openNow ? 'Gerade hat nichts davon geöffnet.' : 'Nichts gefunden.'} Vergrößere den Umkreis oder wähle etwas anderes.</p></div>`)
               : ''}
-      ${d.results?.length ? '<p class="muted small center">Orte und Bilder: OpenStreetMap & Wikimedia. Tippe auf einen Ort für Anfahrt, Reservierung und Bewertungen.</p>' : ''}
+      ${list.length ? '<p class="muted small center">Orte: OpenStreetMap. Tippe auf einen Ort für Anfahrt, Reservierung und Bewertungen.</p>' : ''}
     </section>`;
 
   const load = async () => {
@@ -989,10 +1016,25 @@ RENDER.entdecken = () => {
     if (!c) return;
     d.loading = true;
     d.error = null;
-    if (d.cat !== 'restaurant') d.cuisine = '';
     render();
     try {
-      d.results = await searchNearby(d.cat, c, d.radius, d.cat === 'restaurant' ? d.cuisine : '');
+      const ids = [...d.sel];
+      const byCuisine = d.sel.has('restaurant') && d.cuis.size;
+      const plain = byCuisine ? ids.filter((x) => x !== 'restaurant') : ids;
+      const groups = plain.length ? await searchMixed(plain, c, d.radius, 1) : {};
+      let all = plain.flatMap((id) => groups[id] ?? []);
+      if (byCuisine) {
+        // Restaurants der Umgebung nach Küche filtern – zusätzlich gezielt suchen (falls der Kartendienst antwortet)
+        const rest = (await searchMixed(['restaurant'], c, d.radius, 1).catch(() => ({}))).restaurant ?? [];
+        for (const cu of d.cuis) {
+          const def = CUISINES.find((x) => x.id === cu);
+          const words = [def?.label, ...(def?.tags ?? [])].filter(Boolean).map((w) => w.toLowerCase());
+          all = all.concat(rest.filter((p) => words.some((w) => `${p.cuisine ?? ''} ${p.name}`.toLowerCase().includes(w))));
+          all = all.concat(await searchNearby('restaurant', c, d.radius, cu).catch(() => []));
+        }
+      }
+      const seen = new Set();
+      d.results = all.filter((p) => !seen.has(p.id) && seen.add(p.id)).sort((x, y) => x.km - y.km);
       d.results.forEach((p) => placeIndex.set(p.id, p));
     } catch (e) {
       d.results = null;
@@ -1003,42 +1045,94 @@ RENDER.entdecken = () => {
   };
 
   bindDiscoverTabs();
-  bindRadius(root, 'radius', (km) => {
-    d.radius = km * 1000;
+  $('#pl-loc').addEventListener('click', () => {
+    d.locOpen = !d.locOpen;
+    $('#pl-loc-panel').hidden = !d.locOpen;
+  });
+  bindLocField('pl-city', (g) => {
+    setHome(g);
+    d.locOpen = false;
+    d.results = null;
     load();
   });
-  bindChips(root, 'mood', (v) => {
-    d.mood = v;
-    const ok = CATEGORIES.filter((c) => !v || c.moods.includes(v));
-    if (!ok.some((c) => c.id === d.cat)) {
-      d.cat = ok[0]?.id ?? d.cat;
-      return load();
-    }
+  bindRadius(root, 'radius', (k) => {
+    d.radius = k * 1000;
+    load();
+  });
+  on('[data-tile]', 'click', (_, el) => {
+    const id = el.dataset.tile;
+    if (d.sel.has(id) && d.sel.size > 1) d.sel.delete(id);
+    else d.sel.add(id);
+    if (!d.sel.has('restaurant')) d.cuis.clear();
+    load();
+  });
+  on('[data-cuis]', 'click', (_, el) => {
+    const id = el.dataset.cuis;
+    if (d.cuis.has(id)) d.cuis.delete(id);
+    else d.cuis.add(id);
+    load();
+  });
+  $('#pl-open').addEventListener('click', () => {
+    d.openNow = !d.openNow;
     render();
   });
-  bindChips(root, 'cat', (v) => {
-    d.cat = v;
-    load();
-  });
-  bindChips(root, 'cuisine', (v) => {
-    d.cuisine = v;
-    load();
-  });
-  $('#d-gps').addEventListener('click', async (e) => {
-    await withBusy(e.currentTarget, async () => {
-      try {
-        await useGps();
-        await load();
-      } catch (err) {
-        d.error = store.inArtifact() ? 'Den Standort kann die App nur in der Webseiten-Version abfragen.' : err.message;
-        render();
-      }
-    });
+  $('#pl-map').addEventListener('click', () => {
+    d.showMap = !d.showMap;
+    render();
   });
   on('[data-open-place]', 'click', (_, el) => (session.ortBack = null, go('ort', el.dataset.openPlace)));
   on('[data-open-place]', 'keydown', (e, el) => e.key === 'Enter' && (session.ortBack = null, go('ort', el.dataset.openPlace)));
+  if (d.showMap && list.length) drawPlacesMap(list, center);
   if (center && !d.results && !d.loading && !d.error) load();
-};
+}
+
+/** Kompakte Zeile für einen Ort. */
+function placeRow(p) {
+  const cat = categoryById(p.category);
+  const open = isOpenAt(p.hours, new Date());
+  const meta = [fmtKm(p.km), p.cuisine || (AREA_LABELS[p.category] ?? cat?.label ?? ''), open === true ? 'Jetzt geöffnet' : open === false ? 'Gerade geschlossen' : ''].filter(Boolean);
+  return `
+    <article class="idea-row" data-open-place="${esc(p.id)}" role="button" tabindex="0">
+      ${thumb(p.image, cat?.emoji ?? '📍', 'row', { place: p }, p)}
+      <div class="grow">
+        <h3>${esc(p.name)}</h3>
+        <p class="clamp muted small">${esc([p.street, p.city].filter(Boolean).join(', ') || cat?.label || '')}</p>
+        <p class="ir-meta ${open === false ? 'closed' : ''}">${meta.map(esc).join(' · ')}</p>
+        ${gRating(p)}
+      </div>
+      ${icon('right')}
+    </article>`;
+}
+
+let placesMap = null;
+/** Aufklappbare Karte mit allen gefundenen Orten. */
+function drawPlacesMap(list, center) {
+  const el = document.getElementById('pl-mapbox');
+  if (!el) return;
+  loadLeaflet().then((Lf) => {
+    if (!document.body.contains(el)) return;
+    placesMap?.remove();
+    placesMap = Lf.map(el, { zoomControl: true, scrollWheelZoom: false, tap: false });
+    Lf.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(placesMap);
+    const pts = [];
+    if (center) {
+      Lf.circleMarker([center.lat, center.lon], { radius: 7, color: '#F3EFE8', weight: 3, fillColor: '#302B29', fillOpacity: 1 }).addTo(placesMap).bindTooltip('Ihr');
+      pts.push([center.lat, center.lon]);
+    }
+    list.slice(0, 60).forEach((p, i) => {
+      const mk = Lf.marker([p.lat, p.lon], { icon: Lf.divIcon({ className: 'map-pin', html: `<span>${i + 1}</span>`, iconSize: [28, 28], iconAnchor: [14, 14] }), title: p.name }).addTo(placesMap);
+      mk.bindPopup(`<strong>${esc(p.name)}</strong><br>${esc(fmtKm(p.km))}<br><a href="#" data-map-open="${esc(p.id)}">Details</a>`);
+      mk.on('popupopen', (e) => e.popup.getElement()?.querySelector('[data-map-open]')?.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        session.ortBack = null;
+        go('ort', p.id);
+      }));
+      pts.push([p.lat, p.lon]);
+    });
+    if (pts.length === 1) placesMap.setView(pts[0], 14);
+    else placesMap.fitBounds(pts, { padding: [24, 24], maxZoom: 15 });
+  }).catch(() => el.remove());
+}
 
 function bindSearchBar() {
   const input = $('#d-search');
