@@ -543,9 +543,9 @@ const b64ToBytes = (b64) => {
 
 async function enablePush() {
   if (!auth.cfg) throw new Error('Mitteilungen gibt es mit gemeinsamem Konto.');
-  if (!pushSupported()) throw new Error(isIOS() && !isStandalone() ? 'Auf dem iPhone: Dately zuerst über Teilen → „Zum Home-Bildschirm“ hinzufügen und von dort öffnen.' : 'Dieses Gerät unterstützt keine Mitteilungen.');
+  if (!pushSupported()) throw new Error(isIOS() && !isStandalone() ? 'Auf dem iPhone: Datewell zuerst über Teilen → „Zum Home-Bildschirm“ hinzufügen und von dort öffnen.' : 'Dieses Gerät unterstützt keine Mitteilungen.');
   const perm = await Notification.requestPermission();
-  if (perm !== 'granted') throw new Error('Mitteilungen wurden nicht erlaubt. Du kannst sie in den Einstellungen des Handys für Dately erlauben.');
+  if (perm !== 'granted') throw new Error('Mitteilungen wurden nicht erlaubt. Du kannst sie in den Einstellungen des Handys für Datewell erlauben.');
   const { publicKey } = await callNotify(auth.cfg, { action: 'vapid' });
   const reg = await navigator.serviceWorker.ready;
   let sub = await reg.pushManager.getSubscription();
@@ -601,7 +601,7 @@ async function doConnectRemote(cfg, announce) {
     community.api = api;
     photos.setRemote(photosApi);
     enableServerPlaces(cfg);
-    if (announce) toast('Willkommen bei Dately!');
+    if (announce) toast('Willkommen bei Datewell!');
     if (current.name === 'konto') current = { name: 'start', param: null };
   } catch (e) {
     if (e.code === 'auth') {
@@ -661,7 +661,7 @@ function sharingHTML() {
       <div class="field">
         <span class="label">Einladungslink für ${esc(myRole() ? nameOf(other(myRole())) : 'die andere Person')}</span>
         <div class="copy-row"><input class="input" id="invite" readonly value="${esc(inviteLink(cfg))}"><button class="btn" id="copy-invite" type="button">Kopieren</button></div>
-        <small class="muted">Schick den Link per WhatsApp oder Mail. Wer ihn öffnet, ist mit euch verbunden – schick ihn also nur an die Person, mit der du Dately nutzt.</small>
+        <small class="muted">Schick den Link per WhatsApp oder Mail. Wer ihn öffnet, ist mit euch verbunden – schick ihn also nur an die Person, mit der du Datewell nutzt.</small>
       </div>
       ${sync.writeError ? `<p class="warn-text">${esc(sync.writeError)}</p>` : ''}
       <details class="join-other">
@@ -820,7 +820,7 @@ function kickArea() {
 onAreaChange((a, finished) => {
   const el = document.getElementById('area-progress');
   const pr = areaProgress();
-  if (!finished && el && pr) el.textContent = `Dately erkundet eure Umgebung … (${pr.done}/${pr.total})`;
+  if (!finished && el && pr) el.textContent = `Datewell erkundet eure Umgebung … (${pr.done}/${pr.total})`;
   if (finished) {
     discover.feed = null;
     discover.gen = null;
@@ -841,7 +841,7 @@ function areaSection() {
   return `
     <section class="stack area">
       <h2 class="section-title">Bei euch im Umkreis von ${r} km</h2>
-      ${pr ? `<p class="muted small"><span class="spinner tiny"></span> <span id="area-progress">Dately erkundet eure Umgebung … (${pr.done}/${pr.total})</span></p>` : ''}
+      ${pr ? `<p class="muted small"><span class="spinner tiny"></span> <span id="area-progress">Datewell erkundet eure Umgebung … (${pr.done}/${pr.total})</span></p>` : ''}
       ${counts.length ? `<div class="area-chips">${counts.map(([id, n]) => `<button type="button" class="area-chip" data-area-cat="${id}">${esc(AREA_LABELS[id])} <strong>${n >= 15 ? '15+' : n}</strong></button>`).join('')}</div>` : !pr ? '<p class="muted small">Noch nicht erkundet.</p>' : ''}
       ${a?.done ? '<p class="muted small">Vorschläge gibt es nur für Dates, die hier auch wirklich möglich sind.</p>' : ''}
     </section>`;
@@ -1070,7 +1070,7 @@ function renderPlaces(head) {
     <section class="stack" id="results">
       ${d.loading ? '<div class="loading"><span class="spinner"></span>Suche Orte …</div>'
         : d.error ? `<div class="empty"><p>${esc(d.error)}</p></div>`
-          : !center ? '<div class="empty"><p>Wähle oben euren Standort, dann zeigt Dately Orte in der Nähe.</p></div>'
+          : !center ? '<div class="empty"><p>Wähle oben euren Standort, dann zeigt Datewell Orte in der Nähe.</p></div>'
             : d.results ? (list.length ? `<div class="idea-rows">${list.map(placeRow).join('')}</div>` : `<div class="empty"><p>${d.openNow ? 'Gerade hat nichts davon geöffnet.' : 'Nichts gefunden.'} Vergrößere den Umkreis oder wähle etwas anderes.</p></div>`)
               : ''}
       ${list.length ? '<p class="muted small center">Orte: OpenStreetMap. Tippe auf einen Ort für Anfahrt, Reservierung und Bewertungen.</p>' : ''}
@@ -2076,7 +2076,7 @@ function areaTiles() {
   return `
     <section class="stack">
       ${secHead(`Bei euch in der Nähe`, '<button type="button" class="linkish small" data-dtab="orte">Alle Orte</button>')}
-      ${pr ? `<p class="muted small"><span class="spinner tiny"></span> <span id="area-progress">Dately erkundet eure Umgebung … (${pr.done}/${pr.total})</span></p>` : ''}
+      ${pr ? `<p class="muted small"><span class="spinner tiny"></span> <span id="area-progress">Datewell erkundet eure Umgebung … (${pr.done}/${pr.total})</span></p>` : ''}
       ${counts.length ? `<div class="cat-row">${counts.map(([id, n]) => `<button type="button" class="cat-tile" data-area-cat="${id}">${glyph(categoryById(id)?.emoji ?? '📍')}<strong>${n >= 15 ? '15+' : n}</strong><span>${esc(AREA_LABELS[id])}</span></button>`).join('')}</div>` : ''}
     </section>`;
 }
@@ -2229,7 +2229,7 @@ function renderForYou(head) {
       <div class="field"><span class="label">Stimmung</span>${chips('ff-mood', [['', 'Alle'], ...MOODS.map(([v, l]) => [v, l])], f.mood)}</div>
       <div class="field"><span class="label">Drinnen oder draußen</span>${chips('ff-place', [['', 'Beides'], ['drinnen', 'Drinnen', 'home'], ['draußen', 'Draußen', 'sun']], f.place, 'seg')}</div>
       <div class="field"><span class="label">Wie weit?</span>${radiusChips('ff-reach', f.radiusKm, { home: true })}</div>
-      <div class="field"><span class="label">Wie lange soll das Date dauern?</span>${chips('ff-dur', DUR_OPTS, String(f.duration ?? ''))}<small class="muted">Dately verteilt die Zeit auf die Stationen und rechnet die Wege mit ein.</small></div>
+      <div class="field"><span class="label">Wie lange soll das Date dauern?</span>${chips('ff-dur', DUR_OPTS, String(f.duration ?? ''))}<small class="muted">Datewell verteilt die Zeit auf die Stationen und rechnet die Wege mit ein.</small></div>
       <button type="button" class="btn primary" id="ff-apply">Anwenden</button>
     </section>
 
@@ -2555,15 +2555,15 @@ RENDER.konto = () => {
     <section class="auth">
       <div class="auth-brand">
         ${icon('rings', 'brand-mark big')}
-        <h1 class="wordmark">Dately</h1>
-        <p class="tagline">Made for moments.</p>
+        <h1 class="wordmark logo">Date<i>well</i></h1>
+        <p class="tagline">For the moments that matter.</p>
       </div>
       ${invitePending() && mode !== 'bestaetigen' ? `<div class="banner neutral-row">${icon('users')}<span>Du wurdest eingeladen. Erstelle ein Konto oder melde dich an – dann seid ihr verbunden.</span></div>` : ''}
       ${mode === 'anmelden' || mode === 'registrieren' ? tabs : ''}
       ${auth.error ? `<p class="warn-text" role="alert">${esc(auth.error)}</p>` : ''}
       ${auth.info && mode !== 'bestaetigen' ? `<p class="hint" role="status">${esc(auth.info)}</p>` : ''}
       ${forms[mode] ?? forms.anmelden}
-      <p class="muted small center">Mit dem Konto speichert Dately eure gemeinsamen Dates, Listen und Fotos sicher – nur ihr zwei seht sie.</p>
+      <p class="muted small center">Mit dem Konto speichert Datewell eure gemeinsamen Dates, Listen und Fotos sicher – nur ihr zwei seht sie.</p>
     </section>`;
 
   on('[data-amode]', 'click', (_, el) => {
@@ -2665,7 +2665,7 @@ function onboardingStep() {
   const st = S().settings;
   const role = myRole();
   if (!role) return null;
-  // Erst fragen, wenn die Daten aus eurem Konto da sind – sonst fragt Dately unnötig erneut
+  // Erst fragen, wenn die Daten aus eurem Konto da sind – sonst fragt Datewell unnötig erneut
   const sync = store.syncInfo();
   if (sync.mode === 'shared' && !sync.ready) return null;
   if (session.obForce) return session.obForce;
@@ -2692,7 +2692,7 @@ function onboardingCard() {
     const field = (r, label) => `<div class="field grow"><label class="label" for="nm-${r}">${label}</label><input class="input" id="nm-${r}" maxlength="30" value="${esc(r === 'a' ? st.nameA : st.nameB)}" placeholder="Name" autocomplete="${r === role ? 'given-name' : 'off'}"></div>`;
     return `
       <form class="panel form onboarding" id="ob-form" data-step="namen" novalidate>
-        ${head('Wie heißt ihr?', 'Die Namen seht ihr überall in Dately. Ihr könnt sie jederzeit in den Einstellungen ändern.')}
+        ${head('Wie heißt ihr?', 'Die Namen seht ihr überall in Datewell. Ihr könnt sie jederzeit in den Einstellungen ändern.')}
         <div class="row gap wrap">${field(role, 'Dein Name')}${field(partner, 'Name deines Gegenübers')}</div>
         <button class="btn primary" type="submit">Weiter</button>
       </form>`;
@@ -2703,7 +2703,7 @@ function onboardingCard() {
     const val = (kind, who) => esc(specialOf(kind, who)?.date ?? '');
     return `
       <form class="panel form onboarding" id="ob-form" data-step="tage" novalidate>
-        ${head('Eure besonderen Tage', 'Dately erinnert euch rechtzeitig und schlägt dann besondere Dates vor. Alles ist freiwillig.')}
+        ${head('Eure besonderen Tage', 'Datewell erinnert euch rechtzeitig und schlägt dann besondere Dates vor. Alles ist freiwillig.')}
         <div class="field"><label class="label" for="ob-anniv">Seit wann seid ihr zusammen?</label><input class="input" type="date" id="ob-anniv" value="${esc(st.anniversary)}"></div>
         <div class="field"><span class="label">Seid ihr verheiratet?</span>${chips('ob-married', [['ja', 'Ja'], ['nein', 'Nein']], married ? 'ja' : 'nein', 'seg')}</div>
         <div class="stack-sm" id="ob-wedding" ${married ? '' : 'hidden'}>
@@ -2722,7 +2722,7 @@ function onboardingCard() {
   const theirs = st.prefs?.[partner];
   return `
     <form class="panel form onboarding" id="ob-form" data-step="vorlieben" novalidate>
-      ${head('Was gefällt dir bei Dates?', `Deine Antworten helfen Dately, passende Ideen für euch zu finden.${theirs ? ` ${esc(nameOf(partner))} hat schon geantwortet.` : ` ${esc(nameOf(partner))} beantwortet das auf dem eigenen Handy.`}`)}
+      ${head('Was gefällt dir bei Dates?', `Deine Antworten helfen Datewell, passende Ideen für euch zu finden.${theirs ? ` ${esc(nameOf(partner))} hat schon geantwortet.` : ` ${esc(nameOf(partner))} beantwortet das auf dem eigenen Handy.`}`)}
       <div class="field"><span class="label">Worauf hast du am meisten Lust? <small class="muted">(bis zu 4)</small></span>
         <div class="chips" id="ob-moods">${MOODS.map(([v, l]) => `<button type="button" class="chip" data-m="${v}" aria-pressed="${(p.moods ?? []).includes(v)}">${l}</button>`).join('')}</div></div>
       <div class="field"><span class="label">Lieber drinnen oder draußen?</span>${chips('ob-place', [['drinnen', 'Drinnen', 'home'], ['draußen', 'Draußen', 'sun'], ['egal', 'Beides']], p.place ?? 'egal', 'seg')}</div>
@@ -2744,7 +2744,7 @@ function bindOnboarding() {
     store.update((st) => (st.settings.onboarded = { ...(st.settings.onboarded ?? {}), [role]: true }));
     session.obStep = null;
     session.obForce = null;
-    toast('Alles eingerichtet – viel Freude mit Dately!');
+    toast('Alles eingerichtet – viel Freude mit Datewell!');
     render(true);
   };
   const next = (s) => {
@@ -2998,7 +2998,7 @@ function inboxItems() {
     items.push(`
       <article class="inbox-item accent">
         <div class="inbox-ico">${icon('heart')}</div>
-        <div class="grow"><strong>Wie war „${esc(dateTitle(d))}“?</strong><p>${relDay(d.date) ?? fmtShort(d.date)} · Bewertet euer Date – Dately lernt, was euch gefällt.</p></div>
+        <div class="grow"><strong>Wie war „${esc(dateTitle(d))}“?</strong><p>${relDay(d.date) ?? fmtShort(d.date)} · Bewertet euer Date – Datewell lernt, was euch gefällt.</p></div>
         <button class="btn primary sm" data-open-date="${d.id}">Bewerten</button>
       </article>`);
   }
@@ -3053,7 +3053,7 @@ RENDER.start = () => {
 
   root.innerHTML = `
     <header class="home-head">
-      <div class="brand">${icon('rings', 'brand-mark')}<span>Dately</span></div>
+      <div class="brand">${icon('rings', 'brand-mark')}<span class="logo">Date<i>well</i></span></div>
       <div class="row gap">${syncChip()}${settingsButton()}</div>
     </header>
     <section class="hello">
@@ -3064,10 +3064,11 @@ RENDER.start = () => {
     ${whoAmICard()}
     ${onboardingCard()}
     ${dateDayCard()}
+    ${myRole() ? `<button type="button" class="oclock-cta" data-scroll-form><span><b>It’s date</b> <i>o’clock</i></span><small>Neues Date planen</small>${icon('right')}</button>` : ''}
     ${S().polls.some((x) => x.kind === 'swipe' && x.status === 'open') ? '' : `
     <button class="match-teaser" id="start-match">
       <span class="mt-ico">${icon('heart')}</span>
-      <span class="grow"><strong>Date-Match</strong><br><small>Ihr wischt beide auf eurem Handy – Dately findet, worauf ihr beide Lust habt.</small></span>
+      <span class="grow"><strong>Date-Match</strong><br><small>Ihr wischt beide auf eurem Handy – Datewell findet, worauf ihr beide Lust habt.</small></span>
       ${icon('right')}
     </button>`}
 
@@ -3093,7 +3094,7 @@ RENDER.start = () => {
     </section>
 
     <form class="panel form" id="start-form" novalidate>
-      <div class="panel-head">${icon('sparkle')}<h2>Neues Date</h2></div>
+      <div class="oclock"><h2><span>It’s date</span> <i>o’clock.</i></h2><p class="muted">Was habt ihr heute vor?</p></div>
       <div class="field">
         <span class="label">Wer plant?</span>
         ${chips('planner', [
@@ -3701,7 +3702,7 @@ RENDER.plan = (ideaId) => {
       return `<div class="links"><a class="link" href="https://www.google.com/maps/dir/?api=1&origin=${t.from.lat},${t.from.lon}&destination=${t.to.lat},${t.to.lon}&travelmode=${t.mode}" target="_blank" rel="noopener">Route${icon('external')}</a></div>`;
     }
     if (!stepCats[i] || !wantsPlaces) return '';
-    if (!center) return `<p class="muted small">Erlaube den Standort oder trag eine Stadt ein, dann schlägt Dately hier konkrete Orte vor.</p>`;
+    if (!center) return `<p class="muted small">Erlaube den Standort oder trag eine Stadt ein, dann schlägt Datewell hier konkrete Orte vor.</p>`;
     if (draft.nearLoading && !draft.near) return `<p class="muted small"><span class="spinner tiny"></span> Suche passende Orte in der Nähe …</p>`;
     const list = draft.near?.[i] ?? [];
     if (!list.length && draft.nearError) return `<p class="muted small">Die Kartendaten sind gerade nicht erreichbar.</p><button type="button" class="btn sm soft" data-near-retry>${icon('repeat')}Nochmal suchen</button>`;
@@ -3838,7 +3839,8 @@ RENDER.plan = (ideaId) => {
     session.requestId = null;
     session.pollId = null;
     nudgePush();
-    toast(surprise ? `Überraschung eingetragen – ${nameOf(partner)} sieht nur das Datum` : 'Im Kalender eingetragen');
+    const when = `${new Date(`${plan.date}T12:00:00`).toLocaleDateString('de-DE', { weekday: 'long' })}, ${plan.start}`;
+    toast(surprise ? `Euer Date steht. It’s date o’clock am ${when} – ${nameOf(partner)} sieht nur Tag und Uhrzeit.` : `Euer Date steht. It’s date o’clock am ${when}.`);
     if (gcal.isConnected()) {
       gcal.createEvent(calendarEvent(surprise ? { ...plan, title: `Überraschung für ${nameOf(partner)}: ${plan.title}` } : plan))
         .then(() => toast('Auch in Google Kalender eingetragen'))
@@ -3932,7 +3934,7 @@ async function loadStepPlaces(steps, draft, stepCats, center, ctx) {
             groups[cat] = [...add.filter((p) => !have.has(p.name)), ...(groups[cat] ?? [])];
           }
         }
-        // Von Dately bereits gewählter Ort bleibt vorausgewählt
+        // Von Datewell bereits gewählter Ort bleibt vorausgewählt
         const fixed = s.place?.id ? { ...s.place, km: distanceKm(center, s.place) } : null;
         if (fixed) {
           placeIndex.set(fixed.id, { ...(placeIndex.get(fixed.id) ?? {}), ...fixed });
@@ -5099,10 +5101,10 @@ RENDER.rueckblick = (param) => {
       <section class="page cover">
         <div class="cover-collage n${cover.length}">${cover.map((ph) => `<figure class="photo">${photoImg(ph)}</figure>`).join('')}</div>
         <div class="cover-text">
-          <span class="cover-brand">Dately</span>
+          <span class="cover-brand">Datewell</span>
           <h1>${year}</h1>
           <p class="cover-names">${esc(names)}</p>
-          <p class="cover-tag">Your next favorite memory</p>
+          <p class="cover-tag">For the moments that matter.</p>
         </div>
       </section>
 
@@ -5128,7 +5130,7 @@ RENDER.rueckblick = (param) => {
 
       <section class="page end-page">
         <p class="end-big">${entries.length === 1 ? 'Ein Date' : `${entries.length} Dates`}.<br>Unzählige Lieblingsmomente.</p>
-        <p class="cover-tag">Dately · Your next favorite memory</p>
+        <p class="cover-tag">Datewell · For the moments that matter.</p>
       </section>
     </div>`}`;
 
@@ -5219,7 +5221,7 @@ RENDER.mehr = () => {
       <div class="field">
         <label class="label" for="s-city">Euer Zuhause (Ort oder Adresse)</label>
         ${locField('s-city', st.geo ? { name: st.geo.name, sub: st.geo.sub ?? st.geo.country ?? '' } : st.city ? { name: st.city } : null)}
-        <small class="muted">Von hier aus sucht Dately Orte und berechnet Wege. Unterwegs nutzt Dately auf Wunsch den aktuellen Standort.</small>
+        <small class="muted">Von hier aus sucht Datewell Orte und berechnet Wege. Unterwegs nutzt Datewell auf Wunsch den aktuellen Standort.</small>
       </div>
       <label class="switch"><input type="checkbox" id="s-vegan" data-set="vegan" ${st.vegan ? 'checked' : ''}><span><strong>Vegan bevorzugen</strong><br><small class="muted">Restaurant-Links suchen vegan, Rezepte tauschen Zutaten.</small></span></label>
     </section>
@@ -5282,15 +5284,15 @@ RENDER.mehr = () => {
       <div class="panel-head">${icon('bell')}<h2>Mitteilungen</h2></div>
       <p>Erinnerungen am Vorabend und kurz vor dem Date, „Wie war’s?“ am Tag danach – und sofort, wenn ${esc(nameOf(other(myRole() ?? 'a')))} eine Überraschung plant, sich ein Date wünscht oder ihr ein Match habt. Überraschungen bleiben geheim.</p>
       ${!auth.cfg ? '<p class="muted small">Mitteilungen gibt es, sobald ihr ein gemeinsames Konto nutzt.</p>'
-        : isIOS() && !isStandalone() ? `<p class="hint">${icon('share')} Auf dem iPhone funktionieren Mitteilungen nur, wenn Dately auf dem Home-Bildschirm liegt: in Safari auf <strong>Teilen → „Zum Home-Bildschirm“</strong> tippen und Dately von dort öffnen.</p>`
+        : isIOS() && !isStandalone() ? `<p class="hint">${icon('share')} Auf dem iPhone funktionieren Mitteilungen nur, wenn Datewell auf dem Home-Bildschirm liegt: in Safari auf <strong>Teilen → „Zum Home-Bildschirm“</strong> tippen und Datewell von dort öffnen.</p>`
           : L().push?.on && window.Notification?.permission === 'granted'
             ? `<p class="small">${icon('check', 'inline')} Mitteilungen sind auf diesem Handy aktiv.</p><div class="row gap"><button class="btn sm" id="push-test">Test-Mitteilung</button><button class="btn ghost sm" id="push-off">Ausschalten</button></div>`
             : `<button class="btn primary" id="push-on">${icon('bell')}Mitteilungen aktivieren</button>`}
     </section>
     <section class="panel form">
       <div class="panel-head">${icon('star')}<h2>Weitere Datenquellen</h2></div>
-      <p class="${serverStatus ? '' : 'muted '}small">${serverStatus ? `${icon('check', 'inline')} Dately-Server ist eingerichtet: Orte kommen schnell über euren Supabase-Server${serverStatus.google ? ', Google-Bewertungen, Fotos und Öffnungszeiten ebenfalls – ein eigener Schlüssel unten ist nicht mehr nötig' : ''}.` : 'Tipp: Mit der Server-Funktion „places“ (Anleitung im README) laden Orte viel schneller und Google-Daten kommen sicher über euren Server.'}</p>
-      <p><strong>Veranstaltungen</strong> (Konzerte, Shows, Theater, Festivals): Mit einem kostenlosen Ticketmaster-Schlüssel zeigt Dately Veranstaltungen in eurem Umkreis und macht daraus Date-Ideen.</p>
+      <p class="${serverStatus ? '' : 'muted '}small">${serverStatus ? `${icon('check', 'inline')} Datewell-Server ist eingerichtet: Orte kommen schnell über euren Supabase-Server${serverStatus.google ? ', Google-Bewertungen, Fotos und Öffnungszeiten ebenfalls – ein eigener Schlüssel unten ist nicht mehr nötig' : ''}.` : 'Tipp: Mit der Server-Funktion „places“ (Anleitung im README) laden Orte viel schneller und Google-Daten kommen sicher über euren Server.'}</p>
+      <p><strong>Veranstaltungen</strong> (Konzerte, Shows, Theater, Festivals): Mit einem kostenlosen Ticketmaster-Schlüssel zeigt Datewell Veranstaltungen in eurem Umkreis und macht daraus Date-Ideen.</p>
       <div class="field"><label class="label" for="tm-key">Ticketmaster API Key</label><input class="input" id="tm-key" data-set="ticketmasterKey" value="${esc(S().settings.ticketmasterKey ?? '')}" placeholder="Consumer Key" autocomplete="off"><small class="muted">Kostenlos unter developer.ticketmaster.com → „Get your API Key“ (Anleitung im README).</small></div>
       <p><strong>Google-Bewertungen & Fotos:</strong> Mit einem eigenen Google-Places-Schlüssel zeigt die App bei Orten die Google-Sterne und ein Foto. Ohne Schlüssel gibt es Bilder aus Wikimedia und einen Link zu den Google-Bewertungen.</p>
       <div class="field"><label class="label" for="g-places">Places API Key</label><input class="input" id="g-places" data-set="googlePlacesKey" value="${esc(S().settings.googlePlacesKey ?? '')}" placeholder="AIza…" autocomplete="off"></div>
@@ -5407,7 +5409,7 @@ RENDER.mehr = () => {
       toast('Backup geladen');
       render();
     } catch {
-      toast('Diese Datei ist kein Dately-Backup');
+      toast('Diese Datei ist kein Datewell-Backup');
     }
   });
   $('#export').addEventListener('click', () => {
@@ -5419,7 +5421,7 @@ RENDER.mehr = () => {
     toast('Alles gelöscht');
     render(true);
   }, store.syncInfo().mode === 'shared' ? 'Nochmal tippen: alles für euch beide löschen' : 'Nochmal tippen: wirklich alles löschen');
-  root.insertAdjacentHTML('beforeend', '<p class="signature">Dately · Made for moments.</p>');
+  root.insertAdjacentHTML('beforeend', '<p class="signature"><span class="logo">Date<i>well</i></span> · <i>For the moments that matter.</i></p>');
 };
 
 /* ================================================================ Start */

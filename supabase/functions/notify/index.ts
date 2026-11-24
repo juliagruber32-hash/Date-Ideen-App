@@ -1,5 +1,5 @@
 // @ts-nocheck – bewusst ohne Typen, damit die Funktion auch im Supabase-Editor ohne Zusatzschritte läuft
-// Dately – Server-Funktion „notify“ (Supabase Edge Function): Mitteilungen aufs Handy (Web Push).
+// Datewell – Server-Funktion „notify“ (Supabase Edge Function): Mitteilungen aufs Handy (Web Push).
 //
 // - Erinnerungen: am Vorabend (ab 18 Uhr) und 2 Stunden vor dem Date, „Wie war’s?“ am Tag danach
 // - Sofort: neues Date bzw. Überraschung, Date-Wunsch, Date-Match gestartet, neues Match
@@ -87,7 +87,7 @@ const weekday = (iso) => new Date(`${iso}T12:00:00Z`).toLocaleDateString('de-DE'
  * Welche Mitteilungen sind für dieses Paar jetzt fällig?
  * Gibt [{ key, role, title, body, url }] zurück (role = 'a' | 'b').
  */
-export function dueNotifications({ docs, now, secrets = {} }) {
+export function dueNotifications({ docs, now, secrets = {}, wx = {} }) {
   const settings = docs['shared/settings'] ?? {};
   const name = (r) => (r === 'a' ? settings.nameA : settings.nameB) || (r === 'a' ? 'Person 1' : 'Person 2');
   const other = (r) => (r === 'a' ? 'b' : 'a');
@@ -116,33 +116,59 @@ export function dueNotifications({ docs, now, secrets = {} }) {
     if (d.date === tomorrow && nowMin >= 18 * 60) {
       for (const r of ['a', 'b']) {
         const mine = !d.surprise || r === planner;
-        push(`eve:${d.id}:${r}`, r, `Morgen: ${forRole(r)}`, mine ? `${d.start} Uhr – denkt an Reservierung, Tickets & Co. in der Vorbereitung.` : `${d.start} Uhr. Lass dich überraschen!${hint}`, `#date/${d.id}`);
+        push(`eve:${d.id}:${r}`, r, 'It’s almost date o’clock', mine ? `Morgen um ${d.start}: ${title}${d.emoji ? ` ${d.emoji}` : ''}` : `Morgen um ${d.start}: Überraschung von ${name(planner)} 🤫${hint}`, `#date/${d.id}`);
+      }
+    }
+    // Wetterwechsel: Regen bei einem Date draußen → Plan B vorschlagen (nur wer den Plan kennt)
+    const w = wx[d.id];
+    if (w && d.place === 'draußen' && (d.date === now.date || d.date === tomorrow) && w.rain >= 60) {
+      for (const r of ['a', 'b']) {
+        if (d.surprise && r !== planner) continue;
+        push(`rain:${d.id}:${r}`, r, 'It’s date o’clock – mit Planänderung 🌧️', 'Es soll regnen. Wie wär’s mit Plan B: Kino um die Ecke?', `#date/${d.id}`);
       }
     }
     // 2 Stunden vorher
     if (d.date === now.date && d.start) {
       const diff = minutes(d.start) - nowMin;
       if (diff <= 120 && diff > 0) {
-        for (const r of ['a', 'b']) push(`soon:${d.id}:${r}`, r, `Gleich geht’s los: ${forRole(r)}`, `Um ${d.start} Uhr.${d.surprise && r !== planner ? hint : ' Viel Freude miteinander!'}`, `#date/${d.id}`);
+        const h = Math.max(1, Math.round(diff / 60));
+        const lead = h === 1 ? 'In einer Stunde geht’s los.' : `In ${h} Stunden geht’s los.`;
+        const outside = d.place === 'draußen';
+        const tip = !w ? '' : w.rain >= 50 ? `${w.temp} °C und Regen – Schirm nicht vergessen.` : w.temp <= 5 ? `${w.temp} °C – zieht euch warm an.` : outside && w.temp >= 15 ? `${w.temp} °C, perfekt für draußen.` : `${w.temp} °C.`;
+        const sym = !w ? '✨' : w.rain >= 50 ? '🌧️' : w.temp <= 2 ? '❄️' : w.clear ? '☀️' : '✨';
+        for (const r of ['a', 'b']) push(`soon:${d.id}:${r}`, r, `It’s date o’clock ${sym}`, `${lead} ${tip}${d.surprise && r !== planner ? hint : ''}`.trim(), `#date/${d.id}`);
       }
     }
     // Am Tag danach: bewerten
     if (d.date === yesterday && nowMin >= 10 * 60) {
       for (const r of ['a', 'b']) {
         if (d.ratings?.[r]) continue;
-        push(`rate:${d.id}:${r}`, r, `Wie war „${d.surprise && r !== planner ? `die Überraschung` : title}“?`, 'Bewertet euer Date – so lernt Dately, was euch gefällt.', `#date/${d.id}`);
+        push(`rate:${d.id}:${r}`, r, `Wie war „${d.surprise && r !== planner ? `die Überraschung` : title}“?`, 'Bewertet euer Date – so lernt Datewell, was euch gefällt.', `#date/${d.id}`);
       }
+    }
+  }
+
+  // Lange kein Date mehr (ab 3 Wochen, höchstens einmal pro Woche, abends)
+  const all = list('dates/').filter((x) => x.date);
+  const past = all.filter((x) => x.date < now.date).map((x) => x.date).sort();
+  const upcoming = all.some((x) => x.date >= now.date);
+  const busy = list('requests/').some((x) => x.status === 'open') || list('polls/').some((x) => x.status === 'open');
+  if (past.length && !upcoming && !busy && nowMin >= 18 * 60) {
+    const days = Math.round((new Date(`${now.date}T12:00:00Z`) - new Date(`${past[past.length - 1]}T12:00:00Z`)) / 86400000);
+    if (days >= 21) {
+      const weeks = Math.floor(days / 7);
+      for (const r of ['a', 'b']) push(`idle:${weeks}:${r}`, r, 'Ist es nicht mal wieder date o’clock?', `Euer letztes Date ist ${weeks} Wochen her. Wir hätten da eine Idee …`, '#entdecken');
     }
   }
 
   for (const r of list('requests/')) {
     if (r.status !== 'open' || !recent(r.createdAt) || !r.to) continue;
-    push(`req:${r.id}`, r.to, `${name(r.from)} wünscht sich ein Date von dir 💌`, r.note ? `„${r.note}“` : 'Schau in Dately, was du planen kannst.', '#start');
+    push(`req:${r.id}`, r.to, `${name(r.from)} wünscht sich ein Date von dir 💌`, r.note ? `„${r.note}“` : 'Schau in Datewell, was du planen kannst.', '#start');
   }
 
   for (const p of list('polls/')) {
     if (p.kind !== 'swipe' || p.status !== 'open') continue;
-    if (recent(p.createdAt) && p.createdBy) push(`swipe:${p.id}`, other(p.createdBy), `${name(p.createdBy)} hat ein Date-Match gestartet`, 'Wisch mit – Dately findet, worauf ihr beide Lust habt.', `#match/${p.id}`);
+    if (recent(p.createdAt) && p.createdBy) push(`swipe:${p.id}`, other(p.createdBy), `${name(p.createdBy)} hat ein Date-Match gestartet`, 'Wisch mit – Datewell findet, worauf ihr beide Lust habt.', `#match/${p.id}`);
     const v = p.votes ?? {};
     for (const id of p.deck ?? []) {
       if (v.a?.[id] === 1 && v.b?.[id] === 1) {
@@ -152,6 +178,22 @@ export function dueNotifications({ docs, now, secrets = {} }) {
     }
   }
   return out;
+}
+
+/* ------------------------------------------------------------ Wetter (Open-Meteo) */
+
+async function weatherAt(lat, lon, date, start = '18:00', end = '22:00') {
+  const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,precipitation_probability,weather_code&timezone=Europe%2FBerlin&start_date=${date}&end_date=${date}`);
+  if (!res.ok) return null;
+  const h = (await res.json()).hourly ?? {};
+  const from = Number(String(start).slice(0, 2));
+  const to = Math.max(from, Number(String(end || start).slice(0, 2)));
+  const idx = (h.time ?? []).map((t, i) => [Number(t.slice(11, 13)), i]).filter(([hr]) => hr >= from && hr <= to).map(([, i]) => i);
+  if (!idx.length) return null;
+  const temp = Math.round(idx.reduce((a, i) => a + h.temperature_2m[i], 0) / idx.length);
+  const rain = Math.max(...idx.map((i) => h.precipitation_probability?.[i] ?? 0));
+  const code = h.weather_code?.[idx[0]] ?? 3;
+  return { temp, rain, clear: code <= 2 };
 }
 
 /* ------------------------------------------------------------ Versand */
@@ -167,7 +209,19 @@ async function processCouple(coupleId) {
   const members = docs['shared/settings']?.members ?? {};
   const roleOf = (s) => s.role ?? (members.a === s.user_id ? 'a' : members.b === s.user_id ? 'b' : null);
 
-  const due = dueNotifications({ docs, now: berlinNow(), secrets });
+  // Wetter für Dates heute/morgen (für „It’s date o’clock ☀️“ und Plan B bei Regen)
+  const now = berlinNow();
+  const wx = {};
+  const geo = docs['shared/settings']?.geo;
+  for (const [path, d] of Object.entries(docs)) {
+    if (!path.startsWith('dates/') || !d?.date || (d.date !== now.date && d.date !== addDaysIso(now.date, 1))) continue;
+    const plan = d.surprise ? secrets[d.id] : d;
+    const pl = plan?.steps?.find((x) => x.place?.lat != null)?.place ?? geo;
+    if (pl?.lat == null) continue;
+    wx[d.id] = await weatherAt(pl.lat, pl.lon, d.date, d.start, d.end).catch(() => null);
+    if (d.surprise && secrets[d.id]?.place) d.place = secrets[d.id].place;
+  }
+  const due = dueNotifications({ docs, now, secrets, wx });
   if (!due.length) return 0;
   const keys = due.map((n) => `${coupleId}:${n.key}`);
   const sentRows = await rest(`push_log?key=in.(${keys.map((k) => `"${k.replace(/"/g, '')}"`).join(',')})&select=key`);
@@ -218,7 +272,7 @@ export async function handle(req) {
     }
 
     const userId = await userFromToken(req);
-    if (!userId) return json({ error: 'Bitte in Dately anmelden' }, 401);
+    if (!userId) return json({ error: 'Bitte in Datewell anmelden' }, 401);
     const coupleId = await coupleOf(userId);
     if (!coupleId) return json({ error: 'Kein gemeinsames Konto' }, 400);
 
@@ -241,7 +295,7 @@ export async function handle(req) {
       case 'test': {
         await vapid();
         const subs = await rest(`push_subscriptions?user_id=eq.${q(userId)}&select=sub`);
-        for (const s of subs) await webpush.sendNotification(s.sub, JSON.stringify({ title: 'Dately', body: 'Mitteilungen sind eingerichtet ✨', url: APP_URL, tag: 'test' })).catch(() => null);
+        for (const s of subs) await webpush.sendNotification(s.sub, JSON.stringify({ title: 'Datewell', body: 'Mitteilungen sind eingerichtet ✨', url: APP_URL, tag: 'test' })).catch(() => null);
         return json({ ok: true, devices: subs.length });
       }
       case 'nudge': {

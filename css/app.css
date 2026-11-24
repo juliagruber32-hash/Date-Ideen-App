@@ -1,4 +1,4 @@
-/* Dately – Modern Burgundy Luxury. Made for moments.
+/* Datewell – Modern Burgundy Luxury. For the moments that matter.
    Layout: eine ruhige Spalte (max. 560px), viel Weißraum, dezente Rundungen, Line Icons.
    Farbe: Warm Cream als Grund, Espresso für Text, Deep Burgundy für Buttons/Logo/Akzente,
    Taupe und Sage Grey für sekundäre Flächen. Typo: DM Serif Display (Logo, Überschriften) + Manrope. */
@@ -23,8 +23,9 @@
   --taupe: #b5a99a;
   --sage: #85877e;
 
-  --font-display: "DM Serif Display", "Iowan Old Style", Georgia, serif;
-  --font-body: "Manrope", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Cormorant Garamond", "Iowan Old Style", Georgia, serif;
+  --font-label: "Italiana", "Cormorant Garamond", Georgia, serif;
+  --font-body: "DM Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 
   --r-lg: 16px;
   --r-md: 12px;
@@ -1030,3 +1031,32 @@ body.auth-screen .view { padding-bottom: 40px; }
 .cuis-row::-webkit-scrollbar { display: none; }
 .cuis-row .chip { flex: none; white-space: nowrap; }
 .pl-tools .right { white-space: nowrap; margin-left: auto; }
+
+/* ---------- Datewell: Schriften & Logo ---------- */
+h1, h2, h3 { font-weight: 500; letter-spacing: 0; }
+h1 { font-size: 2.35rem; }
+.logo { font-family: var(--font-display); font-weight: 500; letter-spacing: 0.005em; }
+.logo i { font-style: italic; font-weight: 400; }
+.brand { font-size: 1.75rem; }
+.wordmark.logo { font-size: 3rem; color: var(--accent); }
+.tagline { font-family: var(--font-display); font-style: italic; font-weight: 400; font-size: 1.2rem; }
+/* Kleine Labels wie „FREITAG · 19:00“: Italiana, Großbuchstaben, gesperrt */
+.eyebrow, .kicker, .section-title, .hc-tag, .swipe-label, .prep-count, .cover-tag + .eyebrow { font-family: var(--font-label); font-weight: 400; letter-spacing: 0.2em; text-transform: uppercase; }
+.section-title { font-size: 0.82rem; }
+.eyebrow { font-size: 0.82rem; }
+.hero-card h3, .swipe-card h2, .dateday h2, .mf-card h2, .plan-head h1 { font-weight: 500; }
+.hero-card h3 { font-size: 1.45rem; }
+.idea-row h3, .mini-card h3, .feed-card h3, .place-body h3 { font-family: var(--font-display); font-weight: 600; font-size: 1.12rem; }
+/* It’s date o’clock */
+.oclock h2 { font-family: var(--font-display); font-size: 2rem; font-weight: 500; color: var(--accent); line-height: 1.1; }
+.oclock h2 i { font-style: italic; font-weight: 400; }
+.oclock p { margin-top: 2px; }
+.oclock-cta { display: flex; align-items: center; gap: 12px; width: 100%; padding: 18px 20px; border: none; border-radius: var(--r-lg); background: linear-gradient(150deg, #562F37, #3d2026); color: #F3EFE8; text-align: left; cursor: pointer; box-shadow: var(--shadow); }
+.oclock-cta span { font-family: var(--font-display); font-size: 1.6rem; line-height: 1; }
+.oclock-cta span b { font-weight: 500; }
+.oclock-cta span i { font-style: italic; font-weight: 400; }
+.oclock-cta small { margin-left: auto; font-size: 0.86rem; opacity: .85; }
+.oclock-cta .ico { width: 18px; height: 18px; flex: none; }
+.signature .logo { font-size: 1.1rem; }
+/* Cormorant: gleich hohe Ziffern statt Mediävalziffern */
+h1, h2, h3, .logo, .budget-out, .oclock, .tagline { font-variant-numeric: lining-nums; font-feature-settings: "lnum" 1; }

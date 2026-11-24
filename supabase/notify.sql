@@ -1,4 +1,4 @@
--- Dately: Mitteilungen aufs Handy (für die Server-Funktion „notify“).
+-- Datewell: Mitteilungen aufs Handy (für die Server-Funktion „notify“).
 -- Einmal im Supabase SQL Editor ausführen. Kann gefahrlos mehrfach ausgeführt werden.
 
 -- Schlüssel und Geheimnisse der Server-Funktionen (nur für den Server lesbar)

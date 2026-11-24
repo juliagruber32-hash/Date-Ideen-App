@@ -1,4 +1,4 @@
-// Fester Supabase-Zugang für alle, die Dately nutzen (Konten, gemeinsamer Speicher, Community).
+// Fester Supabase-Zugang für alle, die Datewell nutzen (Konten, gemeinsamer Speicher, Community).
 // Beide Werte sind öffentlich gedacht – geschützt wird über die Zugriffsregeln in supabase/setup.sql.
 // Niemals den „secret“- oder „service_role“-Schlüssel hier eintragen.
 export const SUPABASE = {

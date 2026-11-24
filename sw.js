@@ -1,5 +1,5 @@
 // Service Worker: App offline verfügbar machen. Wetter-Anfragen gehen immer ins Netz.
-const VERSION = 'v46';
+const VERSION = 'v47';
 const SHELL = [
   './',
   'index.html',
@@ -63,7 +63,7 @@ self.addEventListener('push', (e) => {
   } catch {
     d = { body: e.data?.text() };
   }
-  e.waitUntil(self.registration.showNotification(d.title || 'Dately', {
+  e.waitUntil(self.registration.showNotification(d.title || 'Datewell', {
     body: d.body || '',
     icon: 'icons/icon-192.png',
     badge: 'icons/icon-192.png',
@@ -72,7 +72,7 @@ self.addEventListener('push', (e) => {
   }));
 });
 
-// Antippen öffnet Dately an der richtigen Stelle
+// Antippen öffnet Datewell an der richtigen Stelle
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();
   const url = e.notification.data?.url || './';

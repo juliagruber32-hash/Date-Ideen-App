@@ -1,4 +1,4 @@
-// Dately lernt mit: Aus euren Dates, Bewertungen, Favoriten und dem, was ihr überspringt, entsteht ein
+// Datewell lernt mit: Aus euren Dates, Bewertungen, Favoriten und dem, was ihr überspringt, entsteht ein
 // Geschmacksprofil. Es sorgt für passende Vorschläge mit Begründung – und für Abwechslung.
 
 import { catForStep, categoryById, isXmasSeason } from './places.js';

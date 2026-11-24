@@ -1,4 +1,4 @@
-# Dately
+# Datewell
 
 *Your next favorite memory.*
 
@@ -46,7 +46,7 @@ Damit ihr beide dieselben Dates, Listen und Abstimmungen seht und Überraschunge
      Bestätigungs- und „Passwort vergessen“-Mails ins Leere.
    - Optional **Emails → Templates**: die Texte der Mails auf Deutsch übersetzen.
    - Gut zu wissen: Der eingebaute Mail-Versand von Supabase schickt nur wenige Mails pro Stunde. Für euch zwei
-     reicht das. Sollen viele Leute Dately nutzen, unter **Emails → SMTP Settings** einen Mail-Dienst wie
+     reicht das. Sollen viele Leute Datewell nutzen, unter **Emails → SMTP Settings** einen Mail-Dienst wie
      Brevo oder Resend (beide mit kostenlosem Kontingent) eintragen.
 5. Oben auf **Connect** tippen (oder **Project Settings → API Keys**). Kopiere:
    - **Project URL** (sieht aus wie `https://abcd1234.supabase.co`)
@@ -56,7 +56,7 @@ Damit ihr beide dieselben Dates, Listen und Abstimmungen seht und Überraschunge
    (oder Claude schicken, dann trägt Claude sie ein). Dann verbindet sich die App für alle automatisch –
    auch für andere Paare, die eure Webseite nutzen. Beide Werte sind öffentlich gedacht, geschützt wird
    über die Zugriffsregeln aus `setup.sql`.
-7. In Dately ein **Konto erstellen** (Benutzername, E-Mail, Passwort). Danach unter **Zahnrad → Gemeinsam nutzen**
+7. In Datewell ein **Konto erstellen** (Benutzername, E-Mail, Passwort). Danach unter **Zahnrad → Gemeinsam nutzen**
    den **Einladungslink** kopieren und der anderen Person schicken. Sie erstellt über den Link ihr eigenes Konto
    und ist danach automatisch mit dir verbunden.
 
@@ -108,11 +108,11 @@ Konzerte, Shows, Theater und Festivals kommen von Ticketmaster (kostenlos):
 
 1. Auf **developer.ticketmaster.com** ein Konto anlegen.
 2. Unter **My Apps** steht der **Consumer Key** – kopieren.
-3. In Dately: **Zahnrad → Weitere Datenquellen → Ticketmaster API Key** einfügen.
+3. In Datewell: **Zahnrad → Weitere Datenquellen → Ticketmaster API Key** einfügen.
 
-Weihnachtsmärkte, Eislaufen, Open-Air-Kinos und Badeseen findet Dately auch ohne Schlüssel über die Kartendaten (OpenStreetMap) – passend zur Jahreszeit.
+Weihnachtsmärkte, Eislaufen, Open-Air-Kinos und Badeseen findet Datewell auch ohne Schlüssel über die Kartendaten (OpenStreetMap) – passend zur Jahreszeit.
 
-### 6. Dately-Server für Orte & Google (empfohlen, ca. 10 Minuten)
+### 6. Datewell-Server für Orte & Google (empfohlen, ca. 10 Minuten)
 
 Damit Orte in 1–2 Sekunden statt in Minuten laden und Google-Daten (Sterne, Fotos, Öffnungszeiten) sicher über
 euren Server kommen, gibt es die Server-Funktion `places`. Sie merkt sich alle Ergebnisse 7 Tage – eine Suche
@@ -129,7 +129,7 @@ hilft also allen.
 4. **Google-Schlüssel hinterlegen (optional):** **Edge Functions** → **Secrets** → **Add new secret**:
    - Name `GOOGLE_PLACES_KEY`, Wert: euer Google-Places-Schlüssel (`AIza…`).
    - Optional `GOOGLE_DAILY_LIMIT`, z. B. `300` (max. Google-Abfragen pro Tag, schützt vor Kosten).
-5. Dately neu öffnen. Unter **Einstellungen → Weitere Datenquellen** steht dann „Dately-Server ist eingerichtet“.
+5. Datewell neu öffnen. Unter **Einstellungen → Weitere Datenquellen** steht dann „Datewell-Server ist eingerichtet“.
 
 Ohne diese Funktion arbeitet die App wie bisher (langsamer, direkt vom Handy aus).
 
@@ -143,8 +143,8 @@ Erinnerungen am Vorabend und 2 Stunden vorher, „Wie war’s?“ am Tag danach 
 2. **Funktion anlegen:** **Edge Functions** → **Deploy a new function** → **Via Editor** → Name `notify` →
    Inhalt von [`supabase/functions/notify/index.ts`](supabase/functions/notify/index.ts) einfügen → **Deploy function**.
 3. In der Funktion `notify` → **Details** → **Enforce JWT verification** ausschalten → **Save**.
-4. In Dately (jede Person auf ihrem Handy): **Einstellungen → Mitteilungen → Mitteilungen aktivieren**.
-   - **iPhone:** Mitteilungen gibt es nur, wenn Dately auf dem Home-Bildschirm liegt
+4. In Datewell (jede Person auf ihrem Handy): **Einstellungen → Mitteilungen → Mitteilungen aktivieren**.
+   - **iPhone:** Mitteilungen gibt es nur, wenn Datewell auf dem Home-Bildschirm liegt
      (Safari → Teilen → „Zum Home-Bildschirm“) und von dort geöffnet wird.
 
 ### Community: Gut zu wissen

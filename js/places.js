@@ -260,7 +260,7 @@ export function radiusLadder(radius) {
 }
 
 /* ------------------------------------------------------------ Ausweich-Suche über Nominatim */
-// Antwortet der Overpass-Kartendienst nicht, sucht Dately über Nominatim (ebenfalls OpenStreetMap).
+// Antwortet der Overpass-Kartendienst nicht, sucht Datewell über Nominatim (ebenfalls OpenStreetMap).
 // Nominatim erlaubt höchstens eine Anfrage pro Sekunde – deshalb nacheinander mit Pause.
 const NOMI = {
   museum: ['[museum]'], gallery: ['Galerie'], cinema: ['[cinema]'], theatre: ['[theatre]'], restaurant: ['[restaurant]'],

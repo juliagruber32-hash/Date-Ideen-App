@@ -1,4 +1,4 @@
--- Dately: Zwischenspeicher für Orte und Google-Daten (für die Server-Funktion „places“).
+-- Datewell: Zwischenspeicher für Orte und Google-Daten (für die Server-Funktion „places“).
 -- Einmal im Supabase SQL Editor ausführen. Kann gefahrlos mehrfach ausgeführt werden.
 
 create table if not exists public.place_cache (

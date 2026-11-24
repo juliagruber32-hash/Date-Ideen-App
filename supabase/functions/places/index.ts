@@ -1,5 +1,5 @@
 // @ts-nocheck – bewusst ohne Typen, damit die Funktion auch im Supabase-Editor ohne Zusatzschritte läuft
-// Dately – Server-Funktion „places“ (Supabase Edge Function)
+// Datewell – Server-Funktion „places“ (Supabase Edge Function)
 //
 // Holt Orte (OpenStreetMap über Overpass/Nominatim) und Google-Daten (Bewertungen, Fotos, Öffnungszeiten)
 // auf dem Server, merkt sie sich 7 Tage in der Tabelle place_cache und gibt sie an die App weiter.
@@ -72,7 +72,7 @@ async function googleTake() {
   return ok === null ? true : ok === true; // ohne Tabelle (noch nicht eingerichtet) nicht blockieren
 }
 
-/** Ist die Anfrage von einem angemeldeten Dately-Konto? */
+/** Ist die Anfrage von einem angemeldeten Datewell-Konto? */
 async function signedIn(req) {
   const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
   if (!token || !SUPABASE_URL) return false;
@@ -90,7 +90,7 @@ async function overpass(query) {
       const timer = setTimeout(() => ctrl.abort(), 40000);
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'Dately/1.0 (Date-Ideen-App)' },
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'Datewell/1.0 (Date-Ideen-App)' },
         body: 'data=' + encodeURIComponent(query),
         signal: ctrl.signal,
       });
@@ -115,7 +115,7 @@ async function nominatim(params) {
   nominatimNext = Math.max(Date.now(), nominatimNext) + 1100;
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
   const qs = new URLSearchParams({ format: 'jsonv2', ...params });
-  const res = await fetch(`https://nominatim.openstreetmap.org/search?${qs}`, { headers: { 'User-Agent': 'Dately/1.0 (Date-Ideen-App)', 'Accept-Language': 'de' } });
+  const res = await fetch(`https://nominatim.openstreetmap.org/search?${qs}`, { headers: { 'User-Agent': 'Datewell/1.0 (Date-Ideen-App)', 'Accept-Language': 'de' } });
   if (!res.ok) throw new Error(`Nominatim antwortet mit ${res.status}`);
   return res.json();
 }
@@ -221,7 +221,7 @@ export async function handle(req) {
   const self = `${SUPABASE_URL || url.origin}/functions/v1/places`;
   if (req.method === 'GET' && url.searchParams.get('photo')) return googlePhoto(url.searchParams.get('photo'));
   if (req.method !== 'POST') return json({ error: 'Nur POST' }, 405);
-  if (!(await signedIn(req))) return json({ error: 'Bitte in Dately anmelden' }, 401);
+  if (!(await signedIn(req))) return json({ error: 'Bitte in Datewell anmelden' }, 401);
 
   let body;
   try {

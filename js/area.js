@@ -1,4 +1,4 @@
-// Umgebung erkunden: Dately schaut zuerst, was es im gewählten Umkreis alles gibt (Museen, Kinos, Bars,
+// Umgebung erkunden: Datewell schaut zuerst, was es im gewählten Umkreis alles gibt (Museen, Kinos, Bars,
 // Thermen …) und bildet daraus die Dates. Das Ergebnis wird 7 Tage auf dem Gerät gemerkt.
 
 import { CATEGORIES, isXmasSeason, placesServer, searchMixed } from './places.js';
