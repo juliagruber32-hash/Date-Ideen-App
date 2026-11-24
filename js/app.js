@@ -1,9 +1,9 @@
 import * as store from './store.js';
 import { isHiddenFromMe, myRole, nameOf, other } from './store.js';
-import { geocode, getWeather, manualWeather } from './weather.js';
+import { geocode, geocodeList, getWeather, manualWeather } from './weather.js';
 import { setAvailability } from './engine.js';
 import { allIdeas, buildPlan, combineWishes, setPreferences, defaultStart, ideaDuration, loadIdeas, MOODS, moodLabel, REACH, recommend, rhythmStatus, setExtraIdeas, suggest, toICS } from './engine.js';
-import { searchNotable } from './places.js';
+import { isCasualFood, searchNotable } from './places.js';
 import { appleMapsLink, CATEGORIES, CUISINES, catForStep, isXmasSeason, categoryById, directionsLink, distanceKm, fmtKm, fmtMin, formatHours, hoursOn, isOpenAt, locate, mapLink, placeName, reservationLinks, searchByName, searchMixed, searchNearby, travelEstimates } from './places.js';
 import { googleDetails, googleSearch, googleViaServer, setGoogleProxy } from './gplaces.js';
 import { setPlacesProxy } from './places.js';
@@ -723,7 +723,7 @@ const placeIndex = new Map(); // id -> Ort (für die Detailansicht)
 
 /* --- Umgebung: erst schauen, was es gibt, dann Dates daraus bilden --------- */
 
-const GOOGLE_FINDABLE = new Set(['rooftop', 'livemusic', 'botanic', 'blacklight', 'xmas', 'karaoke', 'escape', 'climbing', 'cooking', 'pottery', 'arcade', 'bowling', 'spa', 'icerink', 'boat', 'bookshop']);
+const GOOGLE_FINDABLE = new Set(['dance', 'planetarium', 'massage', 'brewery', 'karting', 'highropes', 'casino', 'rooftop', 'livemusic', 'botanic', 'blacklight', 'xmas', 'karaoke', 'escape', 'climbing', 'cooking', 'pottery', 'arcade', 'bowling', 'spa', 'icerink', 'boat', 'bookshop']);
 const feedRadiusKm = () => (feedFilter.radiusInit ? feedFilter.radiusKm : L().lastSearch?.radiusKm ?? feedFilter.radiusKm) || 15;
 function currentArea() {
   const c = discoverCenter();
@@ -764,7 +764,7 @@ onAreaChange((a, finished) => {
   }
 });
 
-const AREA_LABELS = { restaurant: 'Restaurants', cafe: 'Cafés', bar: 'Bars', cinema: 'Kinos', museum: 'Museen', theatre: 'Theater', spa: 'Thermen', icerink: 'Eishallen', bowling: 'Bowling', escape: 'Escape Rooms', climbing: 'Boulderhallen', zoo: 'Zoos & Tierparks', xmas: 'Weihnachtsmärkte', minigolf: 'Minigolf', gallery: 'Galerien', park: 'Parks', viewpoint: 'Aussichtspunkte', beergarden: 'Biergärten', wine: 'Weinbars', icecream: 'Eisdielen', botanic: 'Botanische Gärten', livemusic: 'Live-Musik', rooftop: 'Rooftop-Bars', cooking: 'Kochkurse', pottery: 'Töpfereien', arcade: 'Lasertag', blacklight: 'Schwarzlicht-Minigolf', lake: 'Badeseen' };
+const AREA_LABELS = { restaurant: 'Restaurants', cafe: 'Cafés', bar: 'Bars', cinema: 'Kinos', museum: 'Museen', theatre: 'Theater', spa: 'Thermen', icerink: 'Eishallen', bowling: 'Bowling', escape: 'Escape Rooms', climbing: 'Boulderhallen', zoo: 'Zoos & Tierparks', xmas: 'Weihnachtsmärkte', minigolf: 'Minigolf', gallery: 'Galerien', park: 'Parks', viewpoint: 'Aussichtspunkte', beergarden: 'Biergärten', wine: 'Weinbars', icecream: 'Eisdielen', botanic: 'Botanische Gärten', livemusic: 'Live-Musik', rooftop: 'Rooftop-Bars', cooking: 'Kochkurse', pottery: 'Töpfereien', arcade: 'Lasertag', blacklight: 'Schwarzlicht-Minigolf', lake: 'Badeseen', dance: 'Tanzschulen', planetarium: 'Planetarien', massage: 'Massage', brewery: 'Brauereien', castle: 'Schlösser', market: 'Wochenmärkte', karting: 'Kartbahnen', billiards: 'Billard', highropes: 'Kletterwälder', casino: 'Spielbanken' };
 
 function areaSection() {
   const c = discoverCenter();
@@ -2041,8 +2041,7 @@ function renderForYou(head) {
     ${extras.length ? `<p class="ctx-extras">${extras.map(esc).join(' · ')}${w?.wet ? ' · bei Regen nur drinnen' : ''}</p>` : w?.wet ? '<p class="ctx-extras">Regen angesagt – Ideen für drinnen</p>' : ''}
     <section class="panel form filter-panel" ${f.open ? '' : 'hidden'}>
       <div class="field"><span class="label">Standort</span>
-        <div class="row gap"><div class="input-ico grow">${icon('pin')}<input class="input" id="ff-city" value="${esc(center?.name ?? S().settings.city)}" placeholder="Stadt"></div>
-        <button type="button" class="btn square" id="ff-gps" aria-label="Meinen Standort verwenden">${icon('locate')}</button></div>
+        ${locField('ff-city', center ? { name: center.name, sub: center.gps ? 'Aktueller Standort' : S().settings.geo?.sub ?? '' } : null)}
       </div>
       <div class="field"><span class="label">Tageszeit</span>${chips('ff-daytime', [['tag', 'Tagsüber', 'sun'], ['abend', 'Abends', 'moon']], f.daytime, 'seg')}</div>
       <div class="field">
@@ -2127,23 +2126,18 @@ function renderForYou(head) {
     f.budget = Number(e.target.value);
     $('#ff-budget-out').textContent = `${f.budget} €`;
   });
-  $('#ff-gps').addEventListener('click', async (e) => {
-    await withBusy(e.currentTarget, async () => {
-      try {
-        const g = await useGps();
-        $('#ff-city').value = g.name;
-      } catch (err) {
-        toast(store.inArtifact() ? 'Den Standort gibt es in der Webseiten-Version.' : err.message);
-      }
-    });
-  });
+  let pickedLoc = null;
+  bindLocField('ff-city', (g) => (pickedLoc = g));
   $('#ff-apply').addEventListener('click', async (e) => {
-    const city = $('#ff-city').value.trim();
     await withBusy(e.currentTarget, async () => {
-      if (city && city !== center?.name) {
-        L().geo = null;
-        store.saveLocal();
-        await ensureGeo(city);
+      if (pickedLoc) setHome(pickedLoc);
+      else {
+        // Nur getippt, nichts gewählt: besten Treffer nehmen
+        const city = $('#ff-city').value.trim();
+        if (city && city !== center?.name) {
+          const best = (await geocodeList(city).catch(() => []))[0];
+          if (best) setHome(best);
+        }
       }
     });
     f.open = false;
@@ -2952,12 +2946,8 @@ RENDER.start = () => {
         ${chips('fmood', [['', 'Egal'], ...MOODS.map(([v, l]) => [v, l])], f.mood ?? '')}
       </div>
       <div class="field" id="city-field">
-        <label class="label" for="f-city">Stadt</label>
-        <div class="row gap">
-          <div class="input-ico grow">${icon('pin')}<input id="f-city" class="input" placeholder="z. B. München" value="${esc(currentPlaceName())}" autocomplete="address-level2"></div>
-          <button type="button" class="btn square" id="f-gps" aria-label="Meinen Standort verwenden" title="Meinen Standort verwenden">${icon('locate')}</button>
-        </div>
-        <small class="muted" id="gps-info">${L().geo && L().geo.name === currentPlaceName() ? 'Aktueller Standort · Wetter wird automatisch geprüft' : ''}</small>
+        <label class="label" for="f-city">Wo?</label>
+        ${locField('f-city', currentPlaceName() ? { name: currentPlaceName(), sub: L().geo && L().geo.name === currentPlaceName() ? 'Aktueller Standort' : S().settings.geo?.sub ?? '' } : null)}
       </div>
       <div class="field" id="note-field" hidden>
         <label class="label" for="f-note">Wunsch oder Hinweis (optional)</label>
@@ -2986,18 +2976,7 @@ RENDER.start = () => {
   };
   showConflicts();
   $('#f-date').addEventListener('change', showConflicts);
-  $('#f-gps').addEventListener('click', async (e) => {
-    const btn = e.currentTarget;
-    await withBusy(btn, async () => {
-      try {
-        const g = await useGps();
-        $('#f-city').value = g.name;
-        $('#gps-info').textContent = 'Aktueller Standort · Wetter wird automatisch geprüft';
-      } catch (err) {
-        $('#gps-info').textContent = err.message;
-      }
-    });
-  });
+  bindLocField('f-city', (g) => setHome(g));
 
   $('#f-budget').addEventListener('input', (e) => {
     f.budget = Number(e.target.value);
@@ -3108,6 +3087,79 @@ async function withBusy(btn, fn) {
       btn.innerHTML = label;
     }
   }
+}
+
+/* --- Standort genau wählen: Vorschlagsliste mit Landkreis bzw. Adresse ------- */
+
+/** Eingabefeld mit Vorschlägen. Nach der Auswahl steht darunter, welcher Ort genau gilt. */
+function locField(id, geo, placeholder = 'Ort oder Adresse, z. B. Wartenberg') {
+  return `
+    <div class="loc-field">
+      <div class="row gap"><div class="input-ico grow">${icon('pin')}<input class="input" id="${id}" value="${esc(geo?.name ?? '')}" placeholder="${esc(placeholder)}" autocomplete="off"></div>
+      <button type="button" class="btn square" data-loc-gps="${id}" aria-label="Meinen Standort verwenden">${icon('locate')}</button></div>
+      <div class="loc-suggest" id="${id}-list" hidden></div>
+      <p class="loc-confirm small" id="${id}-ok">${geo?.name ? `${icon('check', 'inline')} ${esc(geo.name)}${geo.sub ? ` <span class="muted">· ${esc(geo.sub)}</span>` : ''}` : '<span class="muted">Tippe und wähle den richtigen Ort aus der Liste.</span>'}</p>
+    </div>`;
+}
+
+function bindLocField(id, onPick) {
+  const input = document.getElementById(id);
+  const list = document.getElementById(`${id}-list`);
+  const ok = document.getElementById(`${id}-ok`);
+  if (!input) return;
+  let timer = null;
+  let seq = 0;
+  const pick = (g) => {
+    list.hidden = true;
+    input.value = g.name;
+    ok.innerHTML = `${icon('check', 'inline')} ${esc(g.name)}${g.sub ? ` <span class="muted">· ${esc(g.sub)}</span>` : ''}`;
+    onPick(g);
+  };
+  input.addEventListener('input', () => {
+    clearTimeout(timer);
+    const q = input.value.trim();
+    if (q.length < 2) {
+      list.hidden = true;
+      return;
+    }
+    timer = setTimeout(async () => {
+      const my = ++seq;
+      list.hidden = false;
+      list.innerHTML = '<p class="muted small"><span class="spinner tiny"></span> Suche …</p>';
+      const res = await geocodeList(q, discoverCenter()).catch(() => []);
+      if (my !== seq) return;
+      list.innerHTML = res.length
+        ? res.map((g, k) => `<button type="button" class="loc-opt" data-k="${k}">${icon(g.kind === 'adresse' ? 'home' : 'pin')}<span><strong>${esc(g.name)}</strong><small class="muted">${esc(g.sub)}</small></span></button>`).join('')
+        : '<p class="muted small">Nichts gefunden – versuch es mit Ort und Straße.</p>';
+      list.querySelectorAll('.loc-opt').forEach((b) => b.addEventListener('click', () => pick(res[Number(b.dataset.k)])));
+    }, 350);
+  });
+  document.querySelector(`[data-loc-gps="${id}"]`)?.addEventListener('click', async (e) => {
+    await withBusy(e.currentTarget, async () => {
+      try {
+        const g = await useGps();
+        pick({ name: g.name, sub: 'Aktueller Standort', lat: g.lat, lon: g.lon, gps: true });
+      } catch (err) {
+        toast(store.inArtifact() ? 'Den Standort gibt es in der Webseiten-Version.' : err.message);
+      }
+    });
+  });
+}
+
+/** Gewählten Ort für beide übernehmen (GPS-Standort wird dann nicht mehr bevorzugt). */
+function setHome(g) {
+  if (!g.gps) {
+    L().geo = null;
+    store.saveLocal();
+  }
+  store.update((st) => {
+    st.settings.city = g.town || g.name;
+    st.settings.geo = { name: g.kind === 'adresse' && g.town ? `${g.name}, ${g.town}` : g.name, sub: g.sub ?? '', lat: g.lat, lon: g.lon };
+  });
+  discover.feed = null;
+  discover.gen = null;
+  discover.near = null;
+  discover.results = null;
 }
 
 async function ensureGeo(cityInput) {
@@ -3696,14 +3748,20 @@ async function loadStepPlaces(steps, draft, stepCats, center, ctx) {
         }
         const pool = [...(fixed && !(groups[cat] ?? []).some((p) => p.id === fixed.id) ? [placeIndex.get(fixed.id)] : []), ...(groups[cat] ?? [])];
         const maxKm = s.near ?? (['supermarket', 'chocolate'].includes(realCat[i] ?? cat) ? 8 : null);
+        const wishes = [[/sushi|japan/, /sushi|japan/i], [/ital|pasta|pizza/, /ital|pizza|trattoria|osteria/i], [/fondue|raclette|schweiz/, /fondue|schweiz|swiss|käse/i], [/burger/, /burger/i], [/steak/, /steak|grill/i], [/indisch|curry/, /indisch|india/i], [/griech/, /griech|greek/i], [/bayer|bräu|wirtshaus/, /bayer|regional|deutsch|bräu|wirt/i]];
+        const wish = wishes.find(([re]) => re.test(`${s.t} ${s.q ?? ''}`.toLowerCase()))?.[1] ?? null;
+        // Nach einem schicken Ort (Weinbar, Cocktailbar, Theater …) kein Imbiss oder Asia-Wok
+        const prevChic = ['wine', 'cocktail', 'finedining', 'theatre', 'rooftop', 'livemusic', 'spa'].includes(prev?.category);
+        const styleOk = (p) => !prevChic || !['restaurant', 'finedining', 'burger'].includes(realCat[i] ?? cat) || !isCasualFood(p);
         const list = pool
-          .filter((p) => !used.has(p.id) && (maxKm == null || p.km <= maxKm))
+          .filter((p) => !used.has(p.id) && (maxKm == null || p.km <= maxKm) && styleOk(p))
           .map((p) => ({ ...p, distFromPrev: distanceKm(prev, p), open: isOpenAt(p.hours, when) }))
           .filter((p) => p.open !== false || p.id === draft.picks[i])
           // Hauptort: zuerst im gewählten Umkreis; bekannte Orte weiter weg kommen unten dazu
           .filter((p) => cat !== firstCat || !pool.some((q) => q.km * 1000 <= radius) || p.km * 1000 <= radius || p.id === draft.picks[i])
           // Nähe zählt am meisten; bestätigt geöffnete Orte bekommen 1,5 km Vorsprung
-          .sort((a, b) => (b.id === draft.picks[i]) - (a.id === draft.picks[i]) || (a.distFromPrev - (a.open === true ? 1.5 : 0)) - (b.distFromPrev - (b.open === true ? 1.5 : 0)))
+          // Wunschküche (z. B. „Sushi“, „Italienisch“, „Fondue“) bekommt 2 km Vorsprung
+          .sort((a, b) => (b.id === draft.picks[i]) - (a.id === draft.picks[i]) || (a.distFromPrev - (a.open === true ? 1.5 : 0) - (wish && wish.test(`${a.cuisine ?? ''} ${a.name}`) ? 2 : 0)) - (b.distFromPrev - (b.open === true ? 1.5 : 0) - (wish && wish.test(`${b.cuisine ?? ''} ${b.name}`) ? 2 : 0)))
           .slice(0, 7);
         // Beim Hauptort zusätzlich bekannte Orte etwas weiter weg anbieten (z. B. Deutsches Museum)
         if (cat === firstCat) {
@@ -4967,9 +5025,9 @@ RENDER.mehr = () => {
     <section class="panel form">
       <div class="panel-head">${icon('pin')}<h2>Ort & Vorlieben</h2></div>
       <div class="field">
-        <label class="label" for="s-city">Stadt</label>
-        <div class="row gap"><input class="input grow" id="s-city" value="${esc(st.city)}" placeholder="z. B. München"><button class="btn" id="check-city" type="button">Prüfen</button></div>
-        <small class="muted" id="city-info">${st.geo ? `${esc(st.geo.name)}, ${esc(st.geo.country)} · Wetter automatisch` : st.city ? 'Wetter wird bei der Suche abgefragt' : ''}</small>
+        <label class="label" for="s-city">Euer Zuhause (Ort oder Adresse)</label>
+        ${locField('s-city', st.geo ? { name: st.geo.name, sub: st.geo.sub ?? st.geo.country ?? '' } : st.city ? { name: st.city } : null)}
+        <small class="muted">Von hier aus sucht Dately Orte und berechnet Wege. Unterwegs nutzt Dately auf Wunsch den aktuellen Standort.</small>
       </div>
       <label class="switch"><input type="checkbox" id="s-vegan" data-set="vegan" ${st.vegan ? 'checked' : ''}><span><strong>Vegan bevorzugen</strong><br><small class="muted">Restaurant-Links suchen vegan, Rezepte tauschen Zutaten.</small></span></label>
     </section>
@@ -5106,8 +5164,10 @@ RENDER.mehr = () => {
     const geo = await ensureGeo(name);
     info.textContent = geo ? `${geo.name}, ${geo.country} · Wetter automatisch` : 'Gespeichert. Das Wetter wählt ihr bei der Suche selbst.';
   };
-  $('#check-city').addEventListener('click', checkCity);
-  $('#s-city').addEventListener('change', checkCity);
+  bindLocField('s-city', (g) => {
+    setHome(g);
+    toast(`Zuhause: ${g.name}`);
+  });
   on('[data-step]', 'click', (_, el) => {
     store.update((s) => (s.settings.datesPerMonth = Math.min(12, Math.max(1, s.settings.datesPerMonth + Number(el.dataset.step)))));
     $('#per-month').textContent = S().settings.datesPerMonth;

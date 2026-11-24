@@ -30,13 +30,13 @@ function save() {
 const slim = (p) => ({
   id: p.id, name: p.name, lat: p.lat, lon: p.lon, km: p.km, street: p.street, city: p.city, hours: p.hours, price: p.price,
   website: p.website, image: p.image, wikidata: p.wikidata, wikipedia: p.wikipedia, importance: p.importance, category: p.category,
-  cuisine: p.cuisine, vegan: p.vegan, vegetarian: p.vegetarian, reservationUrl: p.reservationUrl, phone: p.phone,
+  cuisine: p.cuisine, servesFood: p.servesFood, vegan: p.vegan, vegetarian: p.vegetarian, reservationUrl: p.reservationUrl, phone: p.phone,
 });
 
 /** Welche Ortsarten erkundet werden – wichtige zuerst, saisonale nur zur passenden Zeit. */
 function scanOrder(iso) {
   const m = Number(iso.slice(5, 7));
-  const first = ['restaurant', 'cafe', 'bar', 'cinema', 'museum', 'spa', 'icerink', 'bowling', 'escape', 'climbing', 'theatre', 'zoo'];
+  const first = ['restaurant', 'cafe', 'bar', 'wine', 'cinema', 'museum', 'spa', 'icerink', 'bowling', 'escape', 'climbing', 'theatre', 'zoo'];
   // Nicht erkundet: Arten, die nur als Nebenstation vorkommen (werden im Plan direkt gesucht)
   const ids = CATEGORIES.filter((c) => !['ort', 'supermarket', 'chocolate', 'dessert', 'brunch', 'tapas', 'cocktail', 'finedining', 'burger'].includes(c.id))
     .filter((c) => !c.seasonal || (c.seasonal === 'summer' ? m >= 5 && m <= 9 : isXmasSeason(iso)))

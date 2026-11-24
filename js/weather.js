@@ -45,6 +45,41 @@ export async function geocode(name) {
   return { name: g.name, lat: g.latitude, lon: g.longitude, country: g.country ?? '' };
 }
 
+/**
+ * Vorschläge für Ort oder Adresse (zum Auswählen).
+ * Orte kommen von Open-Meteo (mit Landkreis), Adressen von Photon (OpenStreetMap).
+ */
+export async function geocodeList(q, near = null) {
+  const out = [];
+  const tasks = [];
+  const looksLikeAddress = /\d|straße|str\.|weg\b|platz\b|gasse|allee|ring\b/i.test(q);
+  tasks.push((async () => {
+    const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q.split(',')[0])}&count=8&language=de&format=json`);
+    if (!res.ok) return;
+    for (const g of (await res.json()).results ?? []) {
+      if (!['DE', 'AT', 'CH', 'IT', 'NL', 'FR'].includes(g.country_code)) continue;
+      out.push({ kind: 'ort', name: g.name, sub: [g.admin3 && g.admin3 !== g.name ? g.admin3 : '', g.admin2, g.admin1, g.country_code !== 'DE' ? g.country : ''].filter((x) => x && !/^Regierungsbezirk/.test(x)).slice(0, 2).join(', '), lat: g.latitude, lon: g.longitude, pop: g.population ?? 0 });
+    }
+  })());
+  tasks.push((async () => {
+    const bias = near ? `&lat=${near.lat}&lon=${near.lon}` : '';
+    const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&lang=de&limit=6${bias}`);
+    if (!res.ok) return;
+    for (const f of (await res.json()).features ?? []) {
+      const p = f.properties ?? {};
+      if (!['DE', 'AT', 'CH'].includes(p.countrycode)) continue;
+      const street = [p.street, p.housenumber].filter(Boolean).join(' ');
+      const town = p.city || p.town || p.village || p.district || '';
+      const isAddr = !!p.street || p.osm_key === 'building' || p.type === 'house';
+      if (!isAddr && !looksLikeAddress) continue;
+      out.push({ kind: 'adresse', name: street || p.name || town, sub: [p.postcode, town, p.county ?? p.state].filter(Boolean).join(' '), lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0], town });
+    }
+  })());
+  await Promise.allSettled(tasks);
+  // Adressen zuerst, wenn danach gesucht wurde; Orte nach Einwohnern
+  return out.sort((a, b) => (looksLikeAddress ? (b.kind === 'adresse') - (a.kind === 'adresse') : (a.kind === 'adresse') - (b.kind === 'adresse')) || (b.pop ?? 0) - (a.pop ?? 0)).slice(0, 7);
+}
+
 const memo = new Map();
 
 async function fetchForecast(geo) {

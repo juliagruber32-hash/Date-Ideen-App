@@ -6,35 +6,46 @@ import { addMinutes } from './util.js';
 import { catBias, visitedRecently } from './taste.js';
 
 // Was passt danach? [Kategorie, Bezeichnung der Station, Minuten]
+// Was passt dazu? [Kategorie, Bezeichnung, Minuten, 'vorher' | 'danach']
+// Grundsatz: Essen zwischen 18 und 20 Uhr, Aperitif vor dem Essen, Drinks danach.
 const PAIRINGS = {
-  museum: [['cafe', 'Kaffee & Kuchen', 60], ['wine', 'Ein Glas Wein', 60]],
-  gallery: [['cafe', 'Kaffee danach', 45], ['wine', 'Ein Glas Wein', 60]],
-  cinema: [['bar', 'Drink danach', 60], ['restaurant', 'Essen danach', 75]],
-  theatre: [['wine', 'Ein Glas Wein danach', 60], ['bar', 'Drink danach', 60]],
-  bowling: [['restaurant', 'Essen danach', 75], ['bar', 'Drink danach', 60]],
-  escape: [['restaurant', 'Essen & Auswertung', 75], ['bar', 'Drink danach', 60]],
-  climbing: [['cafe', 'Smoothie & Snack', 40], ['beergarden', 'Biergarten', 75]],
-  minigolf: [['icecream', 'Eis danach', 30], ['beergarden', 'Biergarten', 60]],
-  zoo: [['cafe', 'Kaffee & Kuchen', 45], ['beergarden', 'Biergarten', 60]],
-  park: [['icecream', 'Eis', 30], ['cafe', 'Café', 45]],
-  viewpoint: [['bar', 'Sundowner', 60], ['restaurant', 'Abendessen', 75]],
-  spa: [['restaurant', 'Leichtes Abendessen', 75]],
-  icerink: [['xmas', 'Punsch auf dem Weihnachtsmarkt', 45], ['cafe', 'Heiße Schokolade', 40]],
-  xmas: [['restaurant', 'Abendessen', 75], ['wine', 'Ein Glas Wein', 60]],
-  restaurant: [['bar', 'Drink danach', 60], ['icecream', 'Dessert', 30]],
-  wine: [['restaurant', 'Essen danach', 75]],
-  bar: [['restaurant', 'Essen vorher', 75]],
-  beergarden: [['park', 'Spaziergang', 45]],
-  openair: [['bar', 'Drink davor', 45], ['icecream', 'Eis davor', 30]],
-  lake: [['beergarden', 'Biergarten', 75], ['icecream', 'Eis', 30]],
-  boat: [['icecream', 'Eis am Ufer', 30], ['beergarden', 'Biergarten', 60]],
-  icecream: [['park', 'Spaziergang', 45]],
-  cafe: [['park', 'Spaziergang', 45], ['museum', 'Museum', 90]],
+  museum: [['cafe', 'Kaffee & Kuchen', 60, 'danach'], ['wine', 'Ein Glas Wein', 60, 'danach']],
+  gallery: [['cafe', 'Kaffee danach', 45, 'danach'], ['wine', 'Ein Glas Wein', 60, 'danach']],
+  cinema: [['restaurant', 'Essen vorher', 75, 'vorher'], ['bar', 'Drink danach', 60, 'danach']],
+  theatre: [['restaurant', 'Essen vorher', 75, 'vorher'], ['wine', 'Ein Glas Wein danach', 60, 'danach']],
+  livemusic: [['restaurant', 'Essen vorher', 75, 'vorher']],
+  bowling: [['restaurant', 'Essen vorher', 75, 'vorher'], ['bar', 'Drink danach', 60, 'danach']],
+  escape: [['restaurant', 'Essen & Auswertung', 75, 'danach'], ['bar', 'Drink danach', 60, 'danach']],
+  climbing: [['cafe', 'Smoothie & Snack', 40, 'danach'], ['restaurant', 'Essen danach', 75, 'danach']],
+  minigolf: [['icecream', 'Eis danach', 30, 'danach'], ['beergarden', 'Biergarten', 60, 'danach']],
+  zoo: [['cafe', 'Kaffee & Kuchen', 45, 'danach'], ['beergarden', 'Biergarten', 60, 'danach']],
+  park: [['icecream', 'Eis', 30, 'danach'], ['cafe', 'Café', 45, 'danach']],
+  viewpoint: [['restaurant', 'Abendessen', 90, 'danach'], ['cafe', 'Café', 45, 'danach']],
+  spa: [['restaurant', 'Leichtes Abendessen', 75, 'danach']],
+  icerink: [['xmas', 'Punsch auf dem Weihnachtsmarkt', 45, 'danach'], ['cafe', 'Heiße Schokolade', 40, 'danach']],
+  xmas: [['restaurant', 'Abendessen', 90, 'danach'], ['wine', 'Ein Glas Wein', 60, 'danach']],
+  restaurant: [['wine', 'Aperitif', 45, 'vorher'], ['bar', 'Drink danach', 60, 'danach']],
+  wine: [['restaurant', 'Abendessen', 105, 'danach']],
+  cocktail: [['restaurant', 'Abendessen', 105, 'danach']],
+  bar: [['restaurant', 'Essen vorher', 90, 'vorher']],
+  beergarden: [['park', 'Spaziergang', 45, 'vorher']],
+  openair: [['restaurant', 'Essen vorher', 75, 'vorher'], ['icecream', 'Eis vorher', 30, 'vorher']],
+  lake: [['beergarden', 'Biergarten', 75, 'danach'], ['icecream', 'Eis', 30, 'danach']],
+  boat: [['icecream', 'Eis am Ufer', 30, 'danach'], ['beergarden', 'Biergarten', 60, 'danach']],
+  icecream: [['park', 'Spaziergang', 45, 'danach']],
+  cafe: [['park', 'Spaziergang', 45, 'danach'], ['museum', 'Museum', 90, 'danach']],
 };
 
+// Schicke Orte – hier passt kein Imbiss und keine schnelle Küche dazu
+const CHIC = new Set(['wine', 'cocktail', 'finedining', 'theatre', 'rooftop', 'livemusic', 'spa']);
+const CASUAL = /asiat|chines|vietnam|thai|sushi|japan|indisch|türk|döner|kebab|burger|pizza|griech|imbiss|fast|wok\b|asia\b|snack|grill/i;
+const STYLISH = /ital|franz|mediterr|regional|deutsch|bayer|österr|spani|steak|fisch|wein|gourmet|bistro|trattoria|osteria|brasserie/i;
+const casual = (p) => CASUAL.test(`${p.cuisine ?? ''} ${p.name ?? ''}`);
+const stylish = (p) => STYLISH.test(`${p.cuisine ?? ''} ${p.name ?? ''}`);
+
 // Dauer des Hauptorts
-const MAIN_MIN = { museum: 120, gallery: 75, cinema: 135, theatre: 150, bowling: 90, escape: 75, climbing: 120, minigolf: 75, zoo: 180, park: 90, viewpoint: 60, spa: 240, icerink: 90, xmas: 90, restaurant: 105, wine: 90, bar: 90, beergarden: 90, openair: 150, lake: 150, boat: 60, icecream: 40, cafe: 75 };
-const MAIN_LABEL = { museum: 'Museum', gallery: 'Galerie', cinema: 'Kino', theatre: 'Vorstellung', bowling: 'Bowling', escape: 'Escape Room', climbing: 'Bouldern', minigolf: 'Minigolf', zoo: 'Zoo', park: 'Spaziergang', viewpoint: 'Aussicht', spa: 'Therme', icerink: 'Eislaufen', xmas: 'Weihnachtsmarkt', restaurant: 'Essen', wine: 'Weinbar', bar: 'Bar', beergarden: 'Biergarten', openair: 'Open-Air-Kino', lake: 'Am See', boat: 'Boot fahren', icecream: 'Eis', cafe: 'Café' };
+const MAIN_MIN = { cocktail: 75, livemusic: 120, museum: 120, gallery: 75, cinema: 135, theatre: 150, bowling: 90, escape: 75, climbing: 120, minigolf: 75, zoo: 180, park: 90, viewpoint: 60, spa: 240, icerink: 90, xmas: 90, restaurant: 105, wine: 90, bar: 90, beergarden: 90, openair: 150, lake: 150, boat: 60, icecream: 40, cafe: 75 };
+const MAIN_LABEL = { cocktail: 'Cocktailbar', livemusic: 'Live-Musik', museum: 'Museum', gallery: 'Galerie', cinema: 'Kino', theatre: 'Vorstellung', bowling: 'Bowling', escape: 'Escape Room', climbing: 'Bouldern', minigolf: 'Minigolf', zoo: 'Zoo', park: 'Spaziergang', viewpoint: 'Aussicht', spa: 'Therme', icerink: 'Eislaufen', xmas: 'Weihnachtsmarkt', restaurant: 'Essen', wine: 'Weinbar', bar: 'Bar', beergarden: 'Biergarten', openair: 'Open-Air-Kino', lake: 'Am See', boat: 'Boot fahren', icecream: 'Eis', cafe: 'Café' };
 
 const month = (iso) => Number(iso.slice(5, 7));
 const isSummer = (iso) => month(iso) >= 6 && month(iso) <= 8;
@@ -66,25 +77,51 @@ function mainCategories({ moods, daytime, date, weather, place, budget = Infinit
   return ids.sort((a, b) => score(b) - score(a));
 }
 
+const servesFood = (p) => p.servesFood || (p.category === 'wine' && !!p.cuisine);
 const placeRef = (p) => ({ id: p.id, wikipedia: p.wikipedia, name: p.name, street: p.street, city: p.city, lat: p.lat, lon: p.lon, website: p.website, hours: p.hours, price: p.price, image: p.image, category: p.category });
 
-/** Ein Date aus Hauptort + Folgeort bauen. */
+/** Ein Date aus Hauptort + zweitem Ort bauen (vorher oder danach), mit stimmigen Uhrzeiten. */
 export function buildGeneratedIdea(main, follow, pairing, { start, date }) {
   const cat = categoryById(main.category);
-  const mainMin = MAIN_MIN[main.category] ?? 90;
+  const before = pairing?.[3] === 'vorher';
+  const dinnerAfter = pairing && !before && ['restaurant', 'finedining'].includes(follow?.category);
+  // Als Aperitif vor dem Essen reicht eine knappe Stunde
+  let mainMin = MAIN_MIN[main.category] ?? 90;
+  if (dinnerAfter && ['wine', 'cocktail', 'bar'].includes(main.category)) mainMin = 60;
+  const aperitif = dinnerAfter && ['wine', 'cocktail', 'bar'].includes(main.category);
+  const withFood = !follow && servesFood(main);
+  if (withFood) mainMin = 150;
+  const mainLabel = withFood ? 'Wein & kleine Gerichte' : aperitif ? 'Aperitif' : MAIN_LABEL[main.category] ?? cat.label;
   const gap = follow ? distanceKm(main, follow) : 0;
-  const steps = [{ t: `${MAIN_LABEL[main.category] ?? cat.label}: ${main.name}`, label: MAIN_LABEL[main.category] ?? cat.label, cat: main.category, min: mainMin, place: placeRef(main), food: !!cat.food }];
+  const mainStep = { t: `${mainLabel}: ${main.name}`, label: mainLabel, cat: main.category, min: mainMin, place: placeRef(main), food: !!cat.food || withFood };
+  const steps = [mainStep];
   if (follow && pairing) {
     const fcat = categoryById(follow.category);
-    steps.push({ t: `${pairing[1]}: ${follow.name}`, label: pairing[1], cat: follow.category, min: pairing[2], place: placeRef(follow), food: !!fcat.food, note: gap > 0.05 ? `${fmtKm(gap)} vom ${MAIN_LABEL[main.category] ?? 'ersten Ort'} entfernt` : '' });
+    const fStep = { t: `${pairing[1]}: ${follow.name}`, label: pairing[1], cat: follow.category, min: pairing[2], place: placeRef(follow), food: !!fcat.food, note: gap > 0.05 ? `${fmtKm(gap)} entfernt` : 'gleich nebenan' };
+    if (before) steps.unshift(fStep);
+    else steps.push(fStep);
+  }
+  // Startzeit so wählen, dass ein Abendessen zwischen 18 und 20 Uhr beginnt
+  let st = start;
+  const total = steps.reduce((a, x) => a + x.min, 0);
+  const dinnerIdx = steps.findIndex((x) => ['restaurant', 'finedining'].includes(x.cat));
+  if (dinnerIdx >= 0 && (cat.times.includes('abend') || dinnerAfter)) {
+    const offset = steps.slice(0, dinnerIdx).reduce((a, x) => a + x.min, 0);
+    const target = 18 * 60 + 45; // Essen um ca. 18:45
+    const m = Math.max(16 * 60 + 30, Math.min(19 * 60 + 30, target - offset));
+    st = `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
   }
   const amount = main.price?.amount;
-  const cost = Math.round((amount != null ? amount * 2 : cat.cost) + (follow ? Math.min(categoryById(follow.category).cost, 40) : 0));
+  const cost = Math.round((amount != null ? amount * 2 : cat.cost) + (follow ? Math.min(categoryById(follow.category).cost, 60) : 0));
+  const first = before ? follow : main;
+  const second = before ? main : follow;
   return {
     id: `gen-${main.id}${follow ? `-${follow.id}` : ''}`,
-    title: follow ? `${main.name} & ${follow.name}` : main.name,
+    title: follow ? `${first.name} & ${second.name}` : withFood ? `Weinabend: ${main.name}` : main.name,
     emoji: cat.emoji,
-    teaser: follow ? `${MAIN_LABEL[main.category] ?? cat.label}, ${/vorher|davor/.test(pairing[1]) ? '' : 'danach '}${pairing[1].replace(/ (danach|vorher|davor)$/, '')} ${/vorher|davor/.test(pairing[1]) ? 'vorher ' : ''}${gap < 0.6 ? 'gleich nebenan' : `in ${fmtKm(gap)}`}` : cat.label,
+    teaser: withFood ? 'Wein und kleine Gerichte an einem Ort – ganz entspannt.'
+      : follow ? (before ? `${pairing[1].replace(/ vorher$/, '')}, danach ${mainLabel.toLowerCase()}` : `${mainLabel}, danach ${pairing[1].replace(/ danach$/, '').toLowerCase()}`) + (gap < 0.6 ? ' – gleich nebenan' : ` – ${fmtKm(gap)} entfernt`)
+        : cat.label,
     place: cat.place,
     moods: cat.moods ?? [],
     cost,
@@ -98,7 +135,7 @@ export function buildGeneratedIdea(main, follow, pairing, { start, date }) {
     travel: travelEstimates(main.km),
     mainPlace: placeRef(main),
     priceText: main.price?.text ?? '',
-    ...(start ? { start: { [cat.times[0]]: start } } : {}),
+    ...(st ? { start: { [cat.times.includes('abend') ? 'abend' : cat.times[0]]: st, tag: st } } : {}),
     date,
   };
 }
@@ -110,7 +147,11 @@ export function buildGeneratedIdea(main, follow, pairing, { start, date }) {
 export async function generateLocalDates(opts) {
   const { center, radiusKm = 15, daytime = 'abend', date, moods = [], weather, place = null, onlyCategory = null, count = 4, mainList = null, budget = Infinity, prio = 0 } = opts;
   const cold = isWinter(date) || month(date) === 11; // Biergärten & Co. haben im Winter meist zu
-  const pairOf = (catId) => (PAIRINGS[catId] ?? [['cafe', 'Kaffee danach', 45], ['restaurant', 'Essen danach', 75]]).filter((x) => !cold || !['beergarden', 'park', 'icecream'].includes(x[0])).concat(cold ? [['cafe', 'Aufwärmen im Café', 45], ['restaurant', 'Essen danach', 75]] : []);
+  const pairOf = (catId) => {
+    const list = (PAIRINGS[catId] ?? [['cafe', 'Kaffee danach', 45, 'danach'], ['restaurant', 'Essen danach', 75, 'danach']]).filter((x) => !cold || !['beergarden', 'park', 'icecream'].includes(x[0]));
+    // Im Winter statt Biergarten & Eis: aufwärmen
+    return list.length ? list : [['cafe', 'Aufwärmen im Café', 45, 'danach'], ['restaurant', 'Essen danach', 75, 'danach']];
+  };
   const mains = mainList ? ['suche'] : onlyCategory ? [onlyCategory] : mainCategories({ moods, daytime, date, weather, place, budget }).slice(0, 5);
   const followSrc = mainList ? [...new Set(mainList.map((p) => p.category))] : mains;
   const follows = [...new Set(followSrc.flatMap((id) => pairOf(id).map((p) => p[0])))].filter((id) => id !== 'xmas' || isXmasSeason(date));
@@ -141,14 +182,24 @@ export async function generateLocalDates(opts) {
       // Passenden zweiten Ort möglichst nah am Hauptort suchen
       let best = null;
       const mainCost = main.price?.amount != null ? main.price.amount * 2 : categoryById(main.category)?.cost ?? 0;
+      // Weinbar mit Küche: einfach dort bleiben
+      if (servesFood(main) && ['wine', 'cocktail'].includes(main.category)) {
+        used.add(main.id);
+        out.push(buildGeneratedIdea(main, null, null, { date: day, start: '18:30' }));
+        if (!many && out.length >= count) return out;
+        continue;
+      }
+      const chic = CHIC.has(main.category);
       for (const pairing of pairOf(main.category)) {
         if (mainCost + Math.min(categoryById(pairing[0])?.cost ?? 0, 40) > budget * 1.2) continue; // zu teuer
-        const followAt = new Date(`${day}T${addMinutes(startTime, MAIN_MIN[main.category] ?? 90)}:00`);
+        const followAt = new Date(`${day}T${pairing[3] === 'vorher' ? startTime : addMinutes(startTime, MAIN_MIN[main.category] ?? 90)}:00`);
         const cands = (groups[pairing[0]] ?? [])
           .filter((f) => f.id !== main.id && !used.has(f.id) && isOpenAt(f.hours, followAt) !== false)
-          .map((f) => ({ f, d: distanceKm(main, f) }))
-          .sort((a, b) => a.d - b.d);
-        if (cands[0] && (!best || cands[0].d < best.d)) best = { ...cands[0], pairing };
+          // Zum schicken Weinlokal passt kein Imbiss oder Asia-Wok
+          .filter((f) => !chic || !['restaurant', 'finedining'].includes(f.category) || !casual(f))
+          .map((f) => ({ f, d: distanceKm(main, f), score: distanceKm(main, f) - (chic && stylish(f) ? 0.8 : 0) }))
+          .sort((a, b) => a.score - b.score);
+        if (cands[0] && (!best || cands[0].score < best.score)) best = { ...cands[0], pairing };
       }
       if (best && best.d > 3) best = null; // zu weit auseinander
       used.add(main.id);

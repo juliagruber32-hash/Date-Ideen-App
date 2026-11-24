@@ -2027,5 +2027,1071 @@
         "min": 15
       }
     ]
+  },
+  {
+    "id": "salsa",
+    "title": "Salsa-Schnupperkurs",
+    "emoji": "🎶",
+    "teaser": "Eine Stunde Hüftschwung lernen – danach auf einen Drink.",
+    "place": "drinnen",
+    "cost": 50,
+    "reach": 1,
+    "times": [
+      "abend"
+    ],
+    "steps": [
+      {
+        "t": "Tanzkurs",
+        "min": 90,
+        "q": "Tanzschule",
+        "book": true,
+        "todo": "Schnupperstunde für zwei anmelden"
+      },
+      {
+        "t": "Drink danach",
+        "min": 60,
+        "q": "Bar"
+      }
+    ],
+    "moods": [
+      "aktiv",
+      "romantisch",
+      "lustig"
+    ],
+    "start": {
+      "abend": "19:00"
+    }
+  },
+  {
+    "id": "planetarium",
+    "title": "Planetarium & Abendessen",
+    "emoji": "🌙",
+    "teaser": "Unter dem Sternenhimmel liegen – danach schön essen.",
+    "place": "drinnen",
+    "cost": 70,
+    "reach": 1,
+    "times": [
+      "abend",
+      "tag"
+    ],
+    "steps": [
+      {
+        "t": "Essen vorher",
+        "min": 75,
+        "q": "Restaurant",
+        "food": true
+      },
+      {
+        "t": "Planetarium",
+        "min": 75,
+        "q": "Planetarium",
+        "book": true,
+        "todo": "Vorstellung buchen"
+      }
+    ],
+    "moods": [
+      "romantisch",
+      "kultur"
+    ],
+    "start": {
+      "abend": "18:00",
+      "tag": "15:00"
+    }
+  },
+  {
+    "id": "paarmassage",
+    "title": "Massage für zwei",
+    "emoji": "💆",
+    "teaser": "Nebeneinander durchkneten lassen – danach Tee und Ruhe.",
+    "place": "drinnen",
+    "cost": 130,
+    "reach": 1,
+    "times": [
+      "tag",
+      "abend"
+    ],
+    "steps": [
+      {
+        "t": "Paarmassage",
+        "min": 60,
+        "q": "Massage",
+        "book": true,
+        "todo": "Paarmassage reservieren"
+      },
+      {
+        "t": "Tee & Kuchen",
+        "min": 45,
+        "q": "Café"
+      }
+    ],
+    "moods": [
+      "entspannt",
+      "romantisch"
+    ]
+  },
+  {
+    "id": "brauerei",
+    "title": "Brauerei & Brotzeit",
+    "emoji": "🥨",
+    "teaser": "Wo das Bier gebraut wird – mit deftiger Brotzeit.",
+    "place": "drinnen",
+    "cost": 50,
+    "reach": 1,
+    "times": [
+      "tag",
+      "abend"
+    ],
+    "steps": [
+      {
+        "t": "Brauerei",
+        "min": 90,
+        "q": "Brauerei Brauhaus"
+      },
+      {
+        "t": "Brotzeit im Bräustüberl",
+        "min": 75,
+        "q": "Brauhaus",
+        "food": true
+      }
+    ],
+    "moods": [
+      "kulinarisch",
+      "lustig"
+    ]
+  },
+  {
+    "id": "schloss",
+    "title": "Schloss & Kaffeehaus",
+    "emoji": "🏛️",
+    "teaser": "Durch Schlossräume und Gärten schlendern, danach Torte.",
+    "place": "draußen",
+    "cost": 35,
+    "reach": 2,
+    "times": [
+      "tag"
+    ],
+    "steps": [
+      {
+        "t": "Schloss besichtigen",
+        "min": 105,
+        "q": "Schloss"
+      },
+      {
+        "t": "Kaffee & Kuchen",
+        "min": 60,
+        "q": "Café"
+      }
+    ],
+    "moods": [
+      "kultur",
+      "romantisch"
+    ],
+    "start": {
+      "tag": "13:30"
+    }
+  },
+  {
+    "id": "wochenmarkt",
+    "title": "Wochenmarkt & Frühstück",
+    "emoji": "🥐",
+    "teaser": "Über den Markt bummeln, Leckeres probieren, gemütlich frühstücken.",
+    "place": "draußen",
+    "cost": 35,
+    "reach": 1,
+    "times": [
+      "tag"
+    ],
+    "steps": [
+      {
+        "t": "Wochenmarkt bummeln",
+        "min": 60,
+        "q": "Wochenmarkt"
+      },
+      {
+        "t": "Frühstück",
+        "min": 75,
+        "q": "Café",
+        "food": true
+      }
+    ],
+    "moods": [
+      "kulinarisch",
+      "gemütlich"
+    ],
+    "start": {
+      "tag": "09:30"
+    }
+  },
+  {
+    "id": "gokart",
+    "title": "Go-Kart-Duell",
+    "emoji": "🎮",
+    "teaser": "Wer fährt die schnellste Runde? Der Verlierer zahlt die Burger.",
+    "place": "drinnen",
+    "cost": 80,
+    "reach": 1,
+    "times": [
+      "abend",
+      "tag"
+    ],
+    "steps": [
+      {
+        "t": "Kartbahn",
+        "min": 60,
+        "q": "Kartbahn",
+        "book": true,
+        "todo": "Rennen reservieren"
+      },
+      {
+        "t": "Burger danach",
+        "min": 75,
+        "q": "Burger Restaurant",
+        "food": true
+      }
+    ],
+    "moods": [
+      "aktiv",
+      "lustig",
+      "abenteuerlich"
+    ]
+  },
+  {
+    "id": "billard",
+    "title": "Billard & Cocktails",
+    "emoji": "🎲",
+    "teaser": "Ein paar Runden Billard, dann ein Cocktail zum Ausklang.",
+    "place": "drinnen",
+    "cost": 45,
+    "reach": 1,
+    "times": [
+      "abend"
+    ],
+    "steps": [
+      {
+        "t": "Billard",
+        "min": 90,
+        "q": "Billard"
+      },
+      {
+        "t": "Cocktail",
+        "min": 60,
+        "q": "Cocktailbar"
+      }
+    ],
+    "moods": [
+      "lustig",
+      "gemütlich"
+    ]
+  },
+  {
+    "id": "kletterwald",
+    "title": "Kletterwald",
+    "emoji": "🧗",
+    "teaser": "Zwischen den Baumwipfeln balancieren – danach in den Biergarten.",
+    "place": "draußen",
+    "cost": 70,
+    "reach": 2,
+    "times": [
+      "tag"
+    ],
+    "steps": [
+      {
+        "t": "Kletterwald",
+        "min": 150,
+        "q": "Kletterwald",
+        "book": true
+      },
+      {
+        "t": "Biergarten",
+        "min": 60,
+        "q": "Biergarten",
+        "food": true
+      }
+    ],
+    "moods": [
+      "aktiv",
+      "abenteuerlich"
+    ],
+    "season": [
+      "04-15",
+      "10-15"
+    ]
+  },
+  {
+    "id": "weinprobe",
+    "title": "Weinprobe & Dinner",
+    "emoji": "🍷",
+    "teaser": "Ein paar Weine kennenlernen, dann gemeinsam essen.",
+    "place": "drinnen",
+    "cost": 110,
+    "reach": 1,
+    "times": [
+      "abend"
+    ],
+    "steps": [
+      {
+        "t": "Weinprobe",
+        "min": 60,
+        "q": "Weinbar"
+      },
+      {
+        "t": "Abendessen",
+        "min": 105,
+        "q": "Restaurant",
+        "food": true
+      }
+    ],
+    "moods": [
+      "romantisch",
+      "kulinarisch"
+    ],
+    "start": {
+      "abend": "18:00"
+    }
+  },
+  {
+    "id": "cocktailabend",
+    "title": "Cocktail-Abend",
+    "emoji": "🍹",
+    "teaser": "Neue Drinks probieren – jeder bestellt für den anderen.",
+    "place": "drinnen",
+    "cost": 50,
+    "reach": 1,
+    "times": [
+      "abend"
+    ],
+    "steps": [
+      {
+        "t": "Cocktailbar",
+        "min": 120,
+        "q": "Cocktailbar"
+      }
+    ],
+    "moods": [
+      "romantisch",
+      "lustig"
+    ],
+    "start": {
+      "abend": "20:00"
+    }
+  },
+  {
+    "id": "jazzabend",
+    "title": "Jazzabend",
+    "emoji": "🎷",
+    "teaser": "Erst essen, dann Live-Jazz bei einem Glas Wein.",
+    "place": "drinnen",
+    "cost": 80,
+    "reach": 1,
+    "times": [
+      "abend"
+    ],
+    "steps": [
+      {
+        "t": "Essen vorher",
+        "min": 75,
+        "q": "Restaurant",
+        "food": true
+      },
+      {
+        "t": "Live-Jazz",
+        "min": 120,
+        "q": "Jazz Live Musik"
+      }
+    ],
+    "moods": [
+      "kultur",
+      "romantisch"
+    ],
+    "start": {
+      "abend": "18:30"
+    }
+  },
+  {
+    "id": "kabarett",
+    "title": "Kabarett-Abend",
+    "emoji": "🎭",
+    "teaser": "Zusammen lachen – danach ein Glas Wein und nachbesprechen.",
+    "place": "drinnen",
+    "cost": 70,
+    "reach": 1,
+    "times": [
+      "abend"
+    ],
+    "steps": [
+      {
+        "t": "Kabarett",
+        "min": 120,
+        "q": "Kabarett Theater",
+        "book": true,
+        "todo": "Karten besorgen"
+      },
+      {
+        "t": "Ein Glas Wein danach",
+        "min": 60,
+        "q": "Weinbar"
+      }
+    ],
+    "moods": [
+      "lustig",
+      "kultur"
+    ],
+    "start": {
+      "abend": "19:30"
+    }
+  },
+  {
+    "id": "casino",
+    "title": "Abend im Casino",
+    "emoji": "🎲",
+    "teaser": "Schick machen, gut essen, mit kleinem Einsatz spielen.",
+    "place": "drinnen",
+    "cost": 120,
+    "reach": 2,
+    "times": [
+      "abend"
+    ],
+    "steps": [
+      {
+        "t": "Dinner",
+        "min": 90,
+        "q": "Restaurant",
+        "food": true
+      },
+      {
+        "t": "Spielbank",
+        "min": 120,
+        "q": "Spielbank Casino"
+      }
+    ],
+    "moods": [
+      "abenteuerlich",
+      "romantisch"
+    ],
+    "start": {
+      "abend": "18:30"
+    },
+    "special": true
+  },
+  {
+    "id": "saunaabend",
+    "title": "Saunaabend",
+    "emoji": "♨️",
+    "teaser": "Aufguss, Ruhe, Wärme – perfekt an kalten Tagen.",
+    "place": "drinnen",
+    "cost": 70,
+    "reach": 1,
+    "times": [
+      "abend",
+      "tag"
+    ],
+    "steps": [
+      {
+        "t": "Sauna & Therme",
+        "min": 180,
+        "q": "Therme Sauna"
+      },
+      {
+        "t": "Leichtes Abendessen",
+        "min": 60,
+        "q": "Restaurant",
+        "food": true
+      }
+    ],
+    "moods": [
+      "entspannt"
+    ]
+  },
+  {
+    "id": "dinner-kino",
+    "title": "Dinner & Kino",
+    "emoji": "🎬",
+    "teaser": "Erst entspannt essen, dann der Film.",
+    "place": "drinnen",
+    "cost": 70,
+    "reach": 1,
+    "times": [
+      "abend"
+    ],
+    "steps": [
+      {
+        "t": "Abendessen",
+        "min": 75,
+        "q": "Restaurant",
+        "food": true
+      },
+      {
+        "t": "Kino",
+        "min": 135,
+        "q": "Kino",
+        "todo": "Kinotickets reservieren"
+      }
+    ],
+    "moods": [
+      "gemütlich",
+      "romantisch"
+    ],
+    "start": {
+      "abend": "18:00"
+    }
+  },
+  {
+    "id": "sushi-abend",
+    "title": "Sushi-Abend",
+    "emoji": "🍣",
+    "teaser": "Frisches Sushi teilen, danach noch auf einen Drink.",
+    "place": "drinnen",
+    "cost": 70,
+    "reach": 1,
+    "times": [
+      "abend"
+    ],
+    "steps": [
+      {
+        "t": "Sushi essen",
+        "min": 90,
+        "q": "Sushi Restaurant",
+        "food": true
+      },
+      {
+        "t": "Drink danach",
+        "min": 60,
+        "q": "Bar"
+      }
+    ],
+    "moods": [
+      "kulinarisch",
+      "romantisch"
+    ],
+    "start": {
+      "abend": "19:00"
+    }
+  },
+  {
+    "id": "italienisch",
+    "title": "Aperitivo & Pasta",
+    "emoji": "🍝",
+    "teaser": "Wie in Italien: erst ein Aperitivo, dann Pasta.",
+    "place": "drinnen",
+    "cost": 75,
+    "reach": 1,
+    "times": [
+      "abend"
+    ],
+    "steps": [
+      {
+        "t": "Aperitivo",
+        "min": 45,
+        "q": "Weinbar"
+      },
+      {
+        "t": "Pasta & Wein",
+        "min": 105,
+        "q": "Italienisches Restaurant",
+        "food": true
+      }
+    ],
+    "moods": [
+      "romantisch",
+      "kulinarisch"
+    ],
+    "start": {
+      "abend": "18:00"
+    }
+  },
+  {
+    "id": "tapas-wein",
+    "title": "Tapas & Wein",
+    "emoji": "🍷",
+    "teaser": "Viele kleine Teller, ein guter Rioja – Zeit zum Reden.",
+    "place": "drinnen",
+    "cost": 60,
+    "reach": 1,
+    "times": [
+      "abend"
+    ],
+    "steps": [
+      {
+        "t": "Tapas",
+        "min": 120,
+        "q": "Tapas Bar",
+        "food": true
+      }
+    ],
+    "moods": [
+      "kulinarisch",
+      "gemütlich",
+      "romantisch"
+    ],
+    "start": {
+      "abend": "19:00"
+    }
+  },
+  {
+    "id": "nachtwaechter",
+    "title": "Nachtwächter-Führung",
+    "emoji": "🌙",
+    "teaser": "Mit Laterne durch die Altstadt – Geschichten inklusive.",
+    "place": "draußen",
+    "cost": 30,
+    "reach": 1,
+    "times": [
+      "abend"
+    ],
+    "steps": [
+      {
+        "t": "Nachtwächter-Führung",
+        "min": 75,
+        "url": "https://www.google.com/search?q=Nachtw%C3%A4chterf%C3%BChrung",
+        "todo": "Führung buchen"
+      },
+      {
+        "t": "Drink zum Aufwärmen",
+        "min": 45,
+        "q": "Bar"
+      }
+    ],
+    "moods": [
+      "kultur",
+      "romantisch"
+    ],
+    "start": {
+      "abend": "19:30"
+    }
+  },
+  {
+    "id": "sonnenaufgang",
+    "title": "Sonnenaufgang & Frühstück",
+    "emoji": "🌅",
+    "teaser": "Früh raus, Thermoskanne mit, danach ein großes Frühstück.",
+    "place": "draußen",
+    "cost": 30,
+    "reach": 1,
+    "times": [
+      "tag"
+    ],
+    "steps": [
+      {
+        "t": "Sonnenaufgang am Aussichtspunkt",
+        "min": 60,
+        "q": "Aussichtspunkt"
+      },
+      {
+        "t": "Frühstück",
+        "min": 75,
+        "q": "Frühstück Café",
+        "food": true
+      }
+    ],
+    "moods": [
+      "romantisch",
+      "abenteuerlich"
+    ],
+    "start": {
+      "tag": "06:45"
+    },
+    "needsClear": true
+  },
+  {
+    "id": "galerie-hopping",
+    "title": "Galerie-Hopping",
+    "emoji": "🖼️",
+    "teaser": "Zwei, drei Galerien – und dann ein Glas Wein.",
+    "place": "drinnen",
+    "cost": 25,
+    "reach": 1,
+    "times": [
+      "tag"
+    ],
+    "steps": [
+      {
+        "t": "Galerie",
+        "min": 60,
+        "q": "Galerie"
+      },
+      {
+        "t": "Ein Glas Wein",
+        "min": 60,
+        "q": "Weinbar"
+      }
+    ],
+    "moods": [
+      "kultur",
+      "kreativ"
+    ],
+    "start": {
+      "tag": "15:00"
+    }
+  },
+  {
+    "id": "konzertabend",
+    "title": "Konzertabend",
+    "emoji": "🎶",
+    "teaser": "Live-Musik erleben – vorher eine Kleinigkeit essen.",
+    "place": "drinnen",
+    "cost": 90,
+    "reach": 1,
+    "times": [
+      "abend"
+    ],
+    "steps": [
+      {
+        "t": "Essen vorher",
+        "min": 75,
+        "q": "Restaurant",
+        "food": true
+      },
+      {
+        "t": "Konzert",
+        "min": 150,
+        "q": "Konzert Live Musik",
+        "book": true,
+        "todo": "Tickets kaufen"
+      }
+    ],
+    "moods": [
+      "kultur",
+      "lustig"
+    ],
+    "start": {
+      "abend": "18:00"
+    }
+  },
+  {
+    "id": "eisstock",
+    "title": "Eisstockschießen & Punsch",
+    "emoji": "⛸️",
+    "teaser": "Bayerischer Wintersport mit heißem Punsch.",
+    "place": "draußen",
+    "cost": 35,
+    "reach": 1,
+    "times": [
+      "abend",
+      "tag"
+    ],
+    "steps": [
+      {
+        "t": "Eisstockschießen",
+        "min": 90,
+        "q": "Eisstockbahn",
+        "book": true,
+        "todo": "Bahn reservieren"
+      },
+      {
+        "t": "Heißer Punsch",
+        "min": 30,
+        "q": "Weihnachtsmarkt"
+      }
+    ],
+    "moods": [
+      "lustig",
+      "aktiv"
+    ],
+    "season": [
+      "11-15",
+      "02-28"
+    ]
+  },
+  {
+    "id": "raclette",
+    "title": "Raclette-Abend zuhause",
+    "emoji": "🫕",
+    "teaser": "Pfännchen, Käse, Kerzenschein – stundenlang essen und reden.",
+    "place": "drinnen",
+    "cost": 35,
+    "reach": 0,
+    "times": [
+      "abend"
+    ],
+    "steps": [
+      {
+        "t": "Vorbereiten & Tisch decken",
+        "min": 30
+      },
+      {
+        "t": "Raclette genießen",
+        "min": 150,
+        "recipe": true
+      }
+    ],
+    "moods": [
+      "gemütlich",
+      "kulinarisch",
+      "romantisch"
+    ],
+    "recipe": {
+      "name": "Raclette für zwei",
+      "url": "https://www.chefkoch.de/rs/s0/raclette/Rezepte.html",
+      "ingredients": [
+        "400 g Raclettekäse",
+        "Kleine Kartoffeln",
+        "Champignons",
+        "Paprika",
+        "Zwiebeln",
+        "Essiggurken",
+        "Schinken oder Tofu",
+        "Baguette",
+        "Weißwein oder Traubensaft"
+      ]
+    }
+  },
+  {
+    "id": "cocktails-zuhause",
+    "title": "Cocktails mixen zuhause",
+    "emoji": "🍹",
+    "teaser": "Jeder mixt dem anderen einen Signature-Drink.",
+    "place": "drinnen",
+    "cost": 35,
+    "reach": 0,
+    "times": [
+      "abend"
+    ],
+    "steps": [
+      {
+        "t": "Bar aufbauen",
+        "min": 20
+      },
+      {
+        "t": "Mixen & probieren",
+        "min": 120,
+        "recipe": true
+      }
+    ],
+    "moods": [
+      "lustig",
+      "kreativ",
+      "romantisch"
+    ],
+    "recipe": {
+      "name": "Hausbar für zwei",
+      "url": "https://www.youtube.com/results?search_query=cocktails+einfach+zuhause",
+      "ingredients": [
+        "Gin oder Rum",
+        "Tonic & Soda",
+        "Limetten",
+        "Minze",
+        "Rohrzucker",
+        "Eiswürfel",
+        "Cocktail-Shaker oder Schraubglas",
+        "Alkoholfreie Variante: Ginger Beer & Säfte"
+      ]
+    }
+  },
+  {
+    "id": "arcade-pizza",
+    "title": "Retro-Arcade & Pizza",
+    "emoji": "🕹️",
+    "teaser": "Alte Automaten, neue Highscores – dann Pizza.",
+    "place": "drinnen",
+    "cost": 50,
+    "reach": 1,
+    "times": [
+      "abend",
+      "tag"
+    ],
+    "steps": [
+      {
+        "t": "Arcade",
+        "min": 90,
+        "q": "Arcade Spielhalle"
+      },
+      {
+        "t": "Pizza",
+        "min": 75,
+        "q": "Pizzeria",
+        "food": true
+      }
+    ],
+    "moods": [
+      "lustig"
+    ]
+  },
+  {
+    "id": "therme-dinner",
+    "title": "Therme & Dinner",
+    "emoji": "♨️",
+    "teaser": "Nachmittag im warmen Wasser, abends schön essen.",
+    "place": "drinnen",
+    "cost": 140,
+    "reach": 2,
+    "times": [
+      "tag"
+    ],
+    "steps": [
+      {
+        "t": "Therme",
+        "min": 210,
+        "q": "Therme"
+      },
+      {
+        "t": "Abendessen",
+        "min": 105,
+        "q": "Restaurant",
+        "food": true
+      }
+    ],
+    "moods": [
+      "entspannt",
+      "romantisch"
+    ],
+    "start": {
+      "tag": "14:00"
+    },
+    "special": true
+  },
+  {
+    "id": "pubquiz",
+    "title": "Pub-Quiz",
+    "emoji": "🎲",
+    "teaser": "Als Zweierteam gegen den Rest – Pommes inklusive.",
+    "place": "drinnen",
+    "cost": 35,
+    "reach": 1,
+    "times": [
+      "abend"
+    ],
+    "steps": [
+      {
+        "t": "Pub-Quiz",
+        "min": 150,
+        "q": "Pub Quiz"
+      }
+    ],
+    "moods": [
+      "lustig"
+    ],
+    "start": {
+      "abend": "19:30"
+    }
+  },
+  {
+    "id": "eislaufen-fondue",
+    "title": "Eislaufen & Käsefondue",
+    "emoji": "⛸️",
+    "teaser": "Erst Runden drehen, dann aufwärmen bei Fondue.",
+    "place": "drinnen",
+    "cost": 70,
+    "reach": 1,
+    "times": [
+      "abend",
+      "tag"
+    ],
+    "steps": [
+      {
+        "t": "Eislaufen",
+        "min": 90,
+        "q": "Eislaufen"
+      },
+      {
+        "t": "Fondue essen",
+        "min": 90,
+        "q": "Fondue Restaurant",
+        "food": true
+      }
+    ],
+    "moods": [
+      "romantisch",
+      "aktiv"
+    ],
+    "season": [
+      "11-01",
+      "03-15"
+    ]
+  },
+  {
+    "id": "weihnachtsmarkt-hopping",
+    "title": "Weihnachtsmarkt-Hopping",
+    "emoji": "🎄",
+    "teaser": "Zwei Märkte, zweimal Punsch – wer findet den besten?",
+    "place": "draußen",
+    "cost": 40,
+    "reach": 2,
+    "times": [
+      "abend",
+      "tag"
+    ],
+    "steps": [
+      {
+        "t": "Erster Weihnachtsmarkt",
+        "min": 75,
+        "q": "Weihnachtsmarkt"
+      },
+      {
+        "t": "Zweiter Weihnachtsmarkt",
+        "min": 75,
+        "q": "Christkindlmarkt"
+      }
+    ],
+    "moods": [
+      "romantisch",
+      "gemütlich"
+    ],
+    "season": [
+      "11-20",
+      "12-23"
+    ]
+  },
+  {
+    "id": "kochschule-dinner",
+    "title": "Kochkurs-Dinner",
+    "emoji": "👩‍🍳",
+    "teaser": "Gemeinsam unter Anleitung kochen – und dann essen.",
+    "place": "drinnen",
+    "cost": 160,
+    "reach": 1,
+    "times": [
+      "abend"
+    ],
+    "steps": [
+      {
+        "t": "Kochkurs",
+        "min": 210,
+        "q": "Kochkurs",
+        "book": true,
+        "todo": "Kurs für zwei buchen"
+      }
+    ],
+    "moods": [
+      "kulinarisch",
+      "kreativ",
+      "romantisch"
+    ],
+    "start": {
+      "abend": "18:00"
+    }
+  },
+  {
+    "id": "picknick-see",
+    "title": "Picknick am See",
+    "emoji": "🧺",
+    "teaser": "Decke, Korb, Wasser – den ganzen Nachmittag.",
+    "place": "draußen",
+    "cost": 25,
+    "reach": 2,
+    "times": [
+      "tag"
+    ],
+    "steps": [
+      {
+        "t": "Picknick-Einkauf",
+        "min": 30,
+        "q": "Supermarkt",
+        "near": 4
+      },
+      {
+        "t": "Am See",
+        "min": 180,
+        "q": "Badesee"
+      }
+    ],
+    "moods": [
+      "romantisch",
+      "entspannt"
+    ],
+    "season": [
+      "06-01",
+      "09-10"
+    ],
+    "needsClear": true
   }
 ]

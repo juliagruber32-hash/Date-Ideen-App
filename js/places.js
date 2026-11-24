@@ -76,6 +76,16 @@ export const CATEGORIES = [
   { id: 'brunch', hidden: true, fallback: 'cafe', moods: [], label: 'Brunch', emoji: '🥐', filters: ['["amenity"~"^(cafe|restaurant)$"]["brunch"="yes"]', '["amenity"~"^(cafe|restaurant)$"]["name"~"Brunch|Frühstück",i]'], place: 'drinnen', times: ['tag'], cost: 40, food: true, plan: [['Brunch', 105]] },
   { id: 'dessert', hidden: true, fallback: 'icecream', moods: [], label: 'Dessert & Patisserie', emoji: '🍰', filters: ['["shop"="pastry"]["name"]', '["amenity"="cafe"]["cuisine"~"cake|dessert"]'], place: 'drinnen', times: ['tag', 'abend'], cost: 15, food: true, plan: [['Dessert', 30]] },
   { id: 'supermarket', hidden: true, moods: [], label: 'Supermärkte', emoji: '🛒', filters: ['["shop"="supermarket"]'], place: 'drinnen', times: ['tag', 'abend'], cost: 20, plan: [['Einkauf', 20]] },
+  { id: 'dance', hidden: true, moods: [], label: 'Tanzschulen', emoji: '🎶', filters: ['["amenity"="dancing_school"]', '["leisure"="dance"]["name"]'], place: 'drinnen', times: ['abend'], cost: 40, plan: [['Tanzen', 90]] },
+  { id: 'planetarium', hidden: true, moods: [], label: 'Planetarien', emoji: '🌙', filters: ['["amenity"="planetarium"]', '["man_made"="observatory"]["tourism"]'], place: 'drinnen', times: ['tag', 'abend'], cost: 25, plan: [['Planetarium', 75]] },
+  { id: 'massage', hidden: true, moods: [], label: 'Massage', emoji: '💆', filters: ['["shop"="massage"]', '["leisure"="spa"]["name"]'], place: 'drinnen', times: ['tag', 'abend'], cost: 120, plan: [['Massage', 60]] },
+  { id: 'brewery', hidden: true, moods: [], label: 'Brauereien', emoji: '🥨', filters: ['["craft"="brewery"]["name"]', '["microbrewery"="yes"]', '["amenity"~"^(restaurant|pub|biergarten)$"]["name"~"Brauerei|Brauhaus|Bräu",i]'], place: 'drinnen', times: ['tag', 'abend'], cost: 40, food: true, plan: [['Brauerei', 90]] },
+  { id: 'castle', hidden: true, moods: [], label: 'Schlösser & Burgen', emoji: '🏛️', filters: ['["historic"~"^(castle|palace)$"]["name"]["tourism"]', '["historic"="castle"]["name"]["castle_type"~"palace|stately|schloss"]'], place: 'draußen', times: ['tag'], cost: 15, plan: [['Schloss', 105]] },
+  { id: 'market', hidden: true, moods: [], label: 'Wochenmärkte', emoji: '🥐', filters: ['["amenity"="marketplace"]["name"]'], place: 'draußen', times: ['tag'], cost: 20, plan: [['Markt', 60]] },
+  { id: 'karting', hidden: true, moods: [], label: 'Kartbahnen', emoji: '🎮', filters: ['["sport"="karting"]["name"]'], place: 'drinnen', times: ['tag', 'abend'], cost: 60, plan: [['Kart', 60]] },
+  { id: 'billiards', hidden: true, moods: [], label: 'Billard', emoji: '🎲', filters: ['["sport"="billiards"]["name"]', '["amenity"~"^(bar|pub)$"]["name"~"Billard",i]'], place: 'drinnen', times: ['abend'], cost: 25, plan: [['Billard', 90]] },
+  { id: 'highropes', hidden: true, moods: [], label: 'Kletterwälder', emoji: '🧗', filters: ['["sport"="climbing_adventure"]', '["name"~"Kletterwald|Hochseilgarten",i]["leisure"]'], place: 'draußen', times: ['tag'], cost: 60, plan: [['Kletterwald', 150]] },
+  { id: 'casino', hidden: true, moods: [], label: 'Spielbanken', emoji: '🎲', filters: ['["amenity"="casino"]'], place: 'drinnen', times: ['abend'], cost: 60, plan: [['Casino', 120]] },
   { id: 'blacklight', hidden: true, moods: [], label: 'Schwarzlicht-Minigolf', emoji: '⛳', filters: ['["name"~"Schwarzlicht|Blacklight|Glow.?Golf|3D.?Minigolf|Indoor.?Minigolf",i]'], place: 'drinnen', times: ['tag', 'abend'], cost: 30, plan: [['Schwarzlicht-Minigolf', 75]] },
   { id: 'cooking', hidden: true, moods: [], label: 'Kochkurse', emoji: '👩‍🍳', filters: ['["amenity"="cooking_school"]', '["shop"]["name"~"Kochschule|Kochstudio|Kochkurs",i]', '["amenity"]["name"~"Kochschule|Kochstudio",i]'], place: 'drinnen', times: ['tag', 'abend'], cost: 120, food: true, plan: [['Kochkurs', 180]] },
   { id: 'pottery', hidden: true, moods: [], label: 'Töpferkurse', emoji: '🏺', filters: ['["craft"="pottery"]', '["shop"="pottery"]', '["shop"]["name"~"Töpfer|Keramik",i]'], place: 'drinnen', times: ['tag', 'abend'], cost: 80, plan: [['Töpfern', 150]] },
@@ -84,6 +94,8 @@ export const CATEGORIES = [
   { id: 'xmas', seasonal: true, moods: ['romantisch', 'gemütlich'], label: 'Weihnachtsmärkte', emoji: '🎄', filters: ['["christmas:event"]', '["christmas:type"~"market"]', '["amenity"="marketplace"]["name"~"(Christkindl|Weihnachts|Advents)",i]'], place: 'draußen', times: ['abend', 'tag'], cost: 25, food: true, plan: [['Weihnachtsmarkt', 90], ['Glühwein & Punsch', 30]] },
 ];
 export const categoryById = (id) => CATEGORIES.find((c) => c.id === id);
+/** Einfache, schnelle Küche (passt nicht zu einem schicken Abend). */
+export const isCasualFood = (p) => /asiat|chines|vietnam|thai|sushi|japan|indisch|türk|döner|kebab|burger|pizza|griech|imbiss|fast|wok\b|asia\b|snack|grill/i.test(`${p?.cuisine ?? ''} ${p?.name ?? ''}`);
 
 const memo = new Map();
 
@@ -248,6 +260,9 @@ export function radiusLadder(radius) {
 const NOMI = {
   museum: ['[museum]'], gallery: ['Galerie'], cinema: ['[cinema]'], theatre: ['[theatre]'], restaurant: ['[restaurant]'],
   cafe: ['[cafe]', 'Café'], bar: ['[bar]', '[pub]'], cooking: ['Kochschule', 'Kochkurs'], blacklight: ['3D Minigolf', 'Schwarzlicht', 'Indoor Minigolf'],
+  dance: ['Tanzschule', 'Salsa'], planetarium: ['Planetarium', 'Sternwarte'], massage: ['[massage]', 'Massage'], brewery: ['Brauerei', 'Brauhaus'],
+  castle: ['Schloss', 'Burg'], market: ['Wochenmarkt', 'Markthalle'], karting: ['Kartbahn', 'Go-Kart'], billiards: ['Billard'],
+  highropes: ['Kletterwald', 'Hochseilgarten'], casino: ['Spielbank', 'Casino'],
   rooftop: ['Rooftop', 'Dachterrasse', 'Skybar'], livemusic: ['Jazz', 'Live Music', 'Musikclub', 'Blues'], botanic: ['Botanischer Garten', 'Palmengarten'],
   burger: ['Burger'], tapas: ['Tapas'], cocktail: ['Cocktailbar', 'Cocktail'], finedining: ['Gourmet Restaurant'], brunch: ['Brunch'],
   dessert: ['Patisserie', '[pastry]'], supermarket: ['[supermarket]'], lake: ['Badesee', 'Badestelle'], pottery: ['Töpferei', 'Keramik'], icecream: ['[ice cream]'], wine: ['Weinbar'], bowling: ['Bowling'],
@@ -266,6 +281,9 @@ const NOMI_TYPES = {
   burger: ['restaurant', 'fast_food'], tapas: ['restaurant', 'bar'], cocktail: ['bar', 'pub', 'nightclub'],
   brunch: ['cafe', 'restaurant'], finedining: ['restaurant'], botanic: ['garden', 'park', 'attraction', 'botanical_garden'],
   cooking: ['cooking_school', 'restaurant', 'school', 'shop', 'yes', 'events_venue'], wine: ['bar', 'restaurant', 'pub', 'wine'],
+  castle: ['castle', 'palace', 'manor', 'attraction', 'museum', 'yes'], market: ['marketplace', 'yes'], brewery: ['brewery', 'restaurant', 'pub', 'biergarten', 'bar'],
+  karting: ['karting', 'track', 'sports_centre', 'yes'], billiards: ['bar', 'pub', 'sports_centre', 'billiards', 'yes'], highropes: ['sports_centre', 'park', 'attraction', 'pitch', 'yes'],
+  dance: ['dancing_school', 'dance', 'school', 'yes'], planetarium: ['planetarium', 'observatory', 'attraction', 'museum', 'yes'], massage: ['massage', 'spa', 'beauty'],
 };
 
 /** Eine Nominatim-Anfrage; wichtige Anfragen (prio) kommen zuerst dran. */
@@ -414,6 +432,9 @@ function toPlace(el, cat, center) {
     : raw;
   if (!t.name) return null;
   if (/^(mc ?donald'?s|burger king|kfc|subway|pizza hut|domino'?s|nordsee|kochlöffel)\b/i.test(t.name)) return null; // Fast-Food-Ketten sind kein Date-Ort
+  // Angebote für Kinder sind kein Date-Ort (Kasperltheater, Spielplatz …)
+  if (/kinder|kasperl|puppen(theater|bühne|spiel)|marionett|jugend(zentrum|treff|haus)|spielplatz|spielland|indoorspiel|krabbel|\bkita\b/i.test(`${t.name} ${t['theatre:genre'] ?? ''}`)) return null;
+  if (/^(puppet|children|kids)/i.test(t['theatre:genre'] ?? '') || t.min_age === '0') return null;
   const lat = el.lat ?? el.center?.lat;
   const lon = el.lon ?? el.center?.lon;
   if (lat == null) return null;
@@ -431,6 +452,7 @@ function toPlace(el, cat, center) {
     price: priceInfo(t),
     website: t.website || t['contact:website'] || t.url || '',
     phone: t.phone || t['contact:phone'] || '',
+    servesFood: t.food === 'yes' || (!!t.cuisine && t.amenity !== 'restaurant') || t.kitchen === 'yes',
     cuisine: t.cuisine ? t.cuisine.split(';').map((c) => CUISINE[c] ?? c.replace(/_/g, ' ')).slice(0, 2).join(', ') : '',
     vegan: /^(yes|only)$/.test(t['diet:vegan'] ?? ''),
     vegetarian: /^(yes|only)$/.test(t['diet:vegetarian'] ?? ''),
@@ -716,7 +738,21 @@ export async function searchByName(term, center, radius) {
 
 const STEP_RULES = [
   [/weihnachtsmarkt|christkindl/, 'xmas'],
+  [/weinbar|weinprobe|vinothek|aperitivo|aperitif|ein glas wein/, 'wine'],
   [/schwarzlicht|blacklight|3d.?minigolf/, 'blacklight'],
+  [/tanzkurs|tanzschule|salsa|tango|walzer/, 'dance'],
+  [/planetarium|sternwarte/, 'planetarium'],
+  [/massage/, 'massage'],
+  [/brauerei|brauhaus|bräustüberl/, 'brewery'],
+  [/schloss besichtigen|^schloss\b|burgbesichtigung/, 'castle'],
+  [/wochenmarkt|markthalle/, 'market'],
+  [/kartbahn|go-?kart/, 'karting'],
+  [/billard/, 'billiards'],
+  [/kletterwald|hochseil/, 'highropes'],
+  [/spielbank|casino/, 'casino'],
+  [/eisstock/, 'icerink'],
+  [/kabarett/, 'theatre'],
+  [/pub.?quiz/, 'bar'],
   [/rooftop|dachterrasse|skybar/, 'rooftop'],
   [/live.?musik|konzert|open stage|jazz/, 'livemusic'],
   [/botanischer garten|gewächsh|tropenhaus|palmengarten/, 'botanic'],
