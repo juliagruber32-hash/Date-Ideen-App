@@ -38,7 +38,7 @@ const drafts = {}; // ungespeicherte Eingaben auf dem Plan-Bildschirm, pro Idee
 
 /* ================================================================ Navigation */
 
-const TAB_OF = { start: 'start', suggest: 'start', plan: 'start', poll: 'start', match: 'start', entdecken: 'entdecken', idee: 'entdecken', ort: 'entdecken', teilen: 'entdecken', kosten: 'dates', rueckblick: 'dates', kalender: 'kalender', listen: 'listen', dates: 'dates', date: 'dates', mehr: 'mehr' };
+const TAB_OF = { start: 'start', suggest: 'start', plan: 'start', poll: 'start', match: 'start', neu: 'start', entdecken: 'entdecken', idee: 'entdecken', ort: 'entdecken', teilen: 'entdecken', kosten: 'dates', rueckblick: 'dates', kalender: 'kalender', listen: 'listen', dates: 'dates', date: 'dates', mehr: 'mehr' };
 const RENDER = {};
 let current = { name: 'start', param: null };
 
@@ -198,14 +198,17 @@ function bindChips(scope, group, onChange) {
 
 /* --- Umkreis in Kilometern --------------------------------------------------- */
 
-const RADIUS_STEPS = [5, 15, 40, 60, 100];
+const RADIUS_STEPS = [5, 15, 40, 100];
+/** Budget-Regler: ganz rechts heißt „200 €+“ – dann gibt es keine Obergrenze. */
+const budgetVal = (b) => (Number(b) >= 200 ? 100000 : Number(b));
+const budgetLabel = (b) => (Number(b) >= 200 ? '200 €+' : `${b} €`);
 const kmToReach = (km) => (km === 0 ? 0 : km <= 15 ? 1 : 2);
 const reachToKm = (reach) => (reach === 0 ? 0 : reach === 2 ? 60 : 15);
 
 /** Chips: (Zuhause) · 5 · 15 · 40 · 60 · 100 km · Eigener, plus Eingabefeld für den eigenen Wert. */
 function radiusChips(group, km, { home = false } = {}) {
   const custom = km > 0 && !RADIUS_STEPS.includes(km);
-  const opts = [...(home ? [[0, 'Zuhause', 'home']] : []), ...RADIUS_STEPS.map((k) => [k, `${k} km`]), ['eigen', custom ? `${km} km` : 'Eigener']];
+  const opts = [...(home ? [[0, 'Zuhause', 'home']] : []), ...RADIUS_STEPS.map((k) => [k, `${k} km`]), ['eigen', custom ? `${km} km` : 'Eigene Entfernung']];
   return `
     ${chips(group, opts, custom ? 'eigen' : km, 'radius-chips')}
     <div class="row gap radius-custom" data-custom-for="${group}" ${custom ? '' : 'hidden'}>
@@ -404,7 +407,10 @@ function syncChip() {
   const s = store.syncInfo();
   if (s.mode !== 'shared') return `<span class="sync local">${icon('lock')}Nur dieses Gerät</span>`;
   if (s.stale) return ''; // Verbindungshinweis erscheint dezent unten
-  return `<span class="sync ok">${icon('users')}Gemeinsam</span>`;
+  const m = S().settings.members ?? {};
+  const role = myRole();
+  const partnerJoined = role && m[other(role)];
+  return partnerJoined ? `<span class="sync ok">${icon('rings')}Mit ${esc(nameOf(other(role)))} verbunden</span>` : `<span class="sync ok">${icon('users')}${esc(nameOf(other(role ?? 'a')))} einladen</span>`;
 }
 const settingsButton = () => `<button class="icon-btn" data-go="mehr" aria-label="Einstellungen">${icon('gear')}</button>`;
 
@@ -2022,7 +2028,7 @@ async function loadFeed() {
   d.feedLoading = true;
   const center = discoverCenter();
   const date = feedDate();
-  const budget = feedFilter.budget ?? L().lastSearch.budget ?? 60;
+  const budget = budgetVal(feedFilter.budget ?? L().lastSearch.budget ?? 60);
   const ctx = { date, daytime: feedFilter.daytime, budget, reach: kmToReach(feedFilter.radiusKm), radiusKm: feedFilter.radiusKm, mood: feedFilter.mood, placePref: feedFilter.place || null };
   try {
     d.feedWeather = await getWeather(center, date, ctx.daytime);
@@ -2248,7 +2254,7 @@ async function loadGenerated() {
   try {
     if (!d.feedWeather) d.feedWeather = await getWeather(center, feedDate(), feedFilter.daytime).catch(() => ({ known: false }));
     const prefPlace = feedFilter.place || null;
-    const budget = feedFilter.budget ?? L().lastSearch.budget ?? 200;
+    const budget = budgetVal(feedFilter.budget ?? L().lastSearch.budget ?? 200);
     d.genError = null;
     const area = currentArea();
     const all = await generateLocalDates({ center, radiusKm: feedFilter.radiusKm || 15, daytime: feedFilter.daytime, date: feedDate(), moods: preferredMoods(), weather: d.feedWeather, place: prefPlace, count: 6, budget, groups: area?.done ? area.cats : null });
@@ -2340,7 +2346,7 @@ function renderForYou(head) {
       </div>
       <div class="field"><span class="label">Tageszeit</span>${chips('ff-daytime', [['tag', 'Tagsüber', 'sun'], ['abend', 'Abends', 'moon']], f.daytime, 'seg')}</div>
       <div class="field">
-        <div class="label-row"><span class="label">Budget für euch beide</span><output id="ff-budget-out" class="budget-out">${budget} €</output></div>
+        <div class="label-row"><span class="label">Budget für euch beide</span><output id="ff-budget-out" class="budget-out">${budgetLabel(budget)}</output></div>
         <input type="range" id="ff-budget" min="0" max="200" step="5" value="${budget}" aria-label="Budget in Euro">
       </div>
       <div class="field"><span class="label">Stimmung</span>${chips('ff-mood', [['', 'Alle'], ...MOODS.map(([v, l]) => [v, l])], f.mood)}</div>
@@ -2419,7 +2425,7 @@ function renderForYou(head) {
   bindChips(panel, 'ff-dur', (v) => (f.duration = v ? Number(v) : null));
   $('#ff-budget').addEventListener('input', (e) => {
     f.budget = Number(e.target.value);
-    $('#ff-budget-out').textContent = `${f.budget} €`;
+    $('#ff-budget-out').textContent = budgetLabel(f.budget);
   });
   let pickedLoc = null;
   bindLocField('ff-city', (g) => (pickedLoc = g));
@@ -2606,7 +2612,8 @@ function recommendationsHTML() {
           <button class="reco" data-reco="${idea.id}">
             ${ideaThumb(idea, 'wide reco-img')}
             <strong>${esc(idea.title)}</strong>
-            <small class="muted">${esc(reason)}</small>
+            <small class="reco-meta">${fmtEuro(idea.cost ?? 0)} · ${fmtDuration(ideaDuration(idea))}</small>
+            ${idea.moods?.[0] ? `<span class="mood-tag">${icon('heart')}${esc(moodLabel((idea.moods ?? []).find((m) => reason.toLowerCase().includes(moodLabel(m).toLowerCase())) ?? idea.moods[0]))}</span>` : ''}
           </button>`).join('')}
       </div>
     </section>`;
@@ -3031,19 +3038,6 @@ function inboxItems() {
   const rs = rhythmStatus(s.dates, s.settings.datesPerMonth);
   const turn = nextPlanner();
   const openReq = s.requests.some((x) => x.status === 'open');
-  if (role && rs.due && !openReq) {
-    items.push(turn === role ? `
-      <article class="inbox-item accent">
-        <div class="inbox-ico">${icon('sparkle')}</div>
-        <div class="grow"><strong>Du bist dran mit Planen</strong><p>Euer nächstes Date ist fällig – überrasch ${esc(nameOf(other(role)))}!</p></div>
-        <button class="btn primary sm" data-scroll-form>Planen</button>
-      </article>` : `
-      <article class="inbox-item">
-        <div class="inbox-ico">${icon('clock')}</div>
-        <div class="grow"><strong>${esc(nameOf(turn))} ist dran mit Planen</strong><p>Euer nächstes Date ist fällig.</p></div>
-      </article>`);
-  }
-
   for (const r of s.requests.filter((x) => x.status === 'open')) {
     if (r.to === role) {
       items.push(`
@@ -3154,7 +3148,10 @@ function nextPlanner() {
   return last ? other(last.plannedBy) : 'a';
 }
 
+RENDER.neu = () => RENDER.start();
+
 RENDER.start = () => {
+  const planMode = current.name === 'neu';
   kickArea();
   const s = S();
   const f = { ...L().lastSearch };
@@ -3168,7 +3165,8 @@ RENDER.start = () => {
   // „Wer plant?“ folgt der Reihe, bis jemand selbst etwas anderes wählt.
   if (!session.plannerTouched && role) f.planner = np === role ? 'me' : 'partner';
 
-  root.innerHTML = `
+  const turnMine = np === role;
+  const homeHTML = `
     <header class="home-head">
       <div class="brand">${icon('rings', 'brand-mark')}<span class="logo">Date<i>well</i></span></div>
       <div class="row gap">${syncChip()}${settingsButton()}</div>
@@ -3181,37 +3179,32 @@ RENDER.start = () => {
     ${whoAmICard()}
     ${onboardingCard()}
     ${dateDayCard()}
-    ${myRole() ? `<button type="button" class="oclock-cta" data-scroll-form><span><b>It’s date</b> <i>o’clock</i></span><small>Neues Date planen</small>${icon('right')}</button>` : ''}
+    ${myRole() ? `<button type="button" class="oclock-cta" data-go-neu><span><b>It’s date</b> <i>o’clock</i></span><small>Neues Date planen</small>${icon('right')}</button>` : ''}
+
+    ${role ? `
+    <section class="rhythm ${r.due ? 'due' : ''}">
+      <div class="row between"><span class="kicker">${MONTHS[today().getMonth()]} · ${r.thisMonth}/${r.goal} Dates</span>${r.due ? '<span class="tag warn">Date fällig</span>' : r.thisMonth >= r.goal ? '<span class="tag ok">Ziel erreicht</span>' : ''}</div>
+      <span class="progress"><span style="width:${pct}%"></span></span>
+      <p class="rhythm-msg">${turnMine ? (r.due ? `Du bist dran – überrasch ${esc(nameOf(partner))}!` : `Als Nächstes planst du – überrasch ${esc(nameOf(partner))}!`) : `${esc(nameOf(np))} ist dran${r.due ? ' – lass dich überraschen.' : '.'}`}</p>
+      <div class="row gap rhythm-actions">${turnMine ? `<button type="button" class="btn primary sm" data-go-neu>${icon('sparkle')}Planen</button>` : ''}<button type="button" class="linkish small" id="swap-turn">${icon('repeat')}Tauschen</button></div>
+    </section>` : ''}
+
     ${S().polls.some((x) => x.kind === 'swipe' && x.status === 'open') ? '' : `
     <button class="match-teaser" id="start-match">
       <span class="mt-ico">${icon('heart')}</span>
-      <span class="grow"><strong>Date-Match</strong><br><small>Gemeinsam wischen – jede auf dem eigenen Handy. Datewell findet, worauf ihr beide Lust habt.</small></span>
+      <span class="grow"><strong>Date-Match</strong><br><small>Gemeinsam wischen – ihr wischt beide auf eurem eigenen Handy.</small></span>
       ${icon('right')}
     </button>`}
 
     ${inbox.length ? `<section class="stack"><h2 class="section-title">Für dich</h2>${inbox.join('')}</section>` : ''}
 
     ${today().getMonth() === 11 || (today().getMonth() === 0 && today().getDate() <= 20) ? `<button class="book-teaser" data-go-book>${icon('book')}<span class="grow"><strong>Euer Jahresrückblick ist da</strong><br><small class="muted">Alle Dates ${today().getMonth() === 0 ? today().getFullYear() - 1 : today().getFullYear()} als Fotobuch</small></span>${icon('right')}</button>` : ''}
-    ${recommendationsHTML()}
+    ${recommendationsHTML()}`;
 
-    <section class="rhythm ${r.due ? 'due' : ''}">
-      <div class="rhythm-top">
-        <div>
-          <span class="kicker">${MONTHS[today().getMonth()]}</span>
-          <strong class="rhythm-num">${r.thisMonth}<span>/${r.goal}</span></strong>
-          <span class="muted">Dates</span>
-        </div>
-        <div class="rhythm-side">
-          ${r.due ? `<span class="tag warn">Date fällig</span>` : r.thisMonth >= r.goal ? `<span class="tag ok">Ziel erreicht</span>` : ''}
-          <span class="turn">${icon('repeat')}Diesmal plant <strong>${np === role ? 'du' : esc(nameOf(np))}</strong></span>
-          <button type="button" class="linkish small" id="swap-turn">Tauschen</button>
-        </div>
-      </div>
-      <span class="progress"><span style="width:${pct}%"></span></span>
-    </section>
-
+  const formHTML = `
+    ${topbar({ title: '', back: ['start', '', 'Start'] })}
     <form class="panel form" id="start-form" novalidate>
-      <div class="oclock"><h2><span>It’s date</span> <i>o’clock.</i></h2><p class="muted">Was habt ihr heute vor?</p></div>
+      <div class="oclock"><h2><span>It’s date</span> <i>o’clock.</i></h2><p class="muted">Was habt ihr vor?</p></div>
       <div class="field">
         <span class="label">Wer plant?</span>
         ${chips('planner', [
@@ -3232,9 +3225,9 @@ RENDER.start = () => {
         ${chips('daytime', [['tag', 'Tagsüber', 'sun'], ['abend', 'Abends', 'moon']], f.daytime)}
       </div>
       <div class="field only-solo">
-        <div class="label-row"><span class="label">Budget für euch beide</span><output id="budget-out" class="budget-out">${f.budget} €</output></div>
+        <div class="label-row"><span class="label">Budget für euch beide</span><output id="budget-out" class="budget-out">${budgetLabel(f.budget)}</output></div>
         <input type="range" id="f-budget" min="0" max="200" step="5" value="${f.budget}" aria-label="Budget in Euro">
-        <div class="scale"><span>0 €</span><span>50</span><span>100</span><span>150</span><span>200 €</span></div>
+        <div class="scale"><span>0 €</span><span>50</span><span>100</span><span>150</span><span>200 €+</span></div>
       </div>
       <div class="field only-solo">
         <span class="label">Wie weit darf es sein?</span>
@@ -3242,7 +3235,7 @@ RENDER.start = () => {
       </div>
       <div class="field only-solo">
         <span class="label">Stimmung</span>
-        ${chips('fmood', [['', 'Egal'], ...MOODS.map(([v, l]) => [v, l])], f.mood ?? '')}
+        ${chips('fmood', [['', 'Überrascht uns'], ...MOODS.map(([v, l]) => [v, l])], f.mood ?? '')}
       </div>
       <div class="field" id="city-field">
         <label class="label" for="f-city">Wo?</label>
@@ -3255,7 +3248,11 @@ RENDER.start = () => {
       <button class="btn primary big" id="f-submit" type="submit"></button>
     </form>`;
 
+  root.innerHTML = planMode ? formHTML : homeHTML;
+  bindBack();
+  on('[data-go-neu]', 'click', () => go('neu'));
   const form = $('#start-form');
+  if (form) {
   const updatePlanner = () => {
     const p = f.planner;
     const pn = partner ? nameOf(partner) : 'die andere Person';
@@ -3279,7 +3276,7 @@ RENDER.start = () => {
 
   $('#f-budget').addEventListener('input', (e) => {
     f.budget = Number(e.target.value);
-    $('#budget-out').textContent = `${f.budget} €`;
+    $('#budget-out').textContent = budgetLabel(f.budget);
   });
   bindChips(form, 'planner', (v) => {
     session.plannerTouched = true;
@@ -3311,7 +3308,7 @@ RENDER.start = () => {
     L().lastSearch = { ...f };
     store.saveLocal();
     const radiusKm = f.radiusKm ?? reachToKm(f.reach);
-    const ctx = { date: resolveDate(f), daytime: f.daytime, budget: f.budget, reach: kmToReach(radiusKm), radiusKm, mood: f.mood || '' };
+    const ctx = { date: resolveDate(f), daytime: f.daytime, budget: budgetVal(f.budget), reach: kmToReach(radiusKm), radiusKm, mood: f.mood || '' };
     const city = $('#f-city').value.trim();
 
     if (f.planner === 'partner') {
@@ -3320,7 +3317,7 @@ RENDER.start = () => {
       nudgePush();
       if (city) ensureGeo(city);
       toast(`Anfrage an ${nameOf(other(myRole()))} gesendet`);
-      render(true);
+      go('start', null, { replace: true });
       return;
     }
     if (f.planner === 'both') {
@@ -3333,6 +3330,7 @@ RENDER.start = () => {
       go('suggest');
     });
   });
+  }
 
   bindWhoAmI();
   bindOnboarding();
@@ -3364,7 +3362,7 @@ RENDER.start = () => {
   on('[data-open-poll]', 'click', (_, el) => go('poll', el.dataset.openPoll));
   on('[data-open-date]', 'click', (_, el) => go('date', el.dataset.openDate));
   $('#start-match')?.addEventListener('click', (e) => startMatch(e.currentTarget));
-  on('[data-scroll-form]', 'click', () => $('#start-form').scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  on('[data-scroll-form]', 'click', () => go('neu'));
   on('[data-special]', 'click', async (_, el) => {
     if (!myRole()) return toast('Wähle zuerst oben, wer du bist');
     await withBusy(el, async () => {
@@ -4456,7 +4454,7 @@ async function startMatch(el) {
   if (!myRole()) return toast('Wähle zuerst auf „Planen“, wer du bist');
   await withBusy(el, async () => {
     const r = feedRadiusKm();
-    const ctx = { date: feedDate(), daytime: feedFilter.daytime, budget: feedFilter.budget ?? L().lastSearch.budget ?? 60, reach: kmToReach(r), radiusKm: r, moods: preferredMoods() };
+    const ctx = { date: feedDate(), daytime: feedFilter.daytime, budget: budgetVal(feedFilter.budget ?? L().lastSearch.budget ?? 60), reach: kmToReach(r), radiusKm: r, moods: preferredMoods() };
     const weather = discover.feedWeather ?? (await getWeather(discoverCenter(), ctx.date, ctx.daytime).catch(() => ({ known: false })));
     const deck = await buildDeck(ctx, weather);
     if (!deck.length) return toast('Gerade keine passenden Dates – lockert die Filter unter Entdecken.');

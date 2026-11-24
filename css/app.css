@@ -1095,3 +1095,22 @@ h1, h2, h3, .logo, .budget-out, .oclock, .tagline { font-variant-numeric: lining
 
 .sec-head .linkish { white-space: nowrap; flex: none; }
 .sec-head .section-title { min-width: 0; }
+
+/* Monatskarte mit „Du bist dran“ */
+.rhythm { display: grid; gap: 10px; }
+.rhythm .kicker { margin: 0; }
+.rhythm-msg { font-family: var(--font-display); font-size: 1.3rem; font-weight: 500; line-height: 1.25; color: var(--ink); }
+.rhythm-actions { align-items: center; }
+.rhythm-actions .linkish { display: inline-flex; align-items: center; gap: 5px; }
+.rhythm-actions .linkish .ico { width: 14px; height: 14px; }
+/* Empfehlungen: kurz und ruhig */
+.reco-meta { color: var(--accent); font-weight: 600; font-size: 0.8rem; }
+.mood-tag { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 99px; background: var(--surface-2); color: var(--muted); font-size: 0.74rem; font-weight: 500; }
+.mood-tag .ico { width: 12px; height: 12px; color: var(--accent); }
+/* Verbunden-Status in Bordeaux/Beige statt Grün */
+.sync.ok { background: color-mix(in srgb, var(--accent) 9%, var(--surface)); color: var(--accent); }
+.sync.ok .ico { width: 15px; height: 15px; }
+/* Planen-Screen: großer Auftritt für „It’s date o’clock.“ */
+#start-form .oclock h2 { font-size: 2.6rem; }
+
+.tag.ok { background: color-mix(in srgb, var(--accent) 9%, var(--surface)); color: var(--accent); }
