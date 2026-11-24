@@ -1,7 +1,7 @@
 /* Datewell – Modern Burgundy Luxury. For the moments that matter.
    Layout: eine ruhige Spalte (max. 560px), viel Weißraum, dezente Rundungen, Line Icons.
    Farbe: Warm Cream als Grund, Espresso für Text, Deep Burgundy für Buttons/Logo/Akzente,
-   Taupe und Sage Grey für sekundäre Flächen. Typo: DM Serif Display (Logo, Überschriften) + Manrope. */
+   Taupe und Sage Grey für sekundäre Flächen. Typo: Cormorant Garamond (Logo, Überschriften), Italiana (Labels), DM Sans (Text). */
 :root {
   --bg: #f3efe8;
   --surface: #fbf9f5;
