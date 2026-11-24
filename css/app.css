@@ -963,3 +963,41 @@ body.auth-screen .view { padding-bottom: 40px; }
 .thumb.noimg[data-tone="plum"] { background: linear-gradient(145deg, #7a5468, #45303c); }
 .thumb.cover.noimg .thumb-emoji .ico, .thumb.hero.noimg .thumb-emoji .ico { width: 46px; height: 46px; }
 .thumb.hero.noimg[data-tone] { width: 100%; height: 170px; border-radius: var(--r-lg); }
+
+/* ---------- Date-Match ---------- */
+.match-teaser { display: flex; align-items: center; gap: 14px; width: 100%; padding: 16px; border-radius: var(--r-lg); border: 1px solid var(--line); background: var(--surface); text-align: left; font: inherit; color: var(--ink); cursor: pointer; }
+.match-teaser small { color: var(--muted); line-height: 1.35; }
+.match-teaser > .ico { width: 18px; height: 18px; color: var(--muted); }
+.mt-ico { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; background: linear-gradient(145deg, #6b3a44, #3e2228); color: #F3EFE8; flex: none; }
+.mt-ico .ico { width: 22px; height: 22px; }
+.match-inline { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 14px; border-radius: var(--r-md); border: 1px dashed color-mix(in srgb, var(--accent) 45%, var(--line)); background: color-mix(in srgb, var(--accent) 5%, var(--surface)); font: inherit; font-size: 0.88rem; color: var(--ink); text-align: left; cursor: pointer; }
+.match-inline .ico { width: 17px; height: 17px; color: var(--accent); flex: none; }
+.match-inline span { flex: 1; }
+.match-progress { display: flex; gap: 8px; justify-content: center; }
+.swipe-stage { position: relative; touch-action: pan-y; }
+.swipe-card { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 22px; overflow: hidden; box-shadow: 0 12px 32px rgba(48, 43, 41, .14); transition: transform .25s ease; user-select: none; cursor: grab; }
+.swipe-card .thumb.cover { aspect-ratio: 4 / 3.2; pointer-events: none; }
+.swipe-card .sc-body { padding: 16px 18px 20px; display: grid; gap: 6px; }
+.swipe-card h2 { font-family: var(--font-display); font-weight: 400; font-size: 1.6rem; line-height: 1.15; }
+.sc-steps { font-size: 0.82rem; color: var(--muted); }
+.swipe-label { position: absolute; top: 22px; padding: 6px 14px; border-radius: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; font-size: 0.8rem; opacity: 0; transition: opacity .15s; border: 2px solid; background: rgba(243,239,232,.9); }
+.swipe-label.yes { left: 18px; color: #4f6b46; border-color: #4f6b46; transform: rotate(-8deg); }
+.swipe-label.no { right: 18px; color: #8a3b3b; border-color: #8a3b3b; transform: rotate(8deg); }
+.swipe-card.to-yes .swipe-label.yes, .swipe-card.to-no .swipe-label.no { opacity: 1; }
+.swipe-btns { display: flex; justify-content: center; gap: 28px; margin-top: 4px; }
+.swipe-btn { width: 66px; height: 66px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); cursor: pointer; }
+.swipe-btn .ico { width: 28px; height: 28px; }
+.swipe-btn.no { color: var(--muted); }
+.swipe-btn.yes { background: linear-gradient(145deg, #6b3a44, #3e2228); color: #F3EFE8; border: none; }
+.swipe-btn:active { transform: scale(.94); }
+.match-flash { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 24px; background: rgba(48, 43, 41, .55); backdrop-filter: blur(6px); animation: mfIn .25s ease; }
+.mf-card { width: min(100%, 360px); text-align: center; display: grid; gap: 10px; justify-items: center; padding: 28px 22px; border-radius: 24px; background: linear-gradient(160deg, #562F37, #2f1a1f); color: #F3EFE8; box-shadow: 0 20px 50px rgba(0,0,0,.35); }
+.mf-card .eyebrow { color: rgba(243,239,232,.75); }
+.mf-card h2 { font-family: var(--font-display); font-weight: 400; font-size: 1.7rem; color: #F3EFE8; }
+.mf-card .muted { color: rgba(243,239,232,.75); }
+.mf-heart { width: 54px; height: 54px; color: #F3EFE8; animation: mfBeat 1.2s ease infinite; }
+.mf-card .btn.primary { background: #F3EFE8; color: #562F37; }
+.mf-card .btn:not(.primary) { background: rgba(243,239,232,.14); color: #F3EFE8; border-color: transparent; }
+@keyframes mfIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes mfBeat { 0%, 100% { transform: scale(1); } 15% { transform: scale(1.15); } 30% { transform: scale(1); } }
+.swipe-card .thumb.cover { aspect-ratio: auto; height: min(34vh, 260px); }

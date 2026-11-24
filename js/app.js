@@ -38,7 +38,7 @@ const drafts = {}; // ungespeicherte Eingaben auf dem Plan-Bildschirm, pro Idee
 
 /* ================================================================ Navigation */
 
-const TAB_OF = { start: 'start', suggest: 'start', plan: 'start', poll: 'start', entdecken: 'entdecken', idee: 'entdecken', ort: 'entdecken', teilen: 'entdecken', kosten: 'dates', rueckblick: 'dates', kalender: 'kalender', listen: 'listen', dates: 'dates', date: 'dates', mehr: 'mehr' };
+const TAB_OF = { start: 'start', suggest: 'start', plan: 'start', poll: 'start', match: 'start', entdecken: 'entdecken', idee: 'entdecken', ort: 'entdecken', teilen: 'entdecken', kosten: 'dates', rueckblick: 'dates', kalender: 'kalender', listen: 'listen', dates: 'dates', date: 'dates', mehr: 'mehr' };
 const RENDER = {};
 let current = { name: 'start', param: null };
 
@@ -2015,6 +2015,7 @@ function renderForYou(head) {
 
     <section class="stack">
       ${secHead(`${relDay(feedDate()) ? `${relDay(feedDate())} ${daytimeLabel(f.daytime)}` : 'Demnächst'}${isXmasSeason(feedDate()) ? ' · Adventszeit' : ''}`, heroes.length ? `<button type="button" class="linkish small" id="mix-all">${icon('dice')}Neu mischen</button>` : '')}
+      ${heroes.length && myRole() ? `<button type="button" class="match-inline" id="start-match">${icon('heart')}<span><strong>Gemeinsam wischen</strong> – findet heraus, worauf ihr beide Lust habt</span>${icon('right')}</button>` : ''}
       ${allBusy && !heroes.length ? '<div class="loading"><span class="spinner"></span>Suche Dates für euch …</div>'
         : heroes.length ? `<div class="hero-row">${heroes.map(heroCard).join('')}</div>${genBusy ? '<p class="muted small"><span class="spinner tiny"></span> Stelle zusätzlich Dates aus euren Orten zusammen …</p>' : ''}`
           : '<p class="muted">Gerade passt nichts – lockert die Filter oben.</p>'}
@@ -2042,6 +2043,7 @@ function renderForYou(head) {
     d.results = null;
     render(true);
   });
+  $('#start-match')?.addEventListener('click', (e) => startMatch(e.currentTarget));
   on('[data-open-idea]', 'click', (e, el) => {
     if (e.target.closest('[data-fav]')) return;
     const idea = favRegistry.get(el.dataset.openIdea) ?? ideaById(el.dataset.openIdea);
@@ -2750,7 +2752,18 @@ function inboxItems() {
       </article>`);
   }
 
-  for (const p of s.polls.filter((x) => x.status === 'open' && x.stage !== 'survey')) {
+  for (const p of s.polls.filter((x) => x.status === 'open' && x.kind === 'swipe')) {
+    const m = matchState(p);
+    const label = m.matches.length ? `${m.matches.length} ${m.matches.length === 1 ? 'Match' : 'Matches'} – jetzt planen` : !m.mineDone ? `${p.createdBy === role ? 'Wisch weiter' : `${esc(nameOf(p.createdBy))} hat gestartet – wisch mit`} (${m.mine}/${p.deck.length})` : `Warte auf ${esc(nameOf(other(role)))} (${m.theirs}/${p.deck.length})`;
+    items.push(`
+      <article class="inbox-item ${!m.mineDone || m.matches.length ? 'accent' : ''}">
+        <div class="inbox-ico">${icon('heart')}</div>
+        <div class="grow"><strong>Date-Match für ${relDay(p.ctx.date) ?? fmtShort(p.ctx.date)}</strong><p>${label}</p></div>
+        <button class="btn ${!m.mineDone || m.matches.length ? 'primary' : ''} sm" data-open-poll="${p.id}">${!m.mineDone ? 'Wischen' : 'Öffnen'}</button>
+      </article>`);
+  }
+
+  for (const p of s.polls.filter((x) => x.status === 'open' && x.stage !== 'survey' && x.kind !== 'swipe')) {
     const st = pollState(p);
     const label = st.bothDone
       ? st.matches.length ? `Match: ${esc(ideaById(st.matches[0])?.title ?? '')}` : 'Kein Match – neue Runde?'
@@ -2833,6 +2846,12 @@ RENDER.start = () => {
     ${whoAmICard()}
     ${onboardingCard()}
     ${dateDayCard()}
+    ${S().polls.some((x) => x.kind === 'swipe' && x.status === 'open') ? '' : `
+    <button class="match-teaser" id="start-match">
+      <span class="mt-ico">${icon('heart')}</span>
+      <span class="grow"><strong>Date-Match</strong><br><small>Ihr wischt beide auf eurem Handy – Dately findet, worauf ihr beide Lust habt.</small></span>
+      ${icon('right')}
+    </button>`}
 
     ${inbox.length ? `<section class="stack"><h2 class="section-title">Für dich</h2>${inbox.join('')}</section>` : ''}
 
@@ -3022,6 +3041,7 @@ RENDER.start = () => {
   });
   on('[data-open-poll]', 'click', (_, el) => go('poll', el.dataset.openPoll));
   on('[data-open-date]', 'click', (_, el) => go('date', el.dataset.openDate));
+  $('#start-match')?.addEventListener('click', (e) => startMatch(e.currentTarget));
   on('[data-scroll-form]', 'click', () => $('#start-form').scrollIntoView({ behavior: 'smooth', block: 'start' }));
   on('[data-special]', 'click', async (_, el) => {
     if (!myRole()) return toast('Wähle zuerst oben, wer du bist');
@@ -3884,6 +3904,7 @@ async function createPoll() {
 RENDER.poll = (id) => {
   const p = S().polls.find((x) => x.id === id);
   if (!p) return go('start');
+  if (p.kind === 'swipe') return go('match', id);
   const role = myRole();
   if (!role) {
     root.innerHTML = `${topbar({ title: 'Abstimmung', back: ['start', '', 'Start'] })}${whoAmICard()}`;
@@ -3979,6 +4000,203 @@ RENDER.poll = (id) => {
   });
   armed($('#del-poll'), () => {
     store.update((s) => (s.polls = s.polls.filter((x) => x.id !== id)));
+    go('start');
+  });
+};
+
+/* ================================================================ Date-Match (gemeinsam wischen) */
+
+/** Stand eines Date-Matches: wie weit ist wer, welche Karten mögen beide? */
+function matchState(p) {
+  const role = myRole() ?? 'a';
+  const partner = other(role);
+  const v = p.votes ?? {};
+  const mine = Object.keys(v[role] ?? {}).length;
+  const theirs = Object.keys(v[partner] ?? {}).length;
+  const matches = p.deck.filter((id) => v.a?.[id] === 1 && v.b?.[id] === 1);
+  return { mine, theirs, mineDone: mine >= p.deck.length, theirsDone: theirs >= p.deck.length, matches, next: p.deck.find((id) => v[role]?.[id] == null) };
+}
+
+const matchIdea = (p, id) => p.snap?.[id] ?? ideaById(id);
+
+/** Kartenstapel aus Dates in eurer Nähe und passenden Ideen bauen. */
+async function buildDeck(ctx, weather, exclude = new Set()) {
+  const center = discoverCenter();
+  const res = await suggest(ctx, weather, { count: 7, exclude, dates: S().dates.map(fullPlanOrMeta), recentIds: S().dates.slice(-8).map((x) => x.ideaId) });
+  let gen = [];
+  if (center && !store.inArtifact() && ctx.radiusKm) {
+    const area = currentArea();
+    gen = await generateLocalDates({ center, radiusKm: ctx.radiusKm, daytime: ctx.daytime, date: ctx.date, moods: ctx.moods ?? [], weather, count: 6, budget: ctx.budget, groups: area?.done ? area.cats : null }).catch(() => []);
+  }
+  const deck = [];
+  const g = gen.filter((i) => !exclude.has(i.id));
+  const f = res.ideas.filter((i) => !exclude.has(i.id));
+  while ((g.length || f.length) && deck.length < 10) {
+    if (g.length) deck.push(g.shift());
+    if (f.length && deck.length < 10) deck.push(f.shift());
+  }
+  return deck;
+}
+
+async function startMatch(el) {
+  if (!myRole()) return toast('Wähle zuerst auf „Planen“, wer du bist');
+  await withBusy(el, async () => {
+    const r = feedRadiusKm();
+    const ctx = { date: feedDate(), daytime: feedFilter.daytime, budget: feedFilter.budget ?? L().lastSearch.budget ?? 60, reach: kmToReach(r), radiusKm: r, moods: preferredMoods() };
+    const weather = discover.feedWeather ?? (await getWeather(discoverCenter(), ctx.date, ctx.daytime).catch(() => ({ known: false })));
+    const deck = await buildDeck(ctx, weather);
+    if (!deck.length) return toast('Gerade keine passenden Dates – lockert die Filter unter Entdecken.');
+    const builtin = new Set((await loadIdeas()).map((i) => i.id));
+    const poll = { id: uid(), kind: 'swipe', stage: 'swipe', status: 'open', createdBy: myRole(), createdAt: Date.now(), ctx, weather: weatherSnap(weather), deck: deck.map((i) => i.id), snap: Object.fromEntries(deck.filter((i) => !builtin.has(i.id)).map((i) => [i.id, i])), votes: { a: {}, b: {} } };
+    store.update((st) => {
+      // Nur ein offenes Date-Match gleichzeitig
+      st.polls = st.polls.filter((x) => !(x.kind === 'swipe' && x.status === 'open'));
+      st.polls.push(poll);
+    });
+    go('match', poll.id);
+  });
+}
+
+let matchFlash = null; // gerade entstandenes Match (für die Einblendung)
+
+RENDER.match = (id) => {
+  const p = S().polls.find((x) => x.id === id);
+  if (!p || p.kind !== 'swipe') return go('start');
+  const role = myRole();
+  if (!role) {
+    root.innerHTML = `${topbar({ title: 'Date-Match', back: ['start', '', 'Start'] })}${whoAmICard()}`;
+    bindBack();
+    return bindWhoAmI();
+  }
+  const partner = other(role);
+  const m = matchState(p);
+  for (const i of Object.values(p.snap ?? {})) tempIdeas.set(i.id, i);
+  const cur = m.next ? matchIdea(p, m.next) : null;
+  const flash = matchFlash && matchIdea(p, matchFlash);
+
+  root.innerHTML = `
+    ${topbar({ title: 'Date-Match', sub: `${relDay(p.ctx.date) ?? fmtShort(p.ctx.date)} ${daytimeLabel(p.ctx.daytime)} · bis ${p.ctx.budget} €`, back: ['start', '', 'Start'] })}
+    <div class="match-progress">
+      <span class="status ${m.mineDone ? 'done' : ''}">${icon(m.mineDone ? 'check' : 'heart')}Du ${m.mine}/${p.deck.length}</span>
+      <span class="status ${m.theirsDone ? 'done' : ''}">${icon(m.theirsDone ? 'check' : 'clock')}${esc(nameOf(partner))} ${m.theirs}/${p.deck.length}</span>
+    </div>
+    ${cur ? `
+      <p class="muted small center">→ Lust · ← eher nicht. ${esc(nameOf(partner))} sieht nur eure Matches.</p>
+      <div class="swipe-stage">
+        <article class="swipe-card" id="swipe-card" data-id="${esc(cur.id)}">
+          ${thumb(ideaImg(cur), cur.emoji ?? '💡', 'cover', ideaJobFor(cur), cur)}
+          <span class="swipe-label yes">Lust!</span><span class="swipe-label no">Eher nicht</span>
+          <div class="sc-body">
+            <h2>${esc(cur.title)}</h2>
+            <p class="muted">${esc(cur.teaser ?? '')}</p>
+            <p class="hc-meta">${ideaMeta(cur).map(esc).join(' · ')}</p>
+            ${cur.steps?.length > 1 ? `<p class="sc-steps">${cur.steps.map((x) => esc(x.label ?? x.t.split(':')[0])).join(' → ')}</p>` : ''}
+          </div>
+        </article>
+      </div>
+      <div class="swipe-btns">
+        <button class="swipe-btn no" data-swipe="-1" aria-label="Eher nicht">${icon('x')}</button>
+        <button class="swipe-btn yes" data-swipe="1" aria-label="Hab Lust">${icon('heart')}</button>
+      </div>` : `
+      <section class="panel center">
+        <h2>${m.theirsDone ? (m.matches.length ? 'Eure Matches' : 'Diesmal kein Match') : `Fertig gewischt`}</h2>
+        <p class="muted">${m.theirsDone ? (m.matches.length ? 'Diese Dates wollt ihr beide. Plant eins davon!' : 'Mischt einen neuen Stapel – vielleicht passt der nächste.') : `Sobald ${esc(nameOf(partner))} fertig ist, seht ihr alle Matches. Neue Matches erscheinen sofort.`}</p>
+        ${m.theirsDone && !m.matches.length ? `<button class="btn primary" id="more-cards">${icon('dice')}Neuer Stapel</button>` : ''}
+      </section>`}
+    ${m.matches.length ? `
+      <section class="stack">
+        ${secHead(m.matches.length === 1 ? 'Euer Match' : `Eure ${m.matches.length} Matches`)}
+        <div class="idea-rows">${m.matches.map((mid) => {
+          const i = matchIdea(p, mid);
+          return i ? `<article class="idea-row" data-plan-match="${esc(mid)}" role="button" tabindex="0">${thumb(ideaImg(i), i.emoji ?? '💡', 'row', ideaJobFor(i), i)}<div class="grow"><h3>${esc(i.title)}</h3><p class="ir-meta">${ideaMeta(i).map(esc).join(' · ')}</p></div><span class="btn primary sm">Planen</span></article>` : '';
+        }).join('')}</div>
+      </section>` : ''}
+    <button class="btn ghost danger" id="del-match">${icon('trash')}Date-Match beenden</button>
+    ${flash ? `
+      <div class="match-flash" id="match-flash" role="dialog" aria-label="Match">
+        <div class="mf-card">
+          <p class="eyebrow">Ihr habt ein Match</p>
+          ${icon('heart', 'mf-heart')}
+          <h2>${esc(flash.title)}</h2>
+          <p class="muted">${esc(nameOf(partner))} hat auch Lust darauf.</p>
+          <div class="row gap center"><button class="btn primary" data-plan-match="${esc(flash.id)}">Jetzt planen</button><button class="btn" id="mf-close">Weiter wischen</button></div>
+        </div>
+      </div>` : ''}`;
+  matchFlash = null;
+
+  bindBack();
+  const vote = (v) => {
+    if (!cur) return;
+    const theirs = p.votes?.[partner]?.[cur.id];
+    store.update((st) => {
+      const x = st.polls.find((y) => y.id === id);
+      x.votes ??= { a: {}, b: {} };
+      x.votes[role] = { ...(x.votes[role] ?? {}), [cur.id]: v };
+    });
+    if (v === 1 && theirs === 1) matchFlash = cur.id;
+    if (v === -1) rememberSkips([cur]);
+    render();
+  };
+  on('[data-swipe]', 'click', (_, el) => vote(Number(el.dataset.swipe)));
+  // Wischen mit dem Finger
+  const card = $('#swipe-card');
+  if (card) {
+    let x0 = null;
+    let dx = 0;
+    card.addEventListener('pointerdown', (e) => {
+      x0 = e.clientX;
+      dx = 0;
+      card.setPointerCapture(e.pointerId);
+      card.style.transition = 'none';
+    });
+    card.addEventListener('pointermove', (e) => {
+      if (x0 == null) return;
+      dx = e.clientX - x0;
+      card.style.transform = `translateX(${dx}px) rotate(${dx / 18}deg)`;
+      card.classList.toggle('to-yes', dx > 40);
+      card.classList.toggle('to-no', dx < -40);
+    });
+    const end = () => {
+      if (x0 == null) return;
+      x0 = null;
+      card.style.transition = '';
+      if (Math.abs(dx) > 90) {
+        card.style.transform = `translateX(${dx > 0 ? 600 : -600}px) rotate(${dx / 10}deg)`;
+        setTimeout(() => vote(dx > 0 ? 1 : -1), 180);
+      } else {
+        card.style.transform = '';
+        card.classList.remove('to-yes', 'to-no');
+      }
+    };
+    card.addEventListener('pointerup', end);
+    card.addEventListener('pointercancel', end);
+  }
+  on('[data-plan-match]', 'click', async (_, el) => {
+    const idea = matchIdea(p, el.dataset.planMatch);
+    if (!idea) return;
+    tempIdeas.set(idea.id, idea);
+    await prepareSession({ ...p.ctx, reach: p.ctx.reach ?? 2 }, null);
+    session.pollId = p.id;
+    session.requestId = null;
+    drafts[idea.id] = { start: defaultStart(idea, p.ctx.daytime), surprise: false, hint: '', picks: {}, near: null, openAlt: null, duration: null, variant: 0 };
+    go('plan', idea.id);
+  });
+  $('#mf-close')?.addEventListener('click', () => $('#match-flash')?.remove());
+  $('#more-cards')?.addEventListener('click', async (e) => {
+    await withBusy(e.currentTarget, async () => {
+      const weather = p.weather?.known ? p.weather : { known: false };
+      const deck = await buildDeck(p.ctx, weather, new Set(p.deck));
+      if (!deck.length) return toast('Keine weiteren Dates – ändert Budget oder Umkreis unter Entdecken.');
+      store.update((st) => {
+        const x = st.polls.find((y) => y.id === id);
+        x.deck = [...x.deck, ...deck.map((i) => i.id)];
+        x.snap = { ...(x.snap ?? {}), ...Object.fromEntries(deck.filter((i) => i.generated || i.custom).map((i) => [i.id, i])) };
+      });
+    });
+    render();
+  });
+  armed($('#del-match'), () => {
+    store.update((st) => (st.polls = st.polls.filter((x) => x.id !== id)));
     go('start');
   });
 };
