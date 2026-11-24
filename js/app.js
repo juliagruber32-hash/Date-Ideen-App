@@ -131,6 +131,7 @@ function render(scrollTop = false) {
     clearTimeout(enterTimer);
   }
   (RENDER[current.name] ?? RENDER.start)(current.param);
+  offlineNote();
   hydrateMedia();
   if (current.name === 'plan' || current.name === 'date') drawPlanMap(lastPlan ?? { steps: [] });
   if (scrollTop) {
@@ -285,13 +286,21 @@ async function saveFile(filename, data, type) {
 }
 
 const daytimeLabel = (d) => (d === 'abend' ? 'abends' : 'tagsüber');
+/** „Heute Abend“, „Morgen tagsüber“, „Freitagabend“ … */
+const whenLabel = (iso, d) => {
+  const rel = relDay(iso);
+  if (rel) return d === 'abend' ? `${rel} Abend` : `${rel} tagsüber`;
+  const wd = new Date(`${iso}T12:00:00`).toLocaleDateString('de-DE', { weekday: 'long' });
+  return d === 'abend' ? `${wd}abend` : `${wd} tagsüber`;
+};
 const ctxLine = (c) => `${relDay(c.date) ?? fmtShort(c.date)} · ${daytimeLabel(c.daytime)} · bis ${c.budget} €`;
 
 const weatherGlyph = (w) => (w?.wet ? 'rain' : w?.clear ? 'sun' : 'cloud');
 
-function weatherPill(w) {
+function weatherPill(w, daytime = '') {
   if (!w?.icon) return '';
-  return `<span class="pill">${icon(weatherGlyph(w))}${w.temp != null ? `${w.temp}° · ` : ''}${esc(w.label)}</span>`;
+  const g = weatherGlyph(w);
+  return `<span class="pill">${icon(g === 'sun' && daytime === 'abend' ? 'moon' : g)}${w.temp != null ? `${w.temp}° · ` : ''}${esc(w.label)}</span>`;
 }
 
 function resolveDate(ctx) {
@@ -374,13 +383,30 @@ function bindWhoAmI() {
   });
 }
 
+/** Dezenter Hinweis unten, wenn die Verbindung zum gemeinsamen Speicher fehlt. */
+function offlineNote() {
+  let el = document.getElementById('offline-note');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'offline-note';
+    el.className = 'offline-note';
+    el.setAttribute('role', 'status');
+    document.body.append(el);
+  }
+  const stale = store.syncInfo().stale || navigator.onLine === false;
+  el.hidden = !stale || current.name === 'konto';
+  el.innerHTML = `${icon('cloud')}<span>Offline – Änderungen werden gespeichert, sobald die Verbindung zurück ist.</span>`;
+}
+window.addEventListener('online', () => offlineNote());
+window.addEventListener('offline', () => offlineNote());
+
 function syncChip() {
   const s = store.syncInfo();
   if (s.mode !== 'shared') return `<span class="sync local">${icon('lock')}Nur dieses Gerät</span>`;
-  if (s.stale) return `<span class="sync warn">${icon('cloud')}Verbindung fehlt</span>`;
+  if (s.stale) return ''; // Verbindungshinweis erscheint dezent unten
   return `<span class="sync ok">${icon('users')}Gemeinsam</span>`;
 }
-const settingsButton = () => `<button class="icon-btn" data-go="mehr" aria-label="Einstellungen">${icon('more')}</button>`;
+const settingsButton = () => `<button class="icon-btn" data-go="mehr" aria-label="Einstellungen">${icon('gear')}</button>`;
 
 /* ================================================================ Standort */
 
@@ -913,9 +939,7 @@ function hydrateMedia() {
 /** Vorschaubild für eine Idee: Foto des Orts oder ein passendes Themenbild. */
 function ideaThumb(i, cls) {
   const img = i.photos?.[0] || i.image || i.steps?.find((s) => s.place?.image)?.place.image;
-  const mp = i.mainPlace ?? i.steps?.find((s) => s.place?.lat != null)?.place;
-  const t = topicFor(i);
-  return thumb(img, i.emoji ?? '💡', cls, mp ? { place: mp, topic: t } : t ? { topic: t } : null, i);
+  return thumb(img, i.emoji ?? '💡', cls, ideaJobFor(i), i);
 }
 
 const gRating = (p) => (googleKey() && p?.lat != null ? `<span class="g-rating" data-grating="${gJob(p)}"></span>` : '');
@@ -1009,7 +1033,7 @@ RENDER.entdecken = () => {
   const head = topbar({ title: 'Entdecken', sub: subs[d.tab] }) + `
     <form class="search-bar" id="d-search-form" role="search">
       ${icon('search')}
-      <input class="input" id="d-search" type="search" placeholder="Dates suchen, z. B. Therme, Sushi, romantisch" value="${esc(d.query)}" autocomplete="off" enterkeyhint="search">
+      <input class="input" id="d-search" type="search" placeholder="Therme, Sushi, Picknick …" value="${esc(d.query)}" autocomplete="off" enterkeyhint="search">
       ${d.query ? `<button type="button" class="icon-btn small" id="d-search-clear" aria-label="Suche leeren">${icon('x')}</button>` : ''}
     </form>`;
   if (d.query) return renderSearch(head);
@@ -2079,7 +2103,13 @@ function rememberSkips(list) {
 const secHead = (title, action = '') => `<div class="sec-head"><h2 class="section-title">${esc(title)}</h2>${action}</div>`;
 
 function ideaJobFor(i) {
-  const mp = i.mainPlace ?? i.steps?.find((s) => s.place?.lat != null)?.place;
+  let mp = i.mainPlace ?? i.steps?.find((s) => s.place?.lat != null)?.place;
+  if (!mp && i.reach !== 0) {
+    // Allgemeine Idee: Foto des nächsten passenden Orts aus eurer Umgebung
+    const c = mainCat(i);
+    const near = c ? currentArea()?.cats[c]?.find((p) => p.lat != null) : null;
+    if (near) mp = near;
+  }
   const t = topicFor(i);
   return mp ? { place: mp, topic: t } : t ? { topic: t } : null;
 }
@@ -2292,7 +2322,7 @@ function renderForYou(head) {
   heroes.splice(2, 0, ...(d.events ?? []).slice(0, 2));
   const genBusy = center && f.radiusKm !== 0 && !store.inArtifact() && d.genLoading && !d.gen;
   const allBusy = (d.feedLoading && !d.feed) && (genBusy || !center);
-  const ctxParts = [center?.name ?? 'Standort wählen', f.radiusKm === 0 ? 'Zuhause' : `${f.radiusKm} km`, `${relDay(feedDate()) ?? fmtShort(feedDate())} ${daytimeLabel(f.daytime)}`, `bis ${budget} €`];
+  const ctxParts = [center?.name ?? 'Standort wählen', f.radiusKm === 0 ? 'Zuhause' : `${f.radiusKm} km`];
   const extras = [f.mood ? moodLabel(f.mood) : '', f.place === 'drinnen' ? 'Drinnen' : f.place === 'draußen' ? 'Draußen' : '', f.duration ? durLabel(f.duration) : ''].filter(Boolean);
 
   shownWhy.clear();
@@ -2300,7 +2330,7 @@ function renderForYou(head) {
     ${head}
     <button type="button" class="ctx-strip" data-ftoggle aria-expanded="${f.open}">
       <span class="ctx-main">${icon('pin')}<span>${ctxParts.map(esc).join(' · ')}</span></span>
-      ${w?.known ? `<span class="ctx-weather">${icon(weatherGlyph(w))}${w.temp != null ? `${w.temp}°` : ''}</span>` : ''}
+      ${w?.known ? `<span class="ctx-weather">${icon(weatherGlyph(w) === 'sun' && f.daytime === 'abend' ? 'moon' : weatherGlyph(w))}${w.temp != null ? `${w.temp}°` : ''}</span>` : ''}
       <span class="ctx-filter">${icon('sliders')}${extras.length ? `<b>${extras.length}</b>` : ''}</span>
     </button>
     ${extras.length ? `<p class="ctx-extras">${extras.map(esc).join(' · ')}${w?.wet ? ' · bei Regen nur drinnen' : ''}</p>` : w?.wet ? '<p class="ctx-extras">Regen angesagt – Ideen für drinnen</p>' : ''}
@@ -2321,8 +2351,8 @@ function renderForYou(head) {
     </section>
 
     <section class="stack">
-      ${secHead(`${relDay(feedDate()) ? `${relDay(feedDate())} ${daytimeLabel(f.daytime)}` : 'Demnächst'}${isXmasSeason(feedDate()) ? ' · Adventszeit' : ''}`, heroes.length ? `<button type="button" class="linkish small" id="mix-all">${icon('dice')}Neu mischen</button>` : '')}
-      ${heroes.length && myRole() ? `<button type="button" class="match-inline" id="start-match">${icon('heart')}<span><strong>Gemeinsam wischen</strong> – findet heraus, worauf ihr beide Lust habt</span>${icon('right')}</button>` : ''}
+      ${secHead(`${whenLabel(feedDate(), f.daytime)}${isXmasSeason(feedDate()) ? ' · Adventszeit' : ''}`, heroes.length ? `<button type="button" class="linkish small" id="mix-all">${icon('dice')}Neu mischen</button>` : '')}
+      ${heroes.length && myRole() ? `<button type="button" class="match-inline" id="start-match">${icon('heart')}<span><strong>Date-Match</strong> · Gemeinsam wischen – findet heraus, worauf ihr beide Lust habt</span>${icon('right')}</button>` : ''}
       ${allBusy && !heroes.length ? '<div class="loading"><span class="spinner"></span>Suche Dates für euch …</div>'
         : heroes.length ? `<div class="hero-row">${heroes.map(heroCard).join('')}</div>${genBusy ? '<p class="muted small"><span class="spinner tiny"></span> Stelle zusätzlich Dates aus euren Orten zusammen …</p>' : ''}`
           : '<p class="muted">Gerade passt nichts – lockert die Filter oben.</p>'}
@@ -3155,7 +3185,7 @@ RENDER.start = () => {
     ${S().polls.some((x) => x.kind === 'swipe' && x.status === 'open') ? '' : `
     <button class="match-teaser" id="start-match">
       <span class="mt-ico">${icon('heart')}</span>
-      <span class="grow"><strong>Date-Match</strong><br><small>Ihr wischt beide auf eurem Handy – Datewell findet, worauf ihr beide Lust habt.</small></span>
+      <span class="grow"><strong>Date-Match</strong><br><small>Gemeinsam wischen – jede auf dem eigenen Handy. Datewell findet, worauf ihr beide Lust habt.</small></span>
       ${icon('right')}
     </button>`}
 
@@ -3592,7 +3622,7 @@ function planHead(plan, eyebrow = '') {
       <h1>${esc(plan.title)}</h1>
       <p class="sub">${day ? day + ', ' : ''}${fmtDate(plan.date)} · ${plan.start}–${plan.end} Uhr</p>
       <div class="pills">
-        ${weatherPill(plan.weather)}
+        ${weatherPill(plan.weather, plan.daytime)}
         <span class="pill">${icon('euro')}${fmtEuro(plan.cost)}</span>
         <span class="pill">${icon('clock')}${fmtDuration(plan.duration)}</span>
       </div>
@@ -4460,7 +4490,7 @@ RENDER.match = (id) => {
   const flash = matchFlash && matchIdea(p, matchFlash);
 
   root.innerHTML = `
-    ${topbar({ title: 'Date-Match', sub: `${relDay(p.ctx.date) ?? fmtShort(p.ctx.date)} ${daytimeLabel(p.ctx.daytime)} · bis ${p.ctx.budget} €`, back: ['start', '', 'Start'] })}
+    ${topbar({ title: 'Date-Match', sub: `${whenLabel(p.ctx.date, p.ctx.daytime)} · bis ${p.ctx.budget} €`, back: ['start', '', 'Start'] })}
     <div class="match-progress">
       <span class="status ${m.mineDone ? 'done' : ''}">${icon(m.mineDone ? 'check' : 'heart')}Du ${m.mine}/${p.deck.length}</span>
       <span class="status ${m.theirsDone ? 'done' : ''}">${icon(m.theirsDone ? 'check' : 'clock')}${esc(nameOf(partner))} ${m.theirs}/${p.deck.length}</span>

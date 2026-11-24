@@ -1079,3 +1079,19 @@ h1, h2, h3, .logo, .budget-out, .oclock, .tagline { font-variant-numeric: lining
 .tile-grid .cat-tile.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); box-shadow: inset 0 0 0 1px var(--accent); }
 .chips.wrap { flex-wrap: wrap; }
 .pl-dd-actions { position: sticky; bottom: calc(var(--tabbar-h) + 8px + env(safe-area-inset-bottom, 0px)); background: var(--surface); padding-top: 6px; }
+
+/* Inhalt unter die Statusleiste des iPhones setzen (sonst unscharf/blass) */
+.view { padding-top: calc(12px + env(safe-area-inset-top, 0px)); }
+/* Dezenter Offline-Hinweis über der Tab-Leiste */
+.offline-note { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--tabbar-h) + 12px + env(safe-area-inset-bottom, 0px)); z-index: 9; display: flex; align-items: center; gap: 8px; max-width: min(92vw, 420px); padding: 8px 14px; border-radius: 99px; background: rgba(48, 43, 41, .88); color: #F3EFE8; font-size: 0.78rem; box-shadow: var(--shadow); }
+.offline-note[hidden] { display: none; }
+.offline-note .ico { width: 15px; height: 15px; flex: none; }
+/* Alle Date-Titel in Cormorant */
+.idea h3, .reco strong, .date-item strong, .match-row strong, .community-card h3, .feed-card h3 { font-family: var(--font-display); font-weight: 600; font-size: 1.15rem; letter-spacing: 0; line-height: 1.2; }
+/* Italiana-Labels etwas kräftiger (besser lesbar, auch draußen) */
+.eyebrow, .section-title, .kicker { color: color-mix(in srgb, var(--ink) 78%, var(--muted)); }
+.section-title { font-size: 0.86rem; letter-spacing: 0.18em; }
+.match-inline strong { font-weight: 600; }
+
+.sec-head .linkish { white-space: nowrap; flex: none; }
+.sec-head .section-title { min-width: 0; }
