@@ -58,6 +58,10 @@ function loadLib() {
 }
 
 const unavailable = (msg = 'Verbindung zu eurem Konto gerade nicht möglich.') => Object.assign(new Error(msg), { code: 'unavailable' });
+// Fehlende Datenbank-Rechte (Supabase-Einrichtung unvollständig) klar benennen statt endlos neu zu versuchen
+const dbError = (error) => (error?.code === '42501' || /permission denied/i.test(error?.message ?? '')
+  ? Object.assign(new Error('In der Datenbank fehlen noch Zugriffsrechte. Bitte supabase/grants.sql im Supabase SQL Editor ausführen.'), { code: 'setup' })
+  : unavailable());
 const errCode = (e) => (e?.code === '42501' || /row-level security/i.test(e?.message ?? '') ? 'invalid_argument' : 'unavailable');
 
 function mergeDeep(a, b) {
@@ -232,12 +236,12 @@ export async function connectSupabase(cfg) {
     if (um.invite) client.auth.updateUser({ data: { invite: null } }).catch(() => {});
   } else if (coupleId) {
     const { data, error } = await client.from('members').select('couple_id').eq('couple_id', coupleId).eq('user_id', uid).maybeSingle();
-    if (error) throw unavailable();
+    if (error) throw dbError(error);
     if (!data) coupleId = null;
   }
   if (!coupleId) {
     const { data, error } = await client.from('members').select('couple_id, joined_at').eq('user_id', uid).order('joined_at', { ascending: true });
-    if (error) throw unavailable(); // nie wegen eines Netzaussetzers ein neues, leeres Paar anlegen
+    if (error) throw dbError(error); // nie wegen eines Fehlers ein neues, leeres Paar anlegen
     coupleId = data?.[0]?.couple_id ?? null;
     if ((data?.length ?? 0) > 1) {
       // Mehrere Paare (z. B. durch einen früheren Verbindungsfehler): das Paar mit Partner bzw. mit Daten nehmen

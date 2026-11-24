@@ -303,3 +303,13 @@ begin
   delete from auth.users where id = me;
 end $$;
 grant execute on function public.delete_my_account() to authenticated;
+
+-- Zugriffsrechte für angemeldete Nutzer (neuere Supabase-Projekte vergeben sie nicht automatisch)
+grant usage on schema public to authenticated;
+grant select on public.couples to authenticated;
+grant select on public.members to authenticated;
+grant select, insert, update, delete on public.docs to authenticated;
+grant select, insert, update on public.profiles to authenticated;
+grant select, insert, update, delete on public.community_ideas to authenticated;
+grant select, insert, update, delete on public.community_ratings to authenticated;
+grant insert on public.community_reports to authenticated;
