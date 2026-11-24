@@ -253,6 +253,19 @@ export async function handle(req) {
         await cachePut(key, data);
         return json(data);
       }
+      case 'area_get': {
+        // Erkundete Umgebung (für alle Konten gemeinsam, 7 Tage)
+        if (typeof body.key !== 'string' || body.key.length > 60) return json({ error: 'Ungültig' }, 400);
+        const hit = await cacheGet(`area|${body.key}`);
+        return json(hit ?? null);
+      }
+      case 'area_put': {
+        if (typeof body.key !== 'string' || body.key.length > 60 || !body.data?.cats) return json({ error: 'Ungültig' }, 400);
+        const text = JSON.stringify(body.data);
+        if (text.length > 900000) return json({ error: 'Zu groß' }, 413);
+        await cachePut(`area|${body.key}`, body.data);
+        return json({ ok: true });
+      }
       case 'google_details': {
         const p = body.place ?? {};
         if (!p.name || p.lat == null) return json({ error: 'Ort fehlt' }, 400);

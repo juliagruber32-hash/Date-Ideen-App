@@ -42,11 +42,75 @@ const TAB_OF = { start: 'start', suggest: 'start', plan: 'start', poll: 'start',
 const RENDER = {};
 let current = { name: 'start', param: null };
 
-function go(name, param = null) {
+/* --- Navigation: Seite in der Adresse merken, Zurück per Wischen ------------- */
+
+let navIdx = 0;
+const hashOf = (c) => `#${c.name}${c.param ? `/${encodeURIComponent(c.param)}` : c.name === 'entdecken' && discover?.tab && discover.tab !== 'fuereuch' ? `/${discover.tab}` : ''}`;
+function parseHash(h = location.hash) {
+  const m = h.match(/^#([a-z]+)(?:\/([^&=]+))?$/);
+  if (!m || !RENDER[m[1]] || m[1] === 'konto') return null;
+  const param = m[2] ? decodeURIComponent(m[2]) : null;
+  if (m[1] === 'entdecken') return { name: 'entdecken', param: null, tab: param };
+  return { name: m[1], param };
+}
+
+function go(name, param = null, { replace = false } = {}) {
   if (auth.needed && name !== 'konto') name = 'konto';
   current = { name, param };
+  if (name !== 'konto') {
+    if (replace) history.replaceState({ dately: true, idx: navIdx }, '', hashOf(current));
+    else history.pushState({ dately: true, idx: ++navIdx }, '', hashOf(current));
+  }
   render(true);
 }
+
+/** Zurück: zur vorherigen Seite – oder, wenn es keine gibt, zum Start. */
+function goBack(fallback = ['start', null]) {
+  if (history.state?.dately && history.state.idx > 0) history.back();
+  else go(fallback[0], fallback[1], { replace: true });
+}
+
+window.addEventListener('popstate', (e) => {
+  const c = parseHash();
+  if (!c) return;
+  navIdx = e.state?.idx ?? 0;
+  if (c.tab) discover.tab = c.tab;
+  current = { name: c.name, param: c.param };
+  render(true);
+});
+
+// Von links nach rechts wischen = zurück (nicht in Karussells, Karten und beim Date-Match)
+(() => {
+  let x0 = null;
+  let y0 = 0;
+  let edge = false;
+  const blocked = (el) => el?.closest?.('.hero-row, .mini-row, .cat-row, .cuis-row, .filter-bar, .h-scroll, .swipe-card, .plan-map, .pl-map, .reco-row, input, textarea, select, .leaflet-container, .match-flash');
+  document.addEventListener('touchstart', (e) => {
+    const t = e.touches[0];
+    if (e.touches.length !== 1 || blocked(e.target)) return (x0 = null);
+    x0 = t.clientX;
+    y0 = t.clientY;
+    edge = x0 < 36;
+  }, { passive: true });
+  document.addEventListener('touchmove', (e) => {
+    if (x0 == null) return;
+    const t = e.touches[0];
+    const dx = t.clientX - x0;
+    const dy = Math.abs(t.clientY - y0);
+    if (dy > 40 && dy > dx) return (x0 = null);
+    if (dx > 12) root.style.transform = `translateX(${Math.min(dx, 160) * 0.35}px)`;
+  }, { passive: true });
+  document.addEventListener('touchend', (e) => {
+    if (x0 == null) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - x0;
+    const dy = Math.abs(t.clientY - y0);
+    x0 = null;
+    root.style.transform = '';
+    if (current.name === 'start' && !(history.state?.idx > 0)) return;
+    if (dx > (edge ? 60 : 110) && dy < 60) goBack();
+  }, { passive: true });
+})();
 
 function render(scrollTop = false) {
   if (auth.needed && current.name !== 'konto') current = { name: 'konto', param: null };
@@ -181,7 +245,8 @@ function topbar({ title, sub = '', back = null, eyebrow = '' }) {
 function bindBack() {
   on('[data-back]', 'click', (_, el) => {
     const [name, param] = el.dataset.back.split('|');
-    go(name, param || null);
+    // Wie der Zurück-Knopf des Handys: zur vorherigen Seite, sonst zum angegebenen Ziel
+    goBack([name, param || null]);
   });
 }
 
@@ -1236,6 +1301,7 @@ function bindDiscoverTabs() {
   bindSearchBar();
   on('[data-dtab]', 'click', (_, el) => {
     discover.tab = el.dataset.dtab;
+    history.replaceState(history.state, '', hashOf(current));
     render();
   });
 }
@@ -1244,9 +1310,27 @@ function bindDiscoverTabs() {
 
 const gInfo = new Map(); // Google-Details je Ort
 
+const ssGet = (k) => {
+  try {
+    return JSON.parse(sessionStorage.getItem(k));
+  } catch {
+    return null;
+  }
+};
+const ssSet = (k, v) => {
+  try {
+    sessionStorage.setItem(k, JSON.stringify(v));
+  } catch {
+    /* egal */
+  }
+};
+
 RENDER.ort = (id) => {
+  // Nach dem Neuladen: zuletzt geöffneten Ort wiederherstellen
+  if (!placeIndex.has(id) && ssGet('dately.place')?.id === id) placeIndex.set(id, ssGet('dately.place'));
   const p = placeIndex.get(id);
-  if (!p) return go('entdecken');
+  if (!p) return go('entdecken', null, { replace: true });
+  ssSet('dately.place', p);
   const cat = categoryById(p.category);
   const g = gInfo.get(id);
   const ls = L().lastSearch;
@@ -2581,6 +2665,9 @@ function onboardingStep() {
   const st = S().settings;
   const role = myRole();
   if (!role) return null;
+  // Erst fragen, wenn die Daten aus eurem Konto da sind – sonst fragt Dately unnötig erneut
+  const sync = store.syncInfo();
+  if (sync.mode === 'shared' && !sync.ready) return null;
   if (session.obForce) return session.obForce;
   if (!st.nameA || !st.nameB) return 'namen';
   if (st.onboarded?.[role]) return null;
@@ -3560,9 +3647,20 @@ function timedSteps(steps, draft, from, home = false) {
 }
 
 RENDER.plan = (ideaId) => {
+  // Nach dem Neuladen: Plan-Sitzung wiederherstellen
+  if (!session.ctx || !ideaById(ideaId)) {
+    const saved = ssGet('dately.plan');
+    if (saved?.ideaId === ideaId) {
+      session.ctx ??= saved.ctx;
+      session.weather ??= saved.weather;
+      if (saved.idea && !ideaById(ideaId)) tempIdeas.set(ideaId, saved.idea);
+      if (saved.draft && !drafts[ideaId]) drafts[ideaId] = { ...saved.draft, near: null, nearLoading: false };
+    }
+  }
   const idea = ideaById(ideaId);
   const ctx = session.ctx;
-  if (!idea || !ctx) return go('start');
+  if (!idea || !ctx) return go('start', null, { replace: true });
+  ssSet('dately.plan', { ideaId, ctx, weather: session.weather, idea: tempIdeas.get(ideaId) ?? null, draft: drafts[ideaId] ? { ...drafts[ideaId], near: null } : null });
   const role = myRole();
   const partner = other(role);
   const fromPoll = !!session.pollId;
@@ -5329,8 +5427,13 @@ RENDER.mehr = () => {
 (async function boot() {
   const initial = location.hash.replace('#', '');
   if (['kalender', 'dates', 'mehr', 'entdecken'].includes(initial)) current = { name: initial, param: null };
-  const deep = initial.match(/^(date|match)\/([\w-]+)$/);
-  if (deep) current = { name: deep[1], param: deep[2] };
+  const deep = parseHash(location.hash);
+  if (deep) {
+    current = { name: deep.name, param: deep.param };
+    if (deep.tab) discover.tab = deep.tab;
+  }
+  navIdx = history.state?.dately ? history.state.idx ?? 0 : 0; // nach dem Neuladen bleibt der Verlauf erhalten
+  history.replaceState({ dately: true, idx: navIdx }, '', hashOf(current));
   navigator.serviceWorker?.addEventListener('message', (e) => {
     const m = String(e.data?.url ?? '').match(/#(date|match)\/([\w-]+)$/);
     if (e.data?.type === 'open' && m) go(m[1], m[2]);

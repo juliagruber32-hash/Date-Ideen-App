@@ -120,6 +120,11 @@ export function setPlacesProxy(fn) {
   proxyOk = null;
 }
 export const placesProxyActive = () => !!proxy && proxyOk !== false;
+/** Direkter Aufruf der Server-Funktion (z. B. gemeinsam gespeicherte Umgebung). */
+export async function placesServer(body) {
+  if (!proxy) throw new Error('Kein Server');
+  return proxy(body);
+}
 async function viaProxy(body) {
   if (!proxy || proxyOk === false) throw new Error('Kein Server');
   try {

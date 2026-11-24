@@ -1,12 +1,13 @@
 // Umgebung erkunden: Dately schaut zuerst, was es im gewählten Umkreis alles gibt (Museen, Kinos, Bars,
 // Thermen …) und bildet daraus die Dates. Das Ergebnis wird 7 Tage auf dem Gerät gemerkt.
 
-import { CATEGORIES, isXmasSeason, searchMixed } from './places.js';
+import { CATEGORIES, isXmasSeason, placesServer, searchMixed } from './places.js';
 
 const STORE = 'dately.area.v1';
 const TTL = 7 * 24 * 3600 * 1000;
 let area = null; // { key, at, radiusKm, center, cats: { id: [orte] }, done: bool }
 let scanning = null;
+let fetching = null; // gerade laufende Abfrage der gemeinsamen Umgebung
 const listeners = new Set();
 
 const keyOf = (center, radiusKm) => `${center.lat.toFixed(2)}|${center.lon.toFixed(2)}|${radiusKm}`;
@@ -67,6 +68,24 @@ export async function ensureArea(center, radiusKm, iso) {
   const key = keyOf(center, radiusKm);
   if (scanning?.key === key) return scanning.promise;
   const order = scanOrder(iso);
+  // Hat schon jemand diese Gegend erkundet? Dann vom Server holen (für alle Konten gemeinsam)
+  if (!have) {
+    if (fetching === key) return null;
+    fetching = key;
+    try {
+      const shared = await placesServer({ action: 'area_get', key });
+      if (shared?.cats && Date.now() - (shared.at ?? 0) < TTL && order.every((id) => id in shared.cats)) {
+        area = { ...shared, key, done: true };
+        save();
+        listeners.forEach((fn) => fn(area, true));
+        return area;
+      }
+    } catch {
+      /* Server ohne gemeinsame Umgebung – selbst erkunden */
+    } finally {
+      fetching = null;
+    }
+  }
   area = have ?? { key, at: Date.now(), radiusKm, center: { lat: center.lat, lon: center.lon }, cats: {}, done: false };
   const todo = order.filter((id) => !(id in area.cats));
   scanning = { key, done: order.length - todo.length, total: order.length };
@@ -89,6 +108,7 @@ export async function ensureArea(center, radiusKm, iso) {
     area.done = order.every((id) => id in area.cats);
     area.at = Date.now();
     save();
+    if (area.done) placesServer({ action: 'area_put', key, data: area }).catch(() => {});
     const result = area;
     scanning = null;
     listeners.forEach((fn) => fn(result, true));

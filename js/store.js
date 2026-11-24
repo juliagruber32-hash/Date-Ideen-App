@@ -298,12 +298,24 @@ export function attach(db, uid, { backend, canWrite = true }) {
   };
 
   let migrated = false;
+  let filled = false;
   db.doc('shared/settings').onSnapshot(
     (snap) => {
       if (snap.exists) {
         const data = clone(snap.data());
         known.settings = clone(data);
-        state.settings = { ...defaultSettings(), ...data, members: { a: null, b: null, ...(data.members ?? {}) } };
+        // Felder, die im Konto noch leer sind, aber auf diesem Gerät schon eingetragen wurden, übernehmen
+        const fill = {};
+        if (!snap.metadata.fromCache && !filled) {
+          filled = true;
+          const loc = state.settings;
+          for (const k of ['nameA', 'nameB', 'city', 'geo', 'datesPerMonth', 'vegan']) if (!data[k] && loc[k]) fill[k] = loc[k];
+          if (!data.specialDays?.length && loc.specialDays?.length) fill.specialDays = loc.specialDays;
+          if (!Object.keys(data.prefs ?? {}).length && Object.keys(loc.prefs ?? {}).length) fill.prefs = loc.prefs;
+          if (!Object.keys(data.onboarded ?? {}).length && Object.keys(loc.onboarded ?? {}).length) fill.onboarded = loc.onboarded;
+        }
+        state.settings = { ...defaultSettings(), ...data, ...fill, members: { a: null, b: null, ...(data.members ?? {}) } };
+        if (Object.keys(fill).length) queueWrite('shared/settings', known.settings, clone(state.settings), (v) => (known.settings = v));
       } else if (!snap.metadata.fromCache && !migrated) {
         // Erste Nutzung des gemeinsamen Speichers: lokale Daten dieses Geräts übernehmen.
         migrated = true;
