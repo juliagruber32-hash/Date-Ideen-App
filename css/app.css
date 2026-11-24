@@ -1198,3 +1198,19 @@ input[type="date"].input:invalid::-webkit-datetime-edit, input[type="date"].inpu
 .own-link { display: flex; justify-content: center; align-items: center; gap: 6px; margin: -4px auto 4px; font-size: .88rem; }
 .own-link .ico { width: 15px; height: 15px; }
 .center-row { justify-content: center; flex-wrap: wrap; }
+
+/* Community: Teilen, Melden, Moderation */
+.radio-list, .report-reasons { display: grid; gap: 8px; }
+.radio-row { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); cursor: pointer; }
+.radio-row input { margin-top: 3px; accent-color: var(--accent); }
+.radio-row:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.first-share { display: grid; gap: 12px; padding-top: 6px; border-top: 1px solid var(--line); }
+.first-share h2 { font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 500; font-size: 1.35rem; margin: 6px 0 0; }
+.share-name summary, .my-shared summary { cursor: pointer; color: var(--muted); font-size: .9rem; }
+.share-name[open] summary { margin-bottom: 10px; }
+.my-shared { display: grid; gap: 10px; }
+.my-shared-row { display: flex; gap: 10px; align-items: flex-start; padding-top: 10px; border-top: 1px solid var(--line); }
+.my-shared-row .ico { width: 13px; height: 13px; vertical-align: -2px; }
+.appeal { display: grid; gap: 6px; margin-top: 6px; }
+.mod-card { display: grid; gap: 8px; }
+.mod-card blockquote { margin: 0; padding: 8px 12px; border-left: 3px solid var(--line); color: var(--ink); }

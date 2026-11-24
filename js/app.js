@@ -39,7 +39,7 @@ const drafts = {}; // ungespeicherte Eingaben auf dem Plan-Bildschirm, pro Idee
 
 /* ================================================================ Navigation */
 
-const TAB_OF = { start: 'start', suggest: 'start', plan: 'start', poll: 'start', match: 'start', neu: 'start', impressum: 'mehr', datenschutz: 'mehr', agb: 'mehr', entdecken: 'entdecken', idee: 'entdecken', ort: 'entdecken', teilen: 'entdecken', kosten: 'dates', eigen: 'dates', rueckblick: 'dates', kalender: 'kalender', listen: 'listen', dates: 'dates', date: 'dates', mehr: 'mehr' };
+const TAB_OF = { start: 'start', suggest: 'start', plan: 'start', poll: 'start', match: 'start', neu: 'start', impressum: 'mehr', datenschutz: 'mehr', agb: 'mehr', entdecken: 'entdecken', idee: 'entdecken', ort: 'entdecken', teilen: 'entdecken', kosten: 'dates', eigen: 'dates', moderation: 'mehr', rueckblick: 'dates', kalender: 'kalender', listen: 'listen', dates: 'dates', date: 'dates', mehr: 'mehr' };
 const RENDER = {};
 // Ohne Anmeldung erreichbar: Anmeldung und rechtliche Seiten
 const OPEN_ROUTES = new Set(['konto', 'impressum', 'datenschutz', 'agb']);
@@ -825,7 +825,7 @@ async function doConnectRemote(cfg, announce) {
   render(current.name === 'konto');
 }
 // Fehlerprotokoll: höchstens 5 Meldungen pro Sitzung, nur mit Konto, ohne Inhalte
-const APP_VERSION = 'v55';
+const APP_VERSION = 'v56';
 let errorsSent = 0;
 function reportError(err) {
   if (!auth.user || !auth.cfg || errorsSent >= 5 || navigator.onLine === false) return;
@@ -1810,7 +1810,7 @@ function renderCommunity(head) {
         ${ideaThumb(i, 'wide')}
         <div class="place-body">
           <div class="row between top"><h3>${esc(i.title)}</h3>${r.rating_count ? `<span class="score">${icon('star')}${String(r.avg_stars).replace('.', ',')}<small class="muted"> (${r.rating_count})</small></span>` : '<small class="muted">neu</small>'}</div>
-          <p class="muted small">${[r.city, r.km != null ? fmtKm(r.km) : '', fmtEuro(i.cost ?? 0), `${r.uses}× übernommen`].filter(Boolean).map(esc).join(' · ')}</p>
+          <p class="muted small">${[r.display_name ? `von ${r.display_name}` : r.city ? `Ein Paar aus ${r.city}` : 'Ein Paar', r.display_name ? r.city : '', r.km != null ? fmtKm(r.km) : '', fmtEuro(i.cost ?? 0), r.uses ? `${r.uses}× übernommen` : ''].filter(Boolean).map(esc).join(' · ')}</p>
           <p class="teaser">${esc(i.teaser ?? '')}</p>
           <p class="flow">${(i.steps ?? []).map((s) => esc(s.t)).join('<span aria-hidden="true"> → </span>')}</p>
           ${(r.moods ?? []).length ? `<div class="mood-tags">${r.moods.map((m) => `<span class="tag">${esc(moodLabel(m))}</span>`).join('')}</div>` : ''}
@@ -1833,6 +1833,7 @@ function renderCommunity(head) {
         <p><strong>Die Community braucht die Webseiten-Version mit Supabase.</strong><br>Sobald die App verbunden ist, seht ihr hier Dates von anderen Paaren und könnt eigene teilen.</p>
         <button class="btn" data-go="mehr">Zu den Einstellungen</button>
       </div>` : `
+      ${myCommunityHTML()}
       <div class="cat-scroll">${moodChips('mood', d.mood)}</div>
       ${chips('csort', [['beste', 'Beste'], ['nah', 'In der Nähe'], ['neu', 'Neu']], d.sort, 'seg')}
       ${d.cLoading ? '<div class="loading"><span class="spinner"></span>Lade Ideen …</div>'
@@ -1869,48 +1870,263 @@ function renderCommunity(head) {
     box.innerHTML = '<span class="spinner"></span>';
     try {
       const reviews = await community.api.reviews(el.dataset.creviews);
-      box.innerHTML = reviews.length ? reviews.map((v) => `<p><span class="gold">${'★'.repeat(v.stars)}</span> ${esc(v.comment ?? '')} <small class="muted">${fmtShort(v.created_at.slice(0, 10))}</small></p>`).join('') : '<p class="muted small">Noch keine Bewertungen.</p>';
+      box.innerHTML = reviews.length ? reviews.map((v) => `<p><span class="gold">${'★'.repeat(v.stars)}</span> ${esc(v.comment ?? '')} <small class="muted">${fmtShort(v.created_at.slice(0, 10))}</small>${v.id && v.comment && !v.mine ? ` <button type="button" class="linkish small" data-rreport="${v.id}" data-ridea="${el.dataset.creviews}">Melden</button>` : ''}</p>`).join('') : '<p class="muted small">Noch keine Bewertungen.</p>';
+      box.querySelectorAll('[data-rreport]').forEach((btn) => btn.addEventListener('click', () => openReportSheet(btn.dataset.ridea, btn.dataset.rreport)));
     } catch (e) {
       box.textContent = e.message;
     }
   });
-  on('[data-creport]', 'click', async (_, el) => {
-    try {
-      await community.api.report(el.dataset.creport, 'unpassend');
-      toast('Danke, gemeldet');
-    } catch (e) {
-      toast(e.message);
-    }
-  });
+  on('[data-creport]', 'click', (_, el) => openReportSheet(el.dataset.creport));
   on('[data-cdel]', 'click', async (_, el) => {
     try {
       await community.api.remove(el.dataset.cdel);
       toast('Idee zurückgezogen');
+      d.cMine = null;
       loadCommunity();
+      loadMyCommunity();
     } catch (e) {
       toast(e.message);
     }
   });
+  on('[data-appeal]', 'click', async (_, el) => {
+    const text = $(`[data-appeal-text="${el.dataset.appeal}"]`).value.trim();
+    if (text.length < 5) return toast('Bitte kurz begründen');
+    await withBusy(el, async () => {
+      try {
+        await community.api.appeal(el.dataset.appeal, text);
+        toast('Einspruch eingereicht – wir prüfen das');
+        d.cMine = null;
+        loadMyCommunity();
+      } catch (e) {
+        toast(e.message);
+      }
+    });
+  });
   if (community.api && !d.community && !d.cLoading && !d.cError) loadCommunity();
+  if (community.api && !d.cMine && !d.cMineLoading) {
+    d.cMineLoading = true;
+    loadMyCommunity().finally(() => (d.cMineLoading = false));
+  }
+  syncCommunityNames();
 }
+
+/* --- Community: Anzeigename, Paarname mit Zustimmung, Melden, Blockieren ------- */
+
+const REPORT_REASONS = [
+  ['sexuell', 'Sexuelle oder anstößige Inhalte'],
+  ['hass', 'Beleidigung, Hass oder Belästigung'],
+  ['gefahr', 'Gefährlich oder rechtswidrig'],
+  ['privat', 'Persönliche Daten anderer'],
+  ['spam', 'Werbung oder Spam'],
+  ['falsch', 'Falsche Angaben zum Ort'],
+  ['sonstiges', 'Etwas anderes'],
+];
+// Grobe Vorprüfung vor dem Teilen – die eigentliche Kontrolle sind Meldungen und Moderation
+const BLOCKED_WORDS = /\b(fick\w*|fotze|hure\w*|nutte\w*|schlampe|wichs\w*|porn\w*|sex(?:treff|date|party)\w*|escort\w*|nazi\w*|hitler|heil\s+h|kanake\w*|neger\w*|schwuchtel\w*|missgeburt|kill\s+yourself|bitch|whore|cunt|nigg\w*)\b/i;
+const unsafeText = (...texts) => texts.some((t) => BLOCKED_WORDS.test(String(t ?? '')));
+
+const commPrefs = (role = myRole()) => S().settings.community?.[role] ?? {};
+const pairName = () => S().settings.communityPair ?? null;
+const pairAgreed = () => {
+  const p = pairName();
+  return !!(p?.name && p.consent?.a === true && p.consent?.b === true);
+};
+const firstName = (role) => (S().settings[role === 'b' ? 'nameB' : 'nameA'] ?? '').trim().split(/\s+/)[0] || '';
+
+/** Unter welchem Namen erscheinen meine geteilten Dates? null = ohne Namen. */
+function displayNameFor(role = myRole()) {
+  const mode = commPrefs(role).mode ?? 'vorname';
+  if (mode === 'anonym') return null;
+  if (mode === 'paar' && pairAgreed()) return pairName().name;
+  return firstName(role) || null;
+}
+
+/** Hat der Partner einen Paarnamen vorgeschlagen, dem ich noch nicht zugestimmt habe? */
+function pairConsentPending() {
+  const p = pairName();
+  const role = myRole();
+  return !!(role && p?.name && p.proposedBy && p.proposedBy !== role && p.consent?.[role] == null);
+}
+
+/** Wenn sich der Anzeigename ändert (z. B. Zustimmung kam später): eigene geteilte Dates nachziehen. */
+async function syncCommunityNames() {
+  if (!community.api || !myRole() || session.namesSynced === displayNameFor()) return;
+  const name = displayNameFor();
+  try {
+    const mine = await community.api.mine();
+    const ids = mine.filter((r) => 'display_name' in r && (r.display_name ?? null) !== name).map((r) => r.id);
+    await community.api.setDisplayName(ids, name);
+    session.namesSynced = name;
+    if (ids.length) discover.community = null;
+  } catch {
+    /* später erneut */
+  }
+}
+
+/** Ort nur grob: Stadt/Region, Koordinaten auf ca. 10 km gerundet, bei „Zuhause“ gar keine. */
+function coarseLocation(pub, cityText) {
+  const venue = pub.steps.find((s) => s.place?.lat != null)?.place;
+  // Nur ein öffentlicher Ort (Restaurant, Kino …) ergibt einen Punkt – nie euer Standort oder Zuhause
+  const base = pub.reach === 0 ? null : venue ?? null;
+  const round = (v) => (v == null ? null : Math.round(v * 10) / 10);
+  return { city: cityText.replace(/\d{4,5}|\b\d+[a-z]?\b/g, '').replace(/\s{2,}/g, ' ').trim().slice(0, 50), lat: round(base?.lat), lon: round(base?.lon) };
+}
+
+function defaultCity() {
+  const g = S().settings.geo;
+  const raw = g?.city || S().settings.city || currentPlaceName() || '';
+  // Adresse → nur der Ort (letzter Teil ohne Hausnummer/PLZ)
+  const parts = raw.split(',').map((x) => x.trim()).filter(Boolean);
+  return (parts.length > 1 ? parts.at(-1) : parts[0] ?? '').replace(/\b\d{4,5}\b/g, '').trim();
+}
+
+/** Blatt „Melden“ – für geteilte Dates und Kommentare. */
+function openReportSheet(ideaId, reviewId = null) {
+  openSheet(reviewId ? 'Kommentar melden' : 'Date melden', `
+    <p class="muted small">Was stimmt nicht? Wir prüfen jede Meldung und entfernen Inhalte, die gegen die Regeln verstoßen. Die meldende Person bleibt anonym.</p>
+    <div class="report-reasons" role="radiogroup">
+      ${REPORT_REASONS.map(([v, l], k) => `<label class="radio-row"><input type="radio" name="rr" value="${v}" ${k === 0 ? '' : ''}><span>${l}</span></label>`).join('')}
+    </div>
+    <div class="field"><label class="label" for="rr-note">Was genau? <small class="muted">(optional)</small></label><textarea class="input" id="rr-note" rows="2" maxlength="500"></textarea></div>
+    <label class="switch"><input type="checkbox" id="rr-block"><span><strong>Inhalte dieser Person nicht mehr anzeigen</strong><br><small class="muted">Du siehst ihre Dates und Kommentare dann nicht mehr. Aufheben in den Einstellungen.</small></span></label>
+    <button type="button" class="btn primary big" id="rr-send">Meldung senden</button>
+    ${reviewId ? '' : '<button type="button" class="linkish center" id="rr-only-block">Nur blockieren, ohne zu melden</button>'}
+    <p class="muted small">Bei Gefahr für Leib und Leben wende dich bitte direkt an die Polizei (110).</p>`, (sh) => {
+    sh.querySelector('#rr-send').addEventListener('click', (e) => withBusy(e.currentTarget, async () => {
+      const reason = sh.querySelector('input[name=rr]:checked')?.value;
+      if (!reason) return toast('Bitte einen Grund wählen');
+      try {
+        await community.api.report(ideaId, { reviewId, reason, note: sh.querySelector('#rr-note').value.trim(), block: sh.querySelector('#rr-block').checked });
+        closeSheet();
+        toast('Danke – wir sehen uns das an');
+        if (sh.querySelector('#rr-block').checked) {
+          discover.community = null;
+          loadCommunity();
+        }
+      } catch (err) {
+        toast(err.message);
+      }
+    }));
+    sh.querySelector('#rr-only-block')?.addEventListener('click', (e) => withBusy(e.currentTarget, async () => {
+      try {
+        await community.api.block(ideaId);
+        closeSheet();
+        toast('Blockiert – du siehst diese Inhalte nicht mehr');
+        discover.community = null;
+        loadCommunity();
+      } catch (err) {
+        toast(err.message);
+      }
+    }));
+  });
+}
+
+/** Eigene geteilte Dates mit Status (auch ausgeblendete, mit Begründung und Einspruch). */
+function myCommunityHTML() {
+  const list = discover.cMine ?? [];
+  if (!list.length) return '';
+  return `
+    <details class="panel my-shared" ${list.some((r) => r.hidden) ? 'open' : ''}>
+      <summary><strong>Eure geteilten Dates</strong> <span class="muted small">(${list.length})</span></summary>
+      ${list.map((r) => `
+        <div class="my-shared-row">
+          <div class="grow"><strong>${esc(r.idea?.title ?? 'Date')}</strong><br>
+            <small class="muted">${r.hidden ? `${icon('lock')} Ausgeblendet${r.mod_reason ? ` – ${esc(r.mod_reason)}` : ''}` : `Sichtbar${r.display_name ? ` als „${esc(r.display_name)}“` : ' ohne Namen'}`}${r.city ? ` · ${esc(r.city)}` : ''}</small>
+            ${r.hidden ? (r.appeal ? `<p class="muted small">Einspruch eingereicht: „${esc(r.appeal)}“ – wir melden uns.</p>` : `
+              <div class="appeal"><textarea class="input" rows="2" maxlength="500" data-appeal-text="${r.id}" placeholder="Warum ist das ein Irrtum?"></textarea>
+              <button type="button" class="btn sm" data-appeal="${r.id}">Einspruch einlegen</button></div>`) : ''}
+          </div>
+          <button type="button" class="btn sm ghost danger" data-cdel="${r.id}">Zurückziehen</button>
+        </div>`).join('')}
+    </details>`;
+}
+
+async function loadMyCommunity() {
+  if (!community.api) return;
+  try {
+    discover.cMine = await community.api.mine();
+  } catch {
+    discover.cMine = [];
+  }
+  if (current.name === 'entdecken' && discover.tab === 'community') render();
+}
+
+/* --- Moderation (nur für eingetragene Moderator:innen) ------------------------ */
+
+const MOD_REASONS = ['Verstoß gegen die Community-Regeln', 'Anstößige oder sexuelle Inhalte', 'Beleidigung oder Hass', 'Persönliche Daten anderer', 'Werbung oder Spam', 'Falsche oder gefährliche Angaben'];
+
+RENDER.moderation = () => {
+  const m = session.mod ??= { list: null, loading: false, error: '' };
+  if (!m.list && !m.loading && community.api) {
+    m.loading = true;
+    community.api.queue().then((l) => (m.list = l)).catch((e) => (m.error = e.message)).finally(() => {
+      m.loading = false;
+      if (current.name === 'moderation') render();
+    });
+  }
+  const label = (v) => REPORT_REASONS.find(([k]) => k === v)?.[1] ?? v ?? '–';
+  root.innerHTML = `
+    ${topbar({ title: 'Moderation', sub: 'Gemeldete Inhalte und Einsprüche. Bitte zeitnah entscheiden (Ziel: innerhalb von 24 Stunden).', back: ['mehr', '', 'Einstellungen'] })}
+    ${!community.api ? '<p class="muted">Nur mit Konto verfügbar.</p>'
+      : m.loading ? '<div class="loading"><span class="spinner"></span>Lade Meldungen …</div>'
+        : m.error ? `<p class="warn-text">${esc(m.error)}</p>`
+          : !m.list?.length ? '<div class="empty"><p>Keine offenen Meldungen. 🎉</p></div>'
+            : m.list.map((q, k) => `
+      <article class="panel mod-card">
+        <div class="row between"><strong>${esc(q.title ?? 'Date')}</strong>${q.hidden ? '<span class="tag">ausgeblendet</span>' : '<span class="tag ok">sichtbar</span>'}</div>
+        <p class="muted small">${q.review_id ? 'Kommentar' : 'Geteiltes Date'} · ${esc(q.display_name ?? 'ohne Namen')}${q.city ? ` · ${esc(q.city)}` : ''} · ${q.reports} Meldung${q.reports === 1 ? '' : 'en'}</p>
+        ${q.review_id ? `<blockquote>${esc(q.comment ?? '')}</blockquote>` : `<p class="small">${esc(q.content?.teaser ?? '')}</p><p class="flow">${(q.content?.steps ?? []).map((s) => esc(s.t)).join(' → ')}</p>`}
+        ${q.reports ? `<p class="small"><strong>Gründe:</strong> ${(q.reasons ?? []).filter(Boolean).map((r) => esc(label(r))).join(', ') || '–'}</p>` : ''}
+        ${(q.notes ?? []).length ? `<p class="small muted">${q.notes.map((n) => `„${esc(n)}“`).join(' · ')}</p>` : ''}
+        ${q.appeal ? `<p class="small"><strong>Einspruch:</strong> „${esc(q.appeal)}“</p>` : ''}
+        <div class="field"><label class="label" for="mr-${k}">Begründung für die Person</label>
+          <select class="input" id="mr-${k}">${MOD_REASONS.map((r) => `<option>${esc(r)}</option>`).join('')}</select></div>
+        <div class="row gap wrap">
+          <button class="btn sm" data-mod="keep" data-k="${k}">In Ordnung${q.hidden ? ' – wieder zeigen' : ''}</button>
+          <button class="btn sm primary" data-mod="hide" data-k="${k}">Ausblenden</button>
+          <button class="btn sm ghost danger" data-mod="delete" data-k="${k}">Löschen</button>
+          <button class="btn sm ghost danger" data-mod="ban" data-k="${k}">Person sperren</button>
+        </div>
+      </article>`).join('')}`;
+  bindBack();
+  on('[data-mod]', 'click', async (_, el) => {
+    const q = m.list[Number(el.dataset.k)];
+    const action = el.dataset.mod;
+    if (action === 'ban' && !confirm('Diese Person kann dann nichts mehr teilen oder bewerten, und alle ihre Inhalte sind ausgeblendet. Sperren?')) return;
+    if (action === 'delete' && !confirm('Endgültig löschen?')) return;
+    await withBusy(el, async () => {
+      try {
+        await community.api.moderate(q.idea_id, q.review_id, action, $(`#mr-${el.dataset.k}`).value);
+        m.list = null;
+        discover.community = null;
+        toast('Erledigt');
+        render();
+      } catch (e) {
+        toast(e.message);
+      }
+    });
+  });
+};
 
 /* --- Mit der Community teilen ------------------------------------------------- */
 
-/** Nur Inhalte der Idee teilen – keine Namen, Hinweise, Kosten-Einträge oder privaten Daten. */
+/** Nur Inhalte der Idee teilen – keine Namen, Hinweise, Kosten-Einträge, Adressen oder privaten Daten. */
 function publicIdea(src) {
+  const isVenue = (pl) => pl?.lat != null && (pl.category || (pl.kind && pl.kind !== 'adresse'));
   const steps = (src.steps ?? []).map((s) => {
     const out = { t: s.t ?? s.title, min: s.min ?? 60 };
-    if (s.q) out.q = s.q;
+    if (s.q && src.reach !== 0) out.q = s.q;
     if (s.url) out.url = s.url;
     if (s.food) out.food = true;
     const pl = s.place;
-    if (pl?.lat != null) out.place = { name: pl.name, street: pl.street ?? '', city: pl.city ?? '', lat: pl.lat, lon: pl.lon, website: pl.website ?? '', hours: pl.hours ?? '', image: pl.image ?? '', category: pl.category ?? '' };
+    // Nur öffentliche Orte (Restaurant, Kino …) – nie eine Wohnadresse oder den Startpunkt
+    if (src.reach !== 0 && isVenue(pl)) out.place = { name: pl.name, street: pl.street ?? '', city: pl.city ?? '', lat: pl.lat, lon: pl.lon, website: pl.website ?? '', hours: pl.hours ?? '', image: pl.image ?? '', category: pl.category ?? '' };
     return out;
   });
   return {
-    title: src.title, emoji: src.emoji ?? '💡', teaser: src.teaser ?? '', place: src.place ?? 'drinnen', cost: src.cost ?? 0,
+    title: src.title, emoji: src.emoji ?? '💡', teaser: src.teaser ?? '', place: src.place || 'drinnen', cost: src.cost ?? 0,
     reach: src.reach ?? 1, times: src.times ?? [src.daytime ?? 'abend'], moods: src.moods ?? [], steps,
-    image: src.image ?? steps.find((s) => s.place?.image)?.place.image ?? '',
+    image: src.image && allowedImage(src.image) ? src.image : steps.find((s) => allowedImage(s.place?.image))?.place.image ?? '',
   };
 }
 
@@ -1924,23 +2140,60 @@ RENDER.teilen = (param) => {
     const idea = allIdeas().find((i) => i.id === plan.ideaId);
     return { ...plan, steps: idea?.steps?.map((st) => ({ ...st })) ?? plan.steps.map((s) => ({ t: s.title, min: s.min, place: s.place })), times: idea?.times, reach: idea?.reach };
   })();
-  if (!src || !community.api) return go('entdecken');
+  if (!src || !community.api) {
+    toast('Teilen geht nur mit Konto und Internetverbindung');
+    return go(kind === 'idea' ? 'entdecken' : 'date', kind === 'idea' ? null : id, { replace: true });
+  }
+  const role = myRole();
+  const partner = other(role);
   const pub = publicIdea(src);
-  const center = discoverCenter();
   const draft = { moods: new Set(pub.moods) };
+  const prefs = commPrefs();
+  const firstTime = !prefs.rulesAt;
+  const pair = pairName();
+  const mode = session.shareMode ?? prefs.mode ?? 'vorname';
+  const pairState = pair?.name ? (pairAgreed() ? 'ok' : pair.consent?.[partner] === false ? 'nein' : 'wartet') : null;
+  const shownAs = displayNameFor();
+
+  const nameChooser = `
+    <div class="field"><span class="label">Wie sollen andere euch sehen?</span>
+      <div class="radio-list" role="radiogroup">
+        <label class="radio-row"><input type="radio" name="sh-mode" value="vorname" ${mode === 'vorname' ? 'checked' : ''}><span><strong>${esc(firstName(role) || 'Mit Vornamen')}</strong><br><small class="muted">Dein Vorname</small></span></label>
+        <label class="radio-row"><input type="radio" name="sh-mode" value="paar" ${mode === 'paar' ? 'checked' : ''}><span><strong>Als Paar</strong><br><small class="muted">z. B. „Die Abenteurer“ – erscheint erst, wenn ${esc(nameOf(partner))} zustimmt</small></span></label>
+        <label class="radio-row"><input type="radio" name="sh-mode" value="anonym" ${mode === 'anonym' ? 'checked' : ''}><span><strong>Ohne Namen</strong><br><small class="muted">„Ein Paar aus …“</small></span></label>
+      </div>
+      <div class="field" id="sh-pair-field" ${mode === 'paar' ? '' : 'hidden'}>
+        <input class="input" id="sh-pair" maxlength="30" placeholder="Euer Paarname" value="${esc(pair?.name ?? '')}">
+        ${pairState === 'wartet' ? `<small class="muted">${esc(nameOf(partner))} hat noch nicht zugestimmt – bis dahin erscheint dein Vorname.</small>` : pairState === 'nein' ? `<small class="muted">${esc(nameOf(partner))} möchte keinen Paarnamen – bis ihr euch einig seid, erscheint dein Vorname.</small>` : ''}
+      </div>
+    </div>`;
 
   root.innerHTML = `
-    ${topbar({ title: 'Mit der Community teilen', sub: 'Andere Paare sehen Titel, Ablauf, Orte und Kosten – keine Namen und keine privaten Daten.', back: kind === 'idea' ? ['entdecken', '', 'Entdecken'] : ['date', id, 'Date'] })}
+    ${topbar({ title: 'Mit der Community teilen', sub: 'Andere Paare sehen Titel, Ablauf, öffentliche Orte und Kosten – nie eure Adresse, Fotos nur, wenn ihr sie freigebt.', back: kind === 'idea' ? ['entdecken', '', 'Entdecken'] : ['date', id, 'Date'] })}
     <form class="panel form" id="share-form" novalidate>
       <div class="field"><label class="label" for="sh-title">Titel</label><input class="input" id="sh-title" maxlength="60" value="${esc(pub.title)}"></div>
       <div class="field"><label class="label" for="sh-teaser">Was macht das Date besonders?</label><input class="input" id="sh-teaser" maxlength="140" value="${esc(pub.teaser)}" placeholder="z. B. Perfekt für Regentage, das Café hat die beste Torte"></div>
       <div class="field"><span class="label">Stimmung</span><div class="chips" id="sh-moods">${MOODS.map(([v, l]) => `<button type="button" class="chip" data-m="${v}" aria-pressed="${draft.moods.has(v)}">${l}</button>`).join('')}</div></div>
-      <div class="field"><label class="label" for="sh-city">Stadt</label><input class="input" id="sh-city" maxlength="60" value="${esc(currentPlaceName())}"></div>
-      <div class="panel inset"><strong>Ablauf</strong><p class="flow">${pub.steps.map((s) => esc(s.t)).join(' → ')}</p><p class="muted small">${fmtEuro(pub.cost)} für zwei</p></div>
+      <div class="field"><label class="label" for="sh-city">Stadt oder Region</label><input class="input" id="sh-city" maxlength="50" value="${esc(defaultCity())}" placeholder="z. B. München">
+        <small class="muted">${pub.reach === 0 ? 'Ein Date zuhause: Wir zeigen nur die Region, keinen Ort auf der Karte.' : 'Wir zeigen nur die Stadt – nie euren Startpunkt oder eure Adresse.'}</small></div>
+      <div class="panel inset"><strong>So sehen es andere</strong><p class="flow">${pub.steps.map((s) => esc(s.t) + (s.place ? ` <small class="muted">(${esc(s.place.name)})</small>` : '')).join(' → ')}</p><p class="muted small">${fmtEuro(pub.cost)} für zwei · ${firstTime ? 'von euch' : shownAs ? `von „${esc(shownAs)}“` : 'ohne Namen'}</p></div>
+      ${firstTime ? `
+      <section class="first-share">
+        <h2>Bevor ihr zum ersten Mal teilt</h2>
+        ${nameChooser}
+        <label class="switch"><input type="checkbox" id="sh-rules"><span>Ich halte mich an die <a href="#agb" data-legal="agb">Community-Regeln</a>: nichts Anstößiges, Beleidigendes oder Werbung und keine Fotos oder Daten anderer ohne Erlaubnis. Verstöße werden entfernt.</span></label>
+      </section>` : `
+      <details class="share-name"><summary>Erscheint ${shownAs ? `als „${esc(shownAs)}“` : 'ohne Namen'} · ändern</summary>${nameChooser}</details>`}
       <button class="btn primary big" type="submit">${icon('share')}Teilen</button>
     </form>`;
 
   bindBack();
+  bindLegalLinks();
+  $$('input[name=sh-mode]').forEach((r) => r.addEventListener('change', () => {
+    session.shareMode = r.value;
+    $('#sh-pair-field').hidden = r.value !== 'paar';
+    if (r.value === 'paar') $('#sh-pair').focus();
+  }));
   $('#sh-moods').addEventListener('click', (e) => {
     const b = e.target.closest('[data-m]');
     if (!b) return;
@@ -1949,13 +2202,28 @@ RENDER.teilen = (param) => {
   });
   $('#share-form').addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (firstTime && !$('#sh-rules').checked) return toast('Bitte bestätige die Community-Regeln');
+    const chosen = $('input[name=sh-mode]:checked')?.value ?? mode;
+    const pairText = $('#sh-pair')?.value.trim() ?? '';
+    if (chosen === 'paar' && !pairText) return toast('Wie heißt ihr als Paar?');
+    const title = $('#sh-title').value.trim() || pub.title;
+    const teaser = $('#sh-teaser').value.trim();
+    if (unsafeText(title, teaser, pairText, ...pub.steps.map((s) => s.t))) return toast('Bitte formuliere den Text ohne anstößige Wörter');
+    // Auswahl speichern (Paarname braucht die Zustimmung beider)
+    store.update((st) => {
+      st.settings.community = { ...(st.settings.community ?? {}), [role]: { ...(st.settings.community?.[role] ?? {}), mode: chosen, rulesAt: st.settings.community?.[role]?.rulesAt ?? Date.now() } };
+      if (chosen === 'paar') {
+        const same = st.settings.communityPair?.name === pairText;
+        st.settings.communityPair = { name: pairText, proposedBy: same ? st.settings.communityPair.proposedBy : role, consent: { ...(same ? st.settings.communityPair.consent : {}), [role]: true, ...(same ? {} : { [partner]: null }) } };
+      }
+    });
+    session.shareMode = null;
     const pubPhotos = kind === 'date' ? photoList(S().dates.find((x) => x.id === id) ?? {}).filter((ph) => ph.public && ph.url).map((ph) => ph.url) : [];
-    const idea = { ...pub, title: $('#sh-title').value.trim() || pub.title, teaser: $('#sh-teaser').value.trim(), moods: [...draft.moods], ...(pubPhotos.length ? { photos: pubPhotos } : {}) };
-    const firstPlace = idea.steps.find((s) => s.place)?.place;
-    const loc = firstPlace ?? center;
+    const idea = { ...pub, title, teaser, moods: [...draft.moods], ...(pubPhotos.length ? { photos: pubPhotos } : {}) };
+    const loc = coarseLocation(pub, $('#sh-city').value.trim());
     await withBusy(e.submitter ?? $('#share-form button[type=submit]'), async () => {
       try {
-        const cid = await community.api.publish(idea, { city: $('#sh-city').value.trim(), lat: loc?.lat ?? null, lon: loc?.lon ?? null });
+        const cid = await community.api.publish(idea, { ...loc, displayName: displayNameFor() });
         store.update((s) => {
           if (kind === 'idea') {
             const i = s.ideas.find((x) => x.id === id);
@@ -1966,7 +2234,9 @@ RENDER.teilen = (param) => {
           }
         });
         discover.community = null;
-        toast('Geteilt – danke!');
+        discover.cMine = null;
+        session.namesSynced = displayNameFor();
+        toast(chosen === 'paar' && !pairAgreed() ? `Geteilt – der Paarname erscheint, sobald ${nameOf(partner)} zustimmt` : 'Geteilt – danke!');
         go(kind === 'idea' ? 'entdecken' : 'date', kind === 'idea' ? null : id);
       } catch (err) {
         toast(err.message);
@@ -3531,6 +3801,26 @@ function inboxItems() {
         <button class="btn sm" data-special="${sp.iso}">Date planen</button>
       </article>`);
   }
+  if (session.modOpen > 0) {
+    items.push(`
+      <article class="inbox-item">
+        <div class="inbox-ico">${icon('check')}</div>
+        <div class="grow"><strong>${session.modOpen} offene Meldung${session.modOpen === 1 ? '' : 'en'}</strong><p>In der Community wurde etwas gemeldet. Bitte zeitnah prüfen.</p></div>
+        <button class="btn sm" data-go="moderation">Prüfen</button>
+      </article>`);
+  }
+  if (pairConsentPending()) {
+    const pp = pairName();
+    items.push(`
+      <article class="inbox-item accent">
+        <div class="inbox-ico">${icon('users')}</div>
+        <div class="grow">
+          <strong>Paarname für die Community?</strong>
+          <p>${esc(nameOf(pp.proposedBy))} möchte geteilte Dates als „${esc(pp.name)}“ zeigen. Das geht nur, wenn du einverstanden bist.</p>
+          <div class="row gap"><button class="btn primary sm" data-pair-consent="1">Einverstanden</button><button class="btn ghost sm" data-pair-consent="0">Lieber nicht</button></div>
+        </div>
+      </article>`);
+  }
   return items;
 }
 
@@ -3554,6 +3844,15 @@ RENDER.start = () => {
   const partner = other(role);
   const r = rhythmStatus(s.dates, s.settings.datesPerMonth);
   const pct = Math.min(100, Math.round((r.thisMonth / r.goal) * 100));
+  // Für Moderator:innen: offene Meldungen einmal pro Sitzung prüfen
+  if (community.api && session.modChecked === undefined) {
+    session.modChecked = false;
+    community.api.isModerator().then(async (yes) => {
+      if (!yes) return;
+      session.modOpen = (await community.api.queue().catch(() => [])).length;
+      if (session.modOpen && current.name === 'start') render();
+    });
+  }
   const inbox = inboxItems();
   const hasNames = s.settings.nameA || s.settings.nameB;
   const np = nextPlanner();
@@ -3648,6 +3947,12 @@ RENDER.start = () => {
   bindBack();
   on('[data-go-neu]', 'click', () => go('neu'));
   on('[data-go-own]', 'click', () => go('eigen'));
+  on('[data-pair-consent]', 'click', (_, el) => {
+    const yes = el.dataset.pairConsent === '1';
+    store.update((st) => (st.settings.communityPair = { ...st.settings.communityPair, consent: { ...(st.settings.communityPair?.consent ?? {}), [myRole()]: yes } }));
+    toast(yes ? 'Danke – euer Paarname erscheint jetzt' : `Okay – ${nameOf(other(myRole()))} erscheint weiter mit Vornamen`);
+    render();
+  });
   const form = $('#start-form');
   if (form) {
   const updatePlanner = () => {
@@ -5828,6 +6133,7 @@ RENDER.eigen = (param) => {
       ${canSurprise ? `
       <label class="switch"><input type="checkbox" id="o-surprise" ${d.surprise ? 'checked' : ''}><span><strong>Als Überraschung planen</strong><br><small class="muted">${esc(nameOf(other(role)))} sieht nur Tag, Uhrzeit und deinen Hinweis.</small></span></label>
       <div class="field" id="o-hint-field" ${d.surprise ? '' : 'hidden'}><label class="label" for="o-hint">Hinweis</label><input class="input" id="o-hint" maxlength="80" placeholder="z. B. Bequeme Schuhe anziehen" value="${esc(d.hint)}"></div>` : ''}
+      ${community.api ? `<label class="switch"><input type="checkbox" id="o-share" ${d.share ? 'checked' : ''}><span><strong>Mit der Community teilen</strong><br><small class="muted">Aus: nur für euch zwei. An: andere Paare sehen Ablauf und Stadt – nie eure Adresse.</small></span></label>` : ''}
       <label class="switch"><input type="checkbox" id="o-idea" ${d.saveIdea ? 'checked' : ''}><span><strong>Auch als Idee merken</strong><br><small class="muted">Dann könnt ihr das Date später einfach wiederholen.</small></span></label>
       <button class="btn primary big" type="submit">${icon('check')}Date speichern</button>
     </form>`;
@@ -5844,6 +6150,7 @@ RENDER.eigen = (param) => {
     d.surprise = !!$('#o-surprise')?.checked;
     d.hint = $('#o-hint')?.value ?? '';
     d.saveIdea = $('#o-idea').checked;
+    d.share = !!$('#o-share')?.checked;
     for (const st of d.stations) {
       st.time = $(`[data-st-time="${st.k}"]`)?.value ?? st.time;
       st.text = $(`[data-st-text="${st.k}"]`)?.value ?? st.text;
@@ -5853,7 +6160,7 @@ RENDER.eigen = (param) => {
     }
   };
   bindChips(form, 'o-emoji', (v) => (d.emoji = v));
-  for (const st of d.stations) bindLocField(`o-loc-${st.k}`, (g) => (st.place = { name: g.name, sub: g.sub, lat: g.lat, lon: g.lon }));
+  for (const st of d.stations) bindLocField(`o-loc-${st.k}`, (g) => (st.place = { name: g.name, sub: g.sub, lat: g.lat, lon: g.lon, kind: g.gps ? 'adresse' : g.kind ?? 'adresse' }));
   $('#o-surprise')?.addEventListener('change', (e) => ($('#o-hint-field').hidden = !e.target.checked));
   $('#o-add').addEventListener('click', () => {
     read();
@@ -5893,7 +6200,7 @@ RENDER.eigen = (param) => {
       const nextT = timed[i + 1]?.time ?? endTime;
       let min = toMin(nextT) - toMin(x.time);
       if (min <= 0) min += 24 * 60;
-      const place = x.place?.name ? { name: x.place.name, street: x.place.sub ?? '', city: '', lat: x.place.lat ?? null, lon: x.place.lon ?? null, website: '', hours: '', price: '', image: '', category: '' } : null;
+      const place = x.place?.name ? { name: x.place.name, street: x.place.sub ?? '', city: '', lat: x.place.lat ?? null, lon: x.place.lon ?? null, website: '', hours: '', price: '', image: '', category: '', kind: x.place.kind ?? 'adresse' } : null;
       const raw = { t: x.text.trim() || place?.name || title, min, ...(place?.lat != null ? { place } : place ? { q: place.name } : {}) };
       const step = { time: x.time, title: raw.t, min, note: '', links: stepLinks(raw, {}, { city: S().settings.city, vegan: S().settings.vegan }) };
       if (place?.lat != null) step.place = place;
@@ -5929,11 +6236,14 @@ RENDER.eigen = (param) => {
         });
       }
     });
+    const share = d.share && !surprise;
     ownDraft.stations = [];
     ownDraft.key = null;
+    ownDraft.share = false;
     nudgePush();
     toast(surprise ? 'Überraschung gespeichert' : 'Date gespeichert');
     go('date', id, { replace: true });
+    if (share) go('teilen', `date:${id}`);
   });
 };
 
@@ -6044,6 +6354,17 @@ RENDER.mehr = () => {
       <p><strong>Google-Bewertungen & Fotos:</strong> Mit einem eigenen Google-Places-Schlüssel zeigt die App bei Orten die Google-Sterne und ein Foto. Ohne Schlüssel gibt es Bilder aus Wikimedia und einen Link zu den Google-Bewertungen.</p>
       <div class="field"><label class="label" for="g-places">Places API Key</label><input class="input" id="g-places" data-set="googlePlacesKey" value="${esc(S().settings.googlePlacesKey ?? '')}" placeholder="AIza…" autocomplete="off"></div>
     </section>
+
+    ${community.api ? `
+    <section class="panel form" id="community-settings">
+      <div class="panel-head">${icon('users')}<h2>Community</h2></div>
+      ${commPrefs().rulesAt ? `<p>Eure geteilten Dates erscheinen ${displayNameFor() ? `als <strong>„${esc(displayNameFor())}“</strong>` : '<strong>ohne Namen</strong>'}.</p>
+      ${chips('cm-mode', [['vorname', esc(firstName(myRole()) || 'Vorname')], ['paar', 'Paarname'], ['anonym', 'Ohne Namen']], commPrefs().mode ?? 'vorname', 'seg')}` : '<p class="muted small">Eigene Dates sind privat. Wenn ihr zum ersten Mal eines teilt, wählt ihr euren Anzeigenamen.</p>'}
+      ${pairName()?.name ? `<small class="muted">Paarname „${esc(pairName().name)}“: ${pairAgreed() ? 'beide haben zugestimmt' : pairName().consent?.[other(myRole())] === false ? `${esc(nameOf(other(myRole())))} möchte das nicht` : `wartet auf ${esc(nameOf(other(myRole())))}`}</small>
+      ${pairName().consent?.[myRole()] ? '<button class="linkish small" type="button" id="cm-revoke">Meine Zustimmung zum Paarnamen zurückziehen</button>' : ''}` : ''}
+      <div class="row between"><span>Blockierte Personen: <strong id="cm-blocked">…</strong></span><button class="btn sm ghost" type="button" id="cm-unblock" hidden>Alle wieder anzeigen</button></div>
+      <button class="btn soft" type="button" id="cm-mod" hidden>${icon('check')}Moderation öffnen</button>
+    </section>` : ''}
 
     <section class="panel form">
       <div class="panel-head">${icon('download')}<h2>Daten & Rechtliches</h2></div>
@@ -6163,6 +6484,40 @@ RENDER.mehr = () => {
     }
   });
   $('#export-me')?.addEventListener('click', exportMyData);
+  if ($('#community-settings')) {
+    bindChips(root, 'cm-mode', (v) => {
+      if (v === 'paar' && !pairName()?.name) {
+        toast('Den Paarnamen wählst du beim nächsten Teilen');
+        return;
+      }
+      store.update((st) => {
+        st.settings.community[myRole()] = { ...st.settings.community[myRole()], mode: v };
+        if (v === 'paar') st.settings.communityPair.consent = { ...st.settings.communityPair.consent, [myRole()]: true };
+      });
+      session.namesSynced = undefined;
+      syncCommunityNames().then(render);
+    });
+    $('#cm-revoke')?.addEventListener('click', () => {
+      store.update((st) => (st.settings.communityPair.consent = { ...st.settings.communityPair.consent, [myRole()]: false }));
+      session.namesSynced = undefined;
+      syncCommunityNames();
+      toast('Zustimmung zurückgezogen');
+      render();
+    });
+    community.api.blockedCount().then((n) => {
+      if (!$('#cm-blocked')) return;
+      $('#cm-blocked').textContent = String(n);
+      $('#cm-unblock').hidden = !n;
+    });
+    $('#cm-unblock').addEventListener('click', async (e) => {
+      await withBusy(e.currentTarget, () => community.api.unblockAll());
+      discover.community = null;
+      toast('Alle Blockierungen aufgehoben');
+      render();
+    });
+    community.api.isModerator().then((yes) => $('#cm-mod') && ($('#cm-mod').hidden = !yes));
+    $('#cm-mod').addEventListener('click', () => go('moderation'));
+  }
   bindLegalLinks();
   $('#export').addEventListener('click', () => {
     const { secrets, ...shared } = S();

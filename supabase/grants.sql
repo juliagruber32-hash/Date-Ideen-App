@@ -12,8 +12,13 @@ grant select on public.members to authenticated;
 grant select, insert, update, delete on public.docs to authenticated;
 grant select, insert, update on public.profiles to authenticated;
 
-grant select, insert, update, delete on public.community_ideas to authenticated;
-grant select, insert, update, delete on public.community_ratings to authenticated;
+grant select, insert, delete on public.community_ideas to authenticated;
+-- Ändern nur Inhalt/Name/Einspruch – nie „ausgeblendet“ (Moderation, siehe community.sql)
+revoke update on public.community_ideas from authenticated;
+grant update (idea) on public.community_ideas to authenticated;
+grant select, insert, delete on public.community_ratings to authenticated;
+revoke update on public.community_ratings from authenticated;
+grant update (stars, comment) on public.community_ratings to authenticated;
 grant insert on public.community_reports to authenticated;
 grant select on public.community_feed to authenticated;
 
@@ -62,3 +67,8 @@ begin
   perform cron.schedule('datewell-errors-cleanup', '23 4 * * *', 'delete from public.client_errors where at < now() - interval ''90 days''');
 exception when others then null;
 end $$;
+
+-- Spalten aus community.sql (Anzeigename, Einspruch) – nur falls schon vorhanden
+do $$ begin
+  grant update (display_name, appeal, appeal_at) on public.community_ideas to authenticated;
+exception when others then null; end $$;

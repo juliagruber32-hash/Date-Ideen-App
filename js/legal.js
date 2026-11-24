@@ -70,7 +70,8 @@ export function datenschutzHTML() {
     </ul>
 
     <h2>6. Community</h2>
-    <p>Teilt ihr eine Date-Idee mit der Community, sehen andere Nutzer Titel, Ablauf, Orte, Kosten und – wenn ihr sie freigebt – Fotos, aber keine Namen oder E-Mail-Adressen. Bewertungen werden ohne Namen angezeigt. Gemeldete Inhalte prüfen wir und entfernen sie bei Verstößen.</p>
+    <p>Eigene Dates sind privat. Nur wenn ihr ein Date ausdrücklich teilt, sehen andere Nutzer Titel, Ablauf, öffentliche Orte (z. B. ein Restaurant), Kosten, die Stadt bzw. Region und – wenn ihr sie freigebt – Fotos. Als Absender erscheint der gewählte Anzeigename (Vorname, ein Paarname, dem beide zugestimmt haben, oder kein Name), nie eure E-Mail-Adresse, Wohnadresse oder euer genauer Standort. Bewertungen erscheinen ohne Namen.</p>
+    <p>Meldet ihr einen Inhalt, speichern wir Grund, optionale Beschreibung und Zeitpunkt zu eurem Konto; die gemeldete Person erfährt nicht, wer gemeldet hat. Blockiert ihr jemanden, speichern wir das, damit ihr deren Inhalte nicht mehr seht. Zur Moderation verarbeiten wir gemeldete Inhalte, Entscheidungen, Begründungen und Einsprüche (Art. 6 Abs. 1 lit. c und f DSGVO in Verbindung mit dem Digital Services Act). Diese Daten löschen wir spätestens sechs Monate nach Abschluss eines Falls oder mit dem Konto.</p>
 
     <h2>7. Fehlerprotokoll</h2>
     <p>Stürzt eine Funktion ab, speichern wir eine technische Fehlermeldung (Fehlertext, App-Version, Bildschirm) zu eurem Konto, um den Fehler zu beheben. Inhalte eurer Dates sind darin nicht enthalten. Die Einträge werden nach 90 Tagen gelöscht (Art. 6 Abs. 1 lit. f DSGVO).</p>
@@ -97,14 +98,17 @@ export function agbHTML() {
     <p>Für die Nutzung braucht jede Person ein eigenes Konto. Haltet euer Passwort geheim. Ihr müsst mindestens 16 Jahre alt sein.</p>
     <h2>3. Eure Inhalte</h2>
     <p>Eure Inhalte gehören euch. Damit wir sie speichern und euch anzeigen können, erlaubt ihr uns, sie zu diesem Zweck zu verarbeiten. Teilt ihr eine Idee mit der Community, dürfen andere Nutzer sie ansehen, übernehmen und bewerten, bis ihr sie wieder entfernt.</p>
-    <h2>4. Regeln für die Community</h2>
-    <p>Nicht erlaubt sind rechtswidrige, beleidigende, diskriminierende oder sexuelle Inhalte, Werbung sowie Fotos von Personen ohne deren Einverständnis. Inhalte, die mehrfach gemeldet werden, blenden wir automatisch aus; bei Verstößen können wir Inhalte löschen und Konten sperren.</p>
-    <h2>5. Orte und Vorschläge</h2>
+    <h2 id="regeln">4. Regeln für die Community</h2>
+    <p>Eigene Dates sind privat, bis ihr sie ausdrücklich teilt. Für alles, was ihr teilt oder kommentiert, gilt: <strong>Keine Toleranz</strong> für rechtswidrige, sexuelle, beleidigende, hasserfüllte, diskriminierende, gewaltverherrlichende oder gefährliche Inhalte, für Belästigung, Werbung und Spam sowie für Fotos oder persönliche Daten anderer Menschen ohne deren Einverständnis. Einen Paarnamen dürft ihr nur nutzen, wenn ihr beide zustimmt.</p>
+    <h2>5. Melden, Blockieren und Moderation</h2>
+    <p>Jedes geteilte Date und jeden Kommentar könnt ihr über „Melden“ mit Begründung melden und die Person blockieren; ihre Inhalte seht ihr dann nicht mehr. Wir prüfen Meldungen zeitnah, in der Regel innerhalb von 24 Stunden. Inhalte, die mehrfach gemeldet werden, blenden wir bis zur Prüfung vorläufig aus. Bei Verstößen blenden wir Inhalte aus oder löschen sie und können Personen von der Community ausschließen.</p>
+    <p>Wird ein Inhalt von euch ausgeblendet, seht ihr das mit Begründung in der App (Entdecken → Community → Eure geteilten Dates) und könnt dort Einspruch einlegen. Wir entscheiden darüber erneut durch eine Person, nicht automatisch. Unabhängig davon könnt ihr euch an eine außergerichtliche Streitbeilegungsstelle nach Art. 21 DSA oder an die Gerichte wenden. Kontakt für Behörden und Nutzer (Art. 11, 12 DSA): ${esc(LEGAL.email)}, auf Deutsch oder Englisch.</p>
+    <h2>6. Orte und Vorschläge</h2>
     <p>Orte, Öffnungszeiten, Preise, Wege und Wetter stammen aus öffentlichen Quellen und werden automatisch zusammengestellt. Sie können falsch oder veraltet sein – bitte prüft wichtige Angaben (z. B. Öffnungszeiten, Reservierungen) direkt beim Anbieter. Für Leistungen von Restaurants, Veranstaltern oder anderen Dritten sind diese selbst verantwortlich.</p>
-    <h2>6. Verfügbarkeit und Haftung</h2>
+    <h2>7. Verfügbarkeit und Haftung</h2>
     <p>Wir bemühen uns um einen zuverlässigen Betrieb, können aber keine ständige Verfügbarkeit garantieren. Wir haften unbeschränkt bei Vorsatz und grober Fahrlässigkeit sowie bei Verletzung von Leben, Körper oder Gesundheit; im Übrigen nur bei Verletzung wesentlicher Pflichten und begrenzt auf den vorhersehbaren Schaden.</p>
-    <h2>7. Kündigung</h2>
+    <h2>8. Kündigung</h2>
     <p>Ihr könnt euer Konto jederzeit in den Einstellungen löschen. Wir können das Angebot mit angemessener Frist einstellen; vorher könnt ihr eure Daten herunterladen.</p>
-    <h2>8. Änderungen</h2>
+    <h2>9. Änderungen</h2>
     <p>Ändern sich diese Bedingungen wesentlich, informieren wir euch in der App. Es gilt deutsches Recht.</p>`;
 }

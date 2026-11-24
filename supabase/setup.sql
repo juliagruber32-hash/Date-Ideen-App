@@ -178,7 +178,9 @@ drop policy if exists "melden" on public.community_reports;
 create policy "melden" on public.community_reports for insert with check (user_id = auth.uid());
 
 -- Übersicht mit Durchschnittsbewertung
-create or replace view public.community_feed with (security_invoker = true) as
+-- (wird von community.sql erweitert – danach community.sql erneut ausführen)
+drop view if exists public.community_feed;
+create view public.community_feed with (security_invoker = true) as
   select i.id, i.idea, i.city, i.lat, i.lon, i.moods, i.cost, i.place, i.uses, i.created_at,
          (i.author = auth.uid()) as mine,
          coalesce(round(avg(r.stars)::numeric, 1), 0) as avg_stars,
@@ -310,6 +312,13 @@ grant select on public.couples to authenticated;
 grant select on public.members to authenticated;
 grant select, insert, update, delete on public.docs to authenticated;
 grant select, insert, update on public.profiles to authenticated;
-grant select, insert, update, delete on public.community_ideas to authenticated;
-grant select, insert, update, delete on public.community_ratings to authenticated;
+grant select, insert, delete on public.community_ideas to authenticated;
+-- Ändern nur Inhalt/Name/Einspruch – nie „ausgeblendet“ (Moderation, siehe community.sql)
+revoke update on public.community_ideas from authenticated;
+grant update (idea) on public.community_ideas to authenticated;
+grant select, insert, delete on public.community_ratings to authenticated;
+revoke update on public.community_ratings from authenticated;
+grant update (stars, comment) on public.community_ratings to authenticated;
 grant insert on public.community_reports to authenticated;
+
+-- Danach bitte auch supabase/community.sql ausführen (Melden, Blockieren, Moderation).

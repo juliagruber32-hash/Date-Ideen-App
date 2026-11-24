@@ -174,12 +174,28 @@ anbieten – Datewell als Web-App mit E-Mail-Login braucht es nicht.
 Zum Einschalten: im Apple-Developer-Konto eine **Services ID** mit „Sign in with Apple“ anlegen, in Supabase unter
 **Authentication → Sign In / Providers → Apple** eintragen und in [`js/config.js`](js/config.js) `apple: true` setzen.
 
-### Community: Gut zu wissen
+### 10. Community: Melden, Blockieren, Moderation (ca. 3 Minuten, Pflicht vor dem Start)
 
-Wenn andere Paare eure Webseite nutzen und Ideen teilen, betreibst du eine Plattform mit Inhalten von Nutzern.
-Ideen werden nach drei Meldungen automatisch ausgeblendet; löschen kannst du sie in Supabase unter
-**Table Editor → community_ideas**. Wenn die App öffentlich beworben wird, braucht sie in Deutschland und
-Österreich ein Impressum und eine Datenschutzerklärung.
+Eigene Dates sind privat. Erst wer zum ersten Mal teilt, wählt einen Anzeigenamen (Vorname, Paarname oder ohne
+Namen) und bestätigt die Community-Regeln. Ein Paarname erscheint erst, wenn beide zugestimmt haben. Andere sehen
+nur die Stadt bzw. Region und öffentliche Orte – nie eine Adresse oder den Startpunkt.
+
+Für den App Store (Richtlinie 1.2 „User-Generated Content“) und den Digital Services Act braucht es Melden,
+Blockieren und Moderation. Das ist eingebaut:
+
+- **Melden** mit Grund für geteilte Dates und Kommentare, **Blockieren** von Personen (aufheben in den Einstellungen).
+- Nach drei Meldungen wird ein Inhalt **vorläufig ausgeblendet**, bis jemand entscheidet.
+- **Moderation** in der App (Einstellungen → Community → Moderation öffnen): In Ordnung, Ausblenden mit Begründung,
+  Löschen oder Person sperren. Gesperrte können nichts mehr teilen oder bewerten.
+- Die betroffene Person sieht die **Begründung** und kann **Einspruch** einlegen; Einsprüche landen wieder in der Moderation.
+- Offene Meldungen erscheinen für Moderator:innen als Hinweis auf der Startseite.
+
+Einrichten:
+1. Supabase → **SQL Editor** → Inhalt von [`supabase/community.sql`](supabase/community.sql) einfügen → **Run**.
+2. Dich als Moderatorin eintragen – die letzte Zeile der Datei mit deiner E-Mail-Adresse ausführen:
+   `insert into public.community_moderators (user_id) select id from auth.users where email = 'deine@adresse.de';`
+3. Wichtig: Meldungen wirklich zeitnah prüfen (Apple erwartet eine Reaktion innerhalb von 24 Stunden).
+   Die Kontakt-E-Mail im Impressum ist zugleich die Kontaktstelle nach dem Digital Services Act.
 
 ## Veröffentlichen – kostenlos
 

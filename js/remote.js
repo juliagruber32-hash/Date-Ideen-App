@@ -426,14 +426,68 @@ function communityApi(client, uid) {
       return Object.fromEntries(data.map((r) => [r.idea_id, r]));
     },
     async reviews(ideaId) {
+      const r = await client.rpc('community_reviews', { i: ideaId });
+      if (!r.error) return r.data;
+      // ältere Datenbank ohne community.sql
       const { data, error } = await client.from('community_ratings').select('stars,comment,created_at').eq('idea_id', ideaId).order('created_at', { ascending: false }).limit(20);
       fail(error);
       return data;
     },
     async publish(idea, meta) {
-      const { data, error } = await client.from('community_ideas').insert({ idea, city: meta.city ?? null, lat: meta.lat ?? null, lon: meta.lon ?? null, moods: idea.moods ?? [], cost: idea.cost, place: idea.place }).select('id').single();
+      const row = { idea, city: meta.city ?? null, lat: meta.lat ?? null, lon: meta.lon ?? null, moods: idea.moods ?? [], cost: idea.cost, place: idea.place, display_name: meta.displayName ?? null };
+      let { data, error } = await client.from('community_ideas').insert(row).select('id').single();
+      if (error && /display_name/.test(error.message)) {
+        delete row.display_name;
+        ({ data, error } = await client.from('community_ideas').insert(row).select('id').single());
+      }
+      if (error && /row-level security/i.test(error.message)) throw new Error('Teilen ist für dein Konto gerade nicht möglich. Bei Fragen schreib uns (Kontakt im Impressum).');
       fail(error);
       return data.id;
+    },
+    /** Eigene geteilte Ideen – auch ausgeblendete, mit Begründung. */
+    async mine() {
+      const { data, error } = await client.from('community_ideas').select('id,idea,city,display_name,hidden,mod_reason,appeal,created_at').eq('author', uid).order('created_at', { ascending: false });
+      if (error && /column/.test(error.message)) {
+        const r = await client.from('community_ideas').select('id,idea,city,hidden,created_at').eq('author', uid);
+        fail(r.error);
+        return r.data;
+      }
+      fail(error);
+      return data;
+    },
+    async setDisplayName(ids, name) {
+      if (!ids.length) return;
+      const { error } = await client.from('community_ideas').update({ display_name: name }).in('id', ids);
+      fail(error);
+    },
+    async appeal(id, text) {
+      const { error } = await client.from('community_ideas').update({ appeal: text, appeal_at: new Date().toISOString() }).eq('id', id);
+      fail(error);
+    },
+    async block(ideaId) {
+      const { error } = await client.rpc('block_author', { i: ideaId });
+      fail(error);
+    },
+    async blockedCount() {
+      const { count, error } = await client.from('community_blocks').select('blocked', { count: 'exact', head: true });
+      return error ? 0 : count ?? 0;
+    },
+    async unblockAll() {
+      const { error } = await client.rpc('unblock_all');
+      fail(error);
+    },
+    async isModerator() {
+      const { data, error } = await client.rpc('is_moderator');
+      return !error && data === true;
+    },
+    async queue() {
+      const { data, error } = await client.rpc('moderation_queue');
+      fail(error);
+      return data;
+    },
+    async moderate(ideaId, reviewId, action, reason) {
+      const { error } = await client.rpc('moderate', { i: ideaId, review: reviewId ?? null, action, reason: reason ?? '' });
+      fail(error);
     },
     async remove(id) {
       const { error } = await client.from('community_ideas').delete().eq('id', id);
@@ -453,7 +507,9 @@ function communityApi(client, uid) {
     async use(ideaId) {
       await client.rpc('use_idea', { i: ideaId });
     },
-    async report(ideaId, reason) {
+    async report(ideaId, { reviewId = null, reason = '', note = '', block = false } = {}) {
+      const r = await client.rpc('report_content', { i: ideaId, review: reviewId, reason, note, block });
+      if (!r.error) return;
       const { error } = await client.from('community_reports').insert({ idea_id: ideaId, reason: reason || null });
       if (error && !/duplicate/i.test(error.message)) fail(error);
     },
