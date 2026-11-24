@@ -887,7 +887,7 @@ RENDER.entdecken = () => {
       <button role="tab" data-dtab="community" aria-selected="${d.tab === 'community'}">${icon('users')}Community</button>
       <button role="tab" data-dtab="gemerkt" aria-selected="${d.tab === 'gemerkt'}">${icon('heart')}Gemerkt</button>
     </nav>`;
-  const subs = { fuereuch: 'Ideen und Orte, die gerade zu euch passen.', orte: 'Restaurants, Bars, Museen & mehr in eurer Nähe.', community: 'Dates, die andere Paare geplant und bewertet haben.', gemerkt: 'Eure Favoriten und eigenen Ideen.' };
+  const subs = { fuereuch: '', orte: 'Restaurants, Bars, Museen & mehr in eurer Nähe.', community: 'Dates, die andere Paare geplant und bewertet haben.', gemerkt: 'Eure Favoriten und eigenen Ideen.' };
   const head = topbar({ title: 'Entdecken', sub: subs[d.tab] }) + `
     <form class="search-bar" id="d-search-form" role="search">
       ${icon('search')}
@@ -1933,8 +1933,17 @@ function renderForYou(head) {
   const budget = feedFilter.budget ?? L().lastSearch.budget ?? 60;
   const f = feedFilter;
 
-  const heroes = [...(d.gen ?? []), ...(d.events ?? []).slice(0, 2)];
-  const genBusy = center && f.radiusKm !== 0 && !store.inArtifact() && (d.genLoading && !d.gen);
+  // Ein gemeinsamer Bereich: Dates aus echten Orten in der Nähe und passende Ideen, abwechselnd
+  const heroes = [];
+  const gq = [...(d.gen ?? [])];
+  const fq = [...(d.feed ?? [])];
+  while (gq.length || fq.length) {
+    if (gq.length) heroes.push(gq.shift());
+    if (fq.length) heroes.push(fq.shift());
+  }
+  heroes.splice(2, 0, ...(d.events ?? []).slice(0, 2));
+  const genBusy = center && f.radiusKm !== 0 && !store.inArtifact() && d.genLoading && !d.gen;
+  const allBusy = (d.feedLoading && !d.feed) && (genBusy || !center);
   const ctxParts = [center?.name ?? 'Standort wählen', f.radiusKm === 0 ? 'Zuhause' : `${f.radiusKm} km`, `${relDay(feedDate()) ?? fmtShort(feedDate())} ${daytimeLabel(f.daytime)}`, `bis ${budget} €`];
   const extras = [f.mood ? moodLabel(f.mood) : '', f.place === 'drinnen' ? 'Drinnen' : f.place === 'draußen' ? 'Draußen' : '', f.duration ? durLabel(f.duration) : ''].filter(Boolean);
 
@@ -1963,19 +1972,15 @@ function renderForYou(head) {
       <button type="button" class="btn primary" id="ff-apply">Anwenden</button>
     </section>
 
-    ${heroes.length || genBusy ? `
     <section class="stack">
-      ${secHead(isXmasSeason(feedDate()) ? 'Heute für euch · Adventszeit' : 'Heute für euch', d.gen?.length ? `<button type="button" class="linkish small" id="gen-more">${icon('dice')}Neu mischen</button>` : '')}
-      ${genBusy ? '<div class="loading"><span class="spinner"></span>Stelle Dates aus euren Orten zusammen …</div>' : `<div class="hero-row">${heroes.map(heroCard).join('')}</div>`}
-    </section>` : d.genError ? `<p class="muted small">Die Kartendaten sind gerade nicht erreichbar. <button type="button" class="linkish small" id="gen-retry">Nochmal versuchen</button></p>` : ''}
+      ${secHead(`${relDay(feedDate()) ? `${relDay(feedDate())} ${daytimeLabel(f.daytime)}` : 'Demnächst'}${isXmasSeason(feedDate()) ? ' · Adventszeit' : ''}`, heroes.length ? `<button type="button" class="linkish small" id="mix-all">${icon('dice')}Neu mischen</button>` : '')}
+      ${allBusy && !heroes.length ? '<div class="loading"><span class="spinner"></span>Suche Dates für euch …</div>'
+        : heroes.length ? `<div class="hero-row">${heroes.map(heroCard).join('')}</div>${genBusy ? '<p class="muted small"><span class="spinner tiny"></span> Stelle zusätzlich Dates aus euren Orten zusammen …</p>' : ''}`
+          : '<p class="muted">Gerade passt nichts – lockert die Filter oben.</p>'}
+      ${d.genError ? `<p class="muted small">Die Kartendaten sind gerade nicht erreichbar. <button type="button" class="linkish small" id="gen-retry">Nochmal versuchen</button></p>` : ''}
+    </section>
 
     ${f.radiusKm !== 0 ? areaTiles() : ''}
-
-    <section class="stack">
-      ${secHead('Ideen für euch', d.feed?.length ? `<button type="button" class="linkish small" id="feed-more">${icon('dice')}Andere</button>` : '')}
-      ${d.feedLoading && !d.feed ? '<div class="loading"><span class="spinner"></span>Suche Ideen …</div>'
-        : d.feed?.length ? `<div class="idea-rows">${d.feed.map(ideaRow).join('')}</div>` : '<p class="muted">Gerade passt nichts – lockert die Filter oben.</p>'}
-    </section>
 
     ${recos.length ? `
     <section class="stack">
@@ -2057,6 +2062,15 @@ function renderForYou(head) {
     });
     f.open = false;
     refresh();
+  });
+  $('#mix-all')?.addEventListener('click', async (e) => {
+    await withBusy(e.currentTarget, async () => {
+      const shown = new Set((d.feed ?? []).map((i) => i.id));
+      const res = await suggest(d.feedCtx, d.feedWeather, { count: 4, exclude: shown, dates: S().dates.map(fullPlanOrMeta) });
+      d.feed = res.ideas;
+      d.gen = null; // neue Kombinationen aus euren Orten
+    });
+    render();
   });
   $('#feed-more')?.addEventListener('click', async (e) => {
     await withBusy(e.currentTarget, async () => {

@@ -927,3 +927,5 @@ body.auth-screen .view { padding-bottom: 40px; }
 .cat-tile .ico { width: 24px; height: 24px; color: var(--accent); stroke-width: 1.4; margin-bottom: 2px; }
 .cat-tile strong { font-size: 1rem; line-height: 1; }
 .cat-tile span { font-size: 0.72rem; color: var(--muted); line-height: 1.2; }
+
+.hero-card .thumb.cover { aspect-ratio: 16 / 10; }
