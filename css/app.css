@@ -946,3 +946,20 @@ body.auth-screen .view { padding-bottom: 40px; }
 .dateday .btn:not(.primary) { background: color-mix(in srgb, #F3EFE8 14%, transparent); color: #F3EFE8; border-color: transparent; }
 .dateday .btn.primary { background: #F3EFE8; color: #562F37; }
 .dateday .row { margin-top: 6px; }
+
+.banner.warn { background: color-mix(in srgb, var(--gold, #B5A99A) 22%, var(--surface)); }
+
+/* Karten ohne Foto: ruhige Farbflächen in den Markenfarben mit feinem Lichtverlauf */
+.thumb.noimg[data-tone] { color: #F3EFE8; border: none; }
+.thumb.noimg[data-tone]::before { content: ""; position: absolute; inset: 0; background: radial-gradient(120% 90% at 18% 12%, rgba(243,239,232,.22), transparent 55%), radial-gradient(90% 70% at 100% 100%, rgba(0,0,0,.22), transparent 60%); }
+.thumb.noimg[data-tone] .thumb-emoji { position: relative; }
+.thumb.noimg[data-tone] .thumb-emoji .ico { stroke-width: 1.1; color: #F3EFE8; opacity: .92; }
+.thumb.noimg[data-tone="rose"] { background: linear-gradient(145deg, #6b3a44, #3e2228); }
+.thumb.noimg[data-tone="ink"] { background: linear-gradient(145deg, #4a4658, #2a2833); }
+.thumb.noimg[data-tone="olive"] { background: linear-gradient(145deg, #7b7e66, #4a4c3c); }
+.thumb.noimg[data-tone="clay"] { background: linear-gradient(145deg, #94705a, #5a4033); }
+.thumb.noimg[data-tone="sand"] { background: linear-gradient(145deg, #a8998a, #6d6156); }
+.thumb.noimg[data-tone="sage"] { background: linear-gradient(145deg, #8a9283, #555c51); }
+.thumb.noimg[data-tone="plum"] { background: linear-gradient(145deg, #7a5468, #45303c); }
+.thumb.cover.noimg .thumb-emoji .ico, .thumb.hero.noimg .thumb-emoji .ico { width: 46px; height: 46px; }
+.thumb.hero.noimg[data-tone] { width: 100%; height: 170px; border-radius: var(--r-lg); }

@@ -4,7 +4,7 @@
 
 import { googleDetails } from './gplaces.js';
 
-const CACHE_KEY = 'dately.images.v2';
+const CACHE_KEY = 'dately.images.v3';
 let cache = null;
 const pending = new Map();
 const session = new Map();
@@ -120,4 +120,5 @@ export async function findImage(job, googleKey = '') {
 }
 
 /** Themenbild für eine Idee ohne konkreten Ort. */
-export const topicFor = (idea) => TOPIC[idea.id] ?? TOPIC[idea.steps?.map((s) => s.place?.category).find(Boolean)] ?? null;
+// Keine allgemeinen Themenfotos mehr (oft unpassend) – nur echte Fotos des konkreten Orts.
+export const topicFor = () => null;

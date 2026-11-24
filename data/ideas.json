@@ -15,7 +15,8 @@
         "t": "Picknick-Einkauf",
         "min": 30,
         "q": "Supermarkt",
-        "note": "Alles von der Einkaufsliste besorgen"
+        "note": "Alles von der Einkaufsliste besorgen",
+        "near": 4
       },
       {
         "t": "Picknick im Park",
@@ -770,14 +771,10 @@
     ],
     "steps": [
       {
-        "t": "Schokolade besorgen",
-        "min": 30,
-        "q": "Chocolaterie"
-      },
-      {
         "t": "Blind-Verkostung",
         "min": 60,
-        "note": "Augen verbinden, Punkte vergeben"
+        "note": "Augen verbinden, Punkte vergeben",
+        "todo": "Vorher 5 verschiedene Schokoladen besorgen (Supermarkt in der Nähe genügt)"
       }
     ],
     "recipe": {
@@ -996,13 +993,9 @@
     ],
     "steps": [
       {
-        "t": "Material besorgen",
-        "min": 30,
-        "q": "Künstlerbedarf"
-      },
-      {
         "t": "Malen & anstoßen",
-        "min": 120
+        "min": 120,
+        "todo": "Vorher das Mal-Material besorgen (siehe Liste – Drogerie oder Bastelladen in der Nähe)"
       }
     ],
     "recipe": {
@@ -1479,7 +1472,8 @@
       {
         "t": "Bäcker",
         "min": 15,
-        "q": "Bäckerei"
+        "q": "Bäckerei",
+        "near": 3
       },
       {
         "t": "Frühstück im Bett",

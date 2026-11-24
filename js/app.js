@@ -812,8 +812,12 @@ function ideaThumb(i, cls) {
 
 const gRating = (p) => (googleKey() && p?.lat != null ? `<span class="g-rating" data-grating="${gJob(p)}"></span>` : '');
 
+// Farbstimmung für Karten ohne Foto – passend zur Art des Dates
+const TONES = { romantisch: 'rose', kultur: 'ink', aktiv: 'olive', abenteuerlich: 'olive', kulinarisch: 'clay', gemütlich: 'sand', entspannt: 'sage', lustig: 'plum', kreativ: 'plum' };
+const toneOf = (t) => TONES[t?.moods?.[0]] ?? TONES[categoryById(t?.category)?.moods?.[0]] ?? 'rose';
 const thumb = (src, emoji, cls = '', job = null, target = null) =>
-  !src && job ? `<span class="thumb noimg ${cls}" data-img="${imgJob(job, target)}"><span class="thumb-emoji" aria-hidden="true">${glyph(emoji)}</span></span>`
+  !src && job ? `<span class="thumb noimg ${cls}" data-tone="${toneOf(target)}" data-img="${imgJob(job, target)}"><span class="thumb-emoji" aria-hidden="true">${glyph(emoji)}</span></span>`
+  : !src ? `<span class="thumb noimg ${cls}" data-tone="${toneOf(target)}"><span class="thumb-emoji" aria-hidden="true">${glyph(emoji)}</span></span>`
   : src ? `<span class="thumb ${cls}"><img src="${esc(src)}" alt="" loading="lazy" referrerpolicy="${refPol(src)}" onerror="this.parentNode.classList.add('noimg');this.remove()"><span class="thumb-emoji" aria-hidden="true">${glyph(emoji)}</span></span>`
     : `<span class="thumb noimg ${cls}"><span class="thumb-emoji" aria-hidden="true">${glyph(emoji)}</span></span>`;
 
@@ -3301,7 +3305,7 @@ function effectiveSteps(idea, draft, ctx) {
 }
 
 /** Wege zwischen den Orten einfügen und die Zeit auf die gewünschte Dauer verteilen. */
-function timedSteps(steps, draft, from) {
+function timedSteps(steps, draft, from, home = false) {
   const out = [];
   const map = [];
   let prev = from;
@@ -3320,6 +3324,16 @@ function timedSteps(steps, draft, from) {
         map.push(-1);
         travel += min;
       }
+    }
+    // Zuhause-Date: nach der Besorgung wieder heim
+    if (home && from && !p && prev && prev !== from && prev.lat != null) {
+      const km = distanceKm(prev, from);
+      const opts = travelEstimates(km);
+      const t = opts.find((o) => o.mode === (km < 1.5 ? 'walking' : 'driving')) ?? opts[0];
+      out.push({ t: 'Zurück nach Hause', min: round5(t.min), travel: true, note: `${fmtKm(km)} · ca. ${fmtMin(t.min)}`, from: { lat: prev.lat, lon: prev.lon }, to: { lat: from.lat, lon: from.lon }, mode: t.mode });
+      map.push(-1);
+      travel += round5(t.min);
+      prev = from;
     }
     out.push({ ...x });
     map.push(i);
@@ -3344,7 +3358,8 @@ RENDER.plan = (ideaId) => {
   const fromPoll = !!session.pollId;
   const draft = (drafts[ideaId] ??= { start: defaultStart(idea, ctx.daytime), surprise: !fromPoll, hint: '', picks: {}, near: null, openAlt: null, duration: idea.reach === 0 ? null : feedFilter.duration, variant: 0 });
   const baseSteps = effectiveSteps(idea, draft, ctx);
-  const stepCats = baseSteps.map((s) => s.cat ?? catForStep(s, ctx.date));
+  // Dates zuhause: nur kurze Besorgungen in der Nähe (z. B. Bäcker), keine Ausflüge
+  const stepCats = baseSteps.map((s) => (idea.reach === 0 && !s.near ? null : s.cat ?? catForStep(s, ctx.date)));
   const center = discoverCenter();
   const wantsPlaces = stepCats.some(Boolean) && ctx.reach !== 0 && !store.inArtifact();
   const nearKey = stepCats.join('|');
@@ -3358,7 +3373,9 @@ RENDER.plan = (ideaId) => {
     const p = draft.picks[i] && placeIndex.get(draft.picks[i]);
     return p ? { ...s, note: s.place?.id && s.place.id !== p.id ? '' : s.note, t: `${s.label ?? s.t}: ${p.name}`, place: { id: p.id, name: p.name, street: p.street, city: p.city, lat: p.lat, lon: p.lon, website: p.website, hours: p.hours, price: p.price, image: p.image, category: p.category, wikipedia: p.wikipedia } } : s;
   });
-  const timed = timedSteps(picked, draft, ctx.reach !== 0 ? center : null);
+  const timed = timedSteps(picked, draft, ctx.reach !== 0 ? center : null, idea.reach === 0);
+  const travelMin = timed.steps.filter((x) => x.travel).reduce((a, x) => a + x.min, 0);
+  const actMin = timed.steps.filter((x) => !x.travel).reduce((a, x) => a + x.min, 0);
   const variant = idea.variants?.[draft.variant ?? 0];
   const recipe = variant ? { name: variant.name, url: variant.url ?? '', ingredients: variant.materials } : idea.recipe;
   const plan = buildPlan({ ...idea, steps: timed.steps, recipe }, { ...ctx, start: draft.start }, S().settings, session.weather);
@@ -3433,6 +3450,7 @@ RENDER.plan = (ideaId) => {
       <ul class="needs">${plan.recipe.ingredients.map((x) => `<li>${icon('check')}<span>${esc(x)}</span></li>`).join('')}</ul>
       ${plan.recipe.url ? `<a class="link" href="${esc(plan.recipe.url)}" target="_blank" rel="noopener">${/youtube/.test(plan.recipe.url) ? `Anleitung: ${esc(plan.recipe.name)}` : /chefkoch/.test(plan.recipe.url) ? `Rezept: ${esc(plan.recipe.name)}` : 'Mehr dazu'}${icon('external')}</a>` : ''}
     </section>` : ''}
+    ${travelMin >= 30 && travelMin > actMin * 0.4 ? `<div class="banner warn">${icon('car')}<span><strong>Viel Fahrzeit:</strong> ca. ${fmtMin(travelMin)} unterwegs bei ${fmtMin(actMin)} Date. Tauscht einen Ort gegen etwas Näheres – oder genießt den Ausflug.</span></div>` : ''}
     ${timeline(plan, stepExtra)}
     ${plan.todos.length ? `<p class="hint">${icon('bell')} Vorher erledigen: ${plan.todos.map(esc).join(', ')}</p>` : ''}
 
@@ -3541,8 +3559,12 @@ async function loadStepPlaces(steps, draft, stepCats, center, ctx) {
       groups[firstCat] = [...(groups[firstCat] ?? []), ...(more[firstCat] ?? []).filter((p) => !have.has(p.name))];
     }
     const far = ids.filter((id) => !groups[id]?.length && !categoryById(id)?.fallback && !['xmas', 'karaoke', 'bookshop', 'chocolate', 'boat', 'supermarket'].includes(id));
-    if (far.length && radius < 60000) {
-      const wider = await searchMixed(far, center, Math.min(radius * 3, 60000), 2).catch(() => ({}));
+    // Anfahrt höchstens etwa ein Viertel der Date-Dauer (2,5 Std. Date → ca. 25 km)
+    const durMin = steps.reduce((a, x) => a + (x.min ?? 0), 0);
+    const reasonable = Math.max(12000, durMin * 0.25 * 700);
+    const wideR = Math.min(radius * 3, Math.max(radius, reasonable), 60000);
+    if (far.length && wideR > radius) {
+      const wider = await searchMixed(far, center, wideR, 2).catch(() => ({}));
       for (const id of far) if (wider[id]?.length) groups[id] = wider[id];
     }
     // Weicher Wunsch ohne Treffer (z. B. Burger, Tapas): ähnlichen Ort nehmen (Restaurant, Bar …)
@@ -3608,8 +3630,9 @@ async function loadStepPlaces(steps, draft, stepCats, center, ctx) {
           draft.picks[i] ??= fixed.id;
         }
         const pool = [...(fixed && !(groups[cat] ?? []).some((p) => p.id === fixed.id) ? [placeIndex.get(fixed.id)] : []), ...(groups[cat] ?? [])];
+        const maxKm = s.near ?? (['supermarket', 'chocolate'].includes(realCat[i] ?? cat) ? 8 : null);
         const list = pool
-          .filter((p) => !used.has(p.id))
+          .filter((p) => !used.has(p.id) && (maxKm == null || p.km <= maxKm))
           .map((p) => ({ ...p, distFromPrev: distanceKm(prev, p), open: isOpenAt(p.hours, when) }))
           .filter((p) => p.open !== false || p.id === draft.picks[i])
           // Hauptort: zuerst im gewählten Umkreis; bekannte Orte weiter weg kommen unten dazu
