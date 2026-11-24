@@ -413,3 +413,12 @@ export async function callPlaces(cfg, body) {
   if (data?.error) throw new Error(data.error);
   return data;
 }
+
+/** Server-Funktion „notify“ aufrufen (Mitteilungen). */
+export async function callNotify(cfg, body) {
+  const c = await getClient(cfg);
+  const { data, error } = await c.functions.invoke('notify', { body });
+  if (error) throw new Error(error.message || 'Mitteilungen sind auf dem Server noch nicht eingerichtet');
+  if (data?.error) throw new Error(data.error);
+  return data;
+}

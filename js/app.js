@@ -15,7 +15,7 @@ import { buildProfile, learnScore, mainCat } from './taste.js';
 import * as photos from './photos.js';
 import { SUPABASE } from './config.js';
 import * as gcal from './gcal.js';
-import { callPlaces, connectSupabase, currentSession, deleteAccount, getConfig, getRemember, lastEmail, setRemember, inviteLink, onAuthChange, readInvite, resetPassword, saveConfig, signIn, signOut, signUp, updatePassword } from './remote.js';
+import { callNotify, callPlaces, connectSupabase, currentSession, deleteAccount, getConfig, getRemember, lastEmail, setRemember, inviteLink, onAuthChange, readInvite, resetPassword, saveConfig, signIn, signOut, signUp, updatePassword } from './remote.js';
 import { nearSpecial, specialsOn, upcomingSpecials } from './special.js';
 import { glyph, icon } from './icons.js';
 import {
@@ -466,6 +466,49 @@ function connectRemote(cfg, announce = false) {
 }
 
 /** Server-Funktion „places“ nutzen, falls sie eingerichtet ist (Orte & Google über Supabase). */
+/* --- Mitteilungen aufs Handy ------------------------------------------------- */
+
+const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
+const isStandalone = () => window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true;
+const b64ToBytes = (b64) => {
+  const s = atob(b64.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (b64.length % 4)) % 4));
+  return Uint8Array.from(s, (c) => c.charCodeAt(0));
+};
+
+async function enablePush() {
+  if (!auth.cfg) throw new Error('Mitteilungen gibt es mit gemeinsamem Konto.');
+  if (!pushSupported()) throw new Error(isIOS() && !isStandalone() ? 'Auf dem iPhone: Dately zuerst über Teilen → „Zum Home-Bildschirm“ hinzufügen und von dort öffnen.' : 'Dieses Gerät unterstützt keine Mitteilungen.');
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted') throw new Error('Mitteilungen wurden nicht erlaubt. Du kannst sie in den Einstellungen des Handys für Dately erlauben.');
+  const { publicKey } = await callNotify(auth.cfg, { action: 'vapid' });
+  const reg = await navigator.serviceWorker.ready;
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(publicKey) });
+  await callNotify(auth.cfg, { action: 'subscribe', subscription: sub.toJSON(), role: myRole() });
+  L().push = { on: true, at: Date.now() };
+  store.saveLocal();
+}
+
+async function disablePush() {
+  const reg = await navigator.serviceWorker?.ready;
+  const sub = await reg?.pushManager.getSubscription();
+  if (sub) {
+    await callNotify(auth.cfg, { action: 'unsubscribe', endpoint: sub.endpoint }).catch(() => {});
+    await sub.unsubscribe().catch(() => {});
+  }
+  L().push = { on: false, at: Date.now() };
+  store.saveLocal();
+}
+
+/** Nach einer Änderung (neues Date, Match …) den Server sofort prüfen lassen. */
+let nudgeTimer = null;
+function nudgePush() {
+  if (!auth.cfg) return;
+  clearTimeout(nudgeTimer);
+  nudgeTimer = setTimeout(() => callNotify(auth.cfg, { action: 'nudge' }).catch(() => {}), 2500);
+}
+
 async function enableServerPlaces(cfg) {
   try {
     const st = await callPlaces(cfg, { action: 'status' });
@@ -2996,6 +3039,7 @@ RENDER.start = () => {
     if (f.planner === 'partner') {
       const note = $('#f-note').value.trim();
       store.update((st) => st.requests.push({ id: uid(), from: myRole(), to: other(myRole()), ctx, note, status: 'open', createdAt: Date.now() }));
+      nudgePush();
       if (city) ensureGeo(city);
       toast(`Anfrage an ${nameOf(other(myRole()))} gesendet`);
       render(true);
@@ -3549,6 +3593,7 @@ RENDER.plan = (ideaId) => {
     delete drafts[ideaId];
     session.requestId = null;
     session.pollId = null;
+    nudgePush();
     toast(surprise ? `Überraschung eingetragen – ${nameOf(partner)} sieht nur das Datum` : 'Im Kalender eingetragen');
     if (gcal.isConnected()) {
       gcal.createEvent(calendarEvent(surprise ? { ...plan, title: `Überraschung für ${nameOf(partner)}: ${plan.title}` } : plan))
@@ -4047,12 +4092,13 @@ async function startMatch(el) {
     const deck = await buildDeck(ctx, weather);
     if (!deck.length) return toast('Gerade keine passenden Dates – lockert die Filter unter Entdecken.');
     const builtin = new Set((await loadIdeas()).map((i) => i.id));
-    const poll = { id: uid(), kind: 'swipe', stage: 'swipe', status: 'open', createdBy: myRole(), createdAt: Date.now(), ctx, weather: weatherSnap(weather), deck: deck.map((i) => i.id), snap: Object.fromEntries(deck.filter((i) => !builtin.has(i.id)).map((i) => [i.id, i])), votes: { a: {}, b: {} } };
+    const poll = { id: uid(), kind: 'swipe', stage: 'swipe', status: 'open', createdBy: myRole(), createdAt: Date.now(), ctx, weather: weatherSnap(weather), deck: deck.map((i) => i.id), titles: Object.fromEntries(deck.map((i) => [i.id, i.title])), snap: Object.fromEntries(deck.filter((i) => !builtin.has(i.id)).map((i) => [i.id, i])), votes: { a: {}, b: {} } };
     store.update((st) => {
       // Nur ein offenes Date-Match gleichzeitig
       st.polls = st.polls.filter((x) => !(x.kind === 'swipe' && x.status === 'open'));
       st.polls.push(poll);
     });
+    nudgePush();
     go('match', poll.id);
   });
 }
@@ -4133,7 +4179,10 @@ RENDER.match = (id) => {
       x.votes ??= { a: {}, b: {} };
       x.votes[role] = { ...(x.votes[role] ?? {}), [cur.id]: v };
     });
-    if (v === 1 && theirs === 1) matchFlash = cur.id;
+    if (v === 1 && theirs === 1) {
+      matchFlash = cur.id;
+      nudgePush();
+    }
     if (v === -1) rememberSkips([cur]);
     render();
   };
@@ -4190,6 +4239,7 @@ RENDER.match = (id) => {
       store.update((st) => {
         const x = st.polls.find((y) => y.id === id);
         x.deck = [...x.deck, ...deck.map((i) => i.id)];
+        x.titles = { ...(x.titles ?? {}), ...Object.fromEntries(deck.map((i) => [i.id, i.title])) };
         x.snap = { ...(x.snap ?? {}), ...Object.fromEntries(deck.filter((i) => i.generated || i.custom).map((i) => [i.id, i])) };
       });
     });
@@ -4979,6 +5029,15 @@ RENDER.mehr = () => {
     </section>
 
     <section class="panel form">
+      <div class="panel-head">${icon('bell')}<h2>Mitteilungen</h2></div>
+      <p>Erinnerungen am Vorabend und kurz vor dem Date, „Wie war’s?“ am Tag danach – und sofort, wenn ${esc(nameOf(other(myRole() ?? 'a')))} eine Überraschung plant, sich ein Date wünscht oder ihr ein Match habt. Überraschungen bleiben geheim.</p>
+      ${!auth.cfg ? '<p class="muted small">Mitteilungen gibt es, sobald ihr ein gemeinsames Konto nutzt.</p>'
+        : isIOS() && !isStandalone() ? `<p class="hint">${icon('share')} Auf dem iPhone funktionieren Mitteilungen nur, wenn Dately auf dem Home-Bildschirm liegt: in Safari auf <strong>Teilen → „Zum Home-Bildschirm“</strong> tippen und Dately von dort öffnen.</p>`
+          : L().push?.on && window.Notification?.permission === 'granted'
+            ? `<p class="small">${icon('check', 'inline')} Mitteilungen sind auf diesem Handy aktiv.</p><div class="row gap"><button class="btn sm" id="push-test">Test-Mitteilung</button><button class="btn ghost sm" id="push-off">Ausschalten</button></div>`
+            : `<button class="btn primary" id="push-on">${icon('bell')}Mitteilungen aktivieren</button>`}
+    </section>
+    <section class="panel form">
       <div class="panel-head">${icon('star')}<h2>Weitere Datenquellen</h2></div>
       <p class="${serverStatus ? '' : 'muted '}small">${serverStatus ? `${icon('check', 'inline')} Dately-Server ist eingerichtet: Orte kommen schnell über euren Supabase-Server${serverStatus.google ? ', Google-Bewertungen, Fotos und Öffnungszeiten ebenfalls – ein eigener Schlüssel unten ist nicht mehr nötig' : ''}.` : 'Tipp: Mit der Server-Funktion „places“ (Anleitung im README) laden Orte viel schneller und Google-Daten kommen sicher über euren Server.'}</p>
       <p><strong>Veranstaltungen</strong> (Konzerte, Shows, Theater, Festivals): Mit einem kostenlosen Ticketmaster-Schlüssel zeigt Dately Veranstaltungen in eurem Umkreis und macht daraus Date-Ideen.</p>
@@ -5001,6 +5060,33 @@ RENDER.mehr = () => {
     store.claimRole(v);
     toast(`Du bist ${nameOf(v)}`);
     render();
+  });
+  $('#push-on')?.addEventListener('click', async (e) => {
+    await withBusy(e.currentTarget, async () => {
+      try {
+        await enablePush();
+        toast('Mitteilungen sind aktiv');
+        callNotify(auth.cfg, { action: 'test' }).catch(() => {});
+      } catch (err) {
+        toast(err.message);
+      }
+    });
+    render();
+  });
+  $('#push-off')?.addEventListener('click', async (e) => {
+    await withBusy(e.currentTarget, disablePush);
+    toast('Mitteilungen ausgeschaltet');
+    render();
+  });
+  $('#push-test')?.addEventListener('click', async (e) => {
+    await withBusy(e.currentTarget, async () => {
+      try {
+        const r = await callNotify(auth.cfg, { action: 'test' });
+        toast(r.devices ? 'Test-Mitteilung verschickt' : 'Kein Handy angemeldet – bitte neu aktivieren');
+      } catch (err) {
+        toast(err.message);
+      }
+    });
   });
   on('[data-set]', 'change', (_, el) => {
     const k = el.dataset.set;
@@ -5089,6 +5175,12 @@ RENDER.mehr = () => {
 (async function boot() {
   const initial = location.hash.replace('#', '');
   if (['kalender', 'dates', 'mehr', 'entdecken'].includes(initial)) current = { name: initial, param: null };
+  const deep = initial.match(/^(date|match)\/([\w-]+)$/);
+  if (deep) current = { name: deep[1], param: deep[2] };
+  navigator.serviceWorker?.addEventListener('message', (e) => {
+    const m = String(e.data?.url ?? '').match(/#(date|match)\/([\w-]+)$/);
+    if (e.data?.type === 'open' && m) go(m[1], m[2]);
+  });
   try {
     await loadIdeas();
   } catch {

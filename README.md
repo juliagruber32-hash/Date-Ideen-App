@@ -133,6 +133,20 @@ hilft also allen.
 
 Ohne diese Funktion arbeitet die App wie bisher (langsamer, direkt vom Handy aus).
 
+### 7. Mitteilungen aufs Handy (ca. 5 Minuten)
+
+Erinnerungen am Vorabend und 2 Stunden vorher, „Wie war’s?“ am Tag danach und sofortige Hinweise bei neuen
+Überraschungen, Date-Wünschen und Matches. Überraschungen bleiben dabei geheim.
+
+1. **Tabellen & Zeitplan:** Supabase → **SQL Editor** → **New query** → Inhalt von
+   [`supabase/notify.sql`](supabase/notify.sql) einfügen → **Run**.
+2. **Funktion anlegen:** **Edge Functions** → **Deploy a new function** → **Via Editor** → Name `notify` →
+   Inhalt von [`supabase/functions/notify/index.ts`](supabase/functions/notify/index.ts) einfügen → **Deploy function**.
+3. In der Funktion `notify` → **Details** → **Enforce JWT verification** ausschalten → **Save**.
+4. In Dately (jede Person auf ihrem Handy): **Einstellungen → Mitteilungen → Mitteilungen aktivieren**.
+   - **iPhone:** Mitteilungen gibt es nur, wenn Dately auf dem Home-Bildschirm liegt
+     (Safari → Teilen → „Zum Home-Bildschirm“) und von dort geöffnet wird.
+
 ### Community: Gut zu wissen
 
 Wenn andere Paare eure Webseite nutzen und Ideen teilen, betreibst du eine Plattform mit Inhalten von Nutzern.

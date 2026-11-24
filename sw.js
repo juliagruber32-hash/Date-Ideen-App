@@ -1,5 +1,5 @@
 // Service Worker: App offline verfügbar machen. Wetter-Anfragen gehen immer ins Netz.
-const VERSION = 'v42';
+const VERSION = 'v43';
 const SHELL = [
   './',
   'index.html',
@@ -53,4 +53,37 @@ self.addEventListener('fetch', (e) => {
       })
       .catch(() => caches.match(e.request).then((r) => r || caches.match('index.html'))),
   );
+});
+
+// Mitteilungen (Web Push) anzeigen
+self.addEventListener('push', (e) => {
+  let d = {};
+  try {
+    d = e.data ? e.data.json() : {};
+  } catch {
+    d = { body: e.data?.text() };
+  }
+  e.waitUntil(self.registration.showNotification(d.title || 'Dately', {
+    body: d.body || '',
+    icon: 'icons/icon-192.png',
+    badge: 'icons/icon-192.png',
+    tag: d.tag || undefined,
+    data: { url: d.url || './' },
+  }));
+});
+
+// Antippen öffnet Dately an der richtigen Stelle
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const url = e.notification.data?.url || './';
+  e.waitUntil((async () => {
+    const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const w of wins) {
+      if ('focus' in w) {
+        w.postMessage({ type: 'open', url });
+        return w.focus();
+      }
+    }
+    return self.clients.openWindow(url);
+  })());
 });
