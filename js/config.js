@@ -4,4 +4,6 @@
 export const SUPABASE = {
   url: 'https://ybkrnoigcnprymhuylrz.supabase.co',
   key: 'sb_publishable_50SErk-jAkJG8_tkX2az1A_87St1iRT',
+  // „Mit Apple anmelden“ – erst einschalten, wenn Apple in Supabase eingerichtet ist (siehe README)
+  apple: false,
 };

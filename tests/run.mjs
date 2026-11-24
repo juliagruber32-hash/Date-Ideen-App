@@ -58,6 +58,36 @@ await test('Weinbar ist Aperitif vor dem Essen, Essen gegen 18:45', async () => 
   assert.equal(d.steps[0].label, 'Aperitif');
   assert.match(d.steps[1].t, /Trattoria/, 'zum schicken Weinlokal kein Imbiss');
   assert.equal(d.start.abend, '17:45');
+  assert.equal(d.title, 'Wein & Dinner', 'kurzer Date-Titel');
+  assert.equal(d.subtitle, 'Vin · Trattoria');
+  assert.doesNotMatch(d.teaser, /danach [a-zäöü]/, 'Nomen nach „danach“ groß');
+});
+
+await test('Kino & Jazz: kurzer Titel, Orte als Untertitel', () => {
+  const P = (id, cat, name) => ({ id, category: cat, name, lat: 48.3, lon: 11.9, km: 2, hours: '' });
+  const idea = gen.buildGeneratedIdea(P('c', 'cinema', 'Rosenhof-Lichtspiele'), P('j', 'bar', 'Jazzclub Hirsch'), ['bar', 'Drink danach', 60, 'danach'], { start: '19:00', date: '2026-11-27' });
+  assert.equal(idea.title, 'Kino & Jazz');
+  assert.equal(idea.subtitle, 'Rosenhof-Lichtspiele · Jazzclub Hirsch');
+  assert.match(idea.teaser, /^Kino, danach Drink/);
+});
+
+await test('Kalender-Abo verrät keine Überraschung', async () => {
+  globalThis.Deno = { env: { get: () => '' } };
+  const dir = mkdtempSync(join(tmpdir(), 'dw-cal-'));
+  writeFileSync(join(dir, 'calendar.mjs'), readFileSync(join(root, 'supabase/functions/calendar/index.ts'), 'utf8'));
+  const { buildICS } = await import(pathToFileURL(join(dir, 'calendar.mjs')).href);
+  const dates = [
+    { id: 'd1', date: '2026-11-28', start: '19:00', end: '23:00', plannedBy: 'a', surprise: true, hint: 'Warm anziehen' },
+    { id: 'd2', date: '2026-11-30', start: '18:00', end: '21:00', plannedBy: 'b', surprise: false, title: 'Kino & Jazz', steps: [{ time: '18:00', title: 'Kino', place: { name: 'Rosenhof' } }] },
+  ];
+  const secrets = { d1: { title: 'Eislaufen', steps: [{ time: '19:00', title: 'Eislaufen', place: { name: 'Eisstadion' } }] } };
+  const forB = buildICS({ dates, secrets: {}, role: 'b', names: { a: 'Julia', b: 'Maxi' } });
+  assert.ok(!forB.includes('Eislaufen') && !forB.includes('Eisstadion'));
+  assert.match(forB, /Überraschung von Julia/);
+  assert.match(forB, /Warm anziehen/);
+  assert.match(forB, /Kino & Jazz|Kino \\& Jazz/);
+  const forA = buildICS({ dates, secrets, role: 'a', names: { a: 'Julia', b: 'Maxi' } });
+  assert.match(forA, /Eislaufen/);
 });
 
 await test('Mitteilungen: Überraschungen bleiben geheim', async () => {

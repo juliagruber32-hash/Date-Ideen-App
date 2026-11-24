@@ -1,10 +1,10 @@
 // Echte Fotos für Orte und Ideen – statt Icons.
-// Reihenfolge: Google-Foto (mit eigenem Schlüssel) → Wikipedia-Artikel zum Ort → Wikimedia-Fotos direkt am Ort
-// → ein passendes Themenbild (z. B. „Bouldern“, „Weihnachtsmarkt“). Ergebnisse werden auf dem Gerät gemerkt.
+// Bildrechte: Wir zeigen nur frei lizenzierte Fotos von Wikimedia Commons (mit Urheber und Lizenz)
+// sowie eure eigenen Fotos. Keine Fotos aus Google Maps oder von fremden Webseiten.
+// Reihenfolge: Wikipedia-Artikel zum Ort → Wikimedia-Fotos direkt am Ort. Ergebnisse werden auf dem Gerät gemerkt.
 
-import { googleDetails } from './gplaces.js';
-
-const CACHE_KEY = 'dately.images.v3';
+const CACHE_KEY = 'datewell.images.v4';
+const CREDIT_KEY = 'datewell.credits.v1';
 let cache = null;
 const pending = new Map();
 const session = new Map();
@@ -46,6 +46,66 @@ export const TOPIC = {
   'wellness-tag': 'Day Spa', 'erstes-date': 'Liebesbrief', weihnachtsmarkt: 'Christkindlmarkt (München)',
 };
 
+// --- Lizenzen ----------------------------------------------------------------
+let credits = null;
+function loadCredits() {
+  if (credits) return credits;
+  try {
+    credits = JSON.parse(localStorage.getItem(CREDIT_KEY)) ?? {};
+  } catch {
+    credits = {};
+  }
+  return credits;
+}
+const COMMONS = /^https:\/\/upload\.wikimedia\.org\/wikipedia\/commons\//;
+/** Darf dieses Bild angezeigt werden? Eigene Fotos (Speicher, Gerät) und Wikimedia Commons. */
+export function allowedImage(url) {
+  if (!url) return false;
+  if (/^(data:|blob:)/.test(url) || !/^https?:/.test(url)) return true; // eigene Fotos und Bilder der App
+  if (/\/storage\/v1\/object\//.test(url)) return true; // eure Fotos in Supabase
+  return COMMONS.test(url);
+}
+const fileOf = (url) => {
+  const m = url.match(/\/commons\/(?:thumb\/)?[0-9a-f]\/[0-9a-f]{2}\/([^/]+)/);
+  return m ? decodeURIComponent(m[1]) : '';
+};
+const strip = (h) => String(h ?? '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+const FREE = /^(cc0|cc[ -]by|public domain|pd\b|attribution)/i;
+/** Urheber und Lizenz eines Commons-Fotos – null, wenn die Lizenz keine freie Nutzung erlaubt. */
+export async function imageCredit(url) {
+  if (!COMMONS.test(url ?? '')) return '';
+  const c = loadCredits();
+  const file = fileOf(url);
+  if (!file) return null;
+  if (file in c) return c[file];
+  let credit = null;
+  try {
+    const res = await fetch(`https://commons.wikimedia.org/w/api.php?action=query&titles=File:${encodeURIComponent(file)}&prop=imageinfo&iiprop=extmetadata&format=json&origin=*`);
+    const page = Object.values((await res.json()).query?.pages ?? {})[0];
+    const meta = page?.imageinfo?.[0]?.extmetadata ?? {};
+    const lic = strip(meta.LicenseShortName?.value);
+    if (FREE.test(lic)) {
+      const artist = strip(meta.Artist?.value).slice(0, 60) || 'Wikimedia Commons';
+      credit = /public domain|^pd/i.test(lic) ? `Foto: ${artist} · gemeinfrei` : `Foto: ${artist} · ${lic}`;
+    }
+  } catch {
+    return undefined; // offline – später nochmal prüfen
+  }
+  c[file] = credit;
+  try {
+    localStorage.setItem(CREDIT_KEY, JSON.stringify(Object.fromEntries(Object.entries(c).slice(-800))));
+  } catch {
+    /* egal */
+  }
+  return credit;
+}
+/** Nur Bilder mit freier Lizenz übernehmen. */
+async function licensed(url) {
+  if (!url || !COMMONS.test(url)) return '';
+  const cr = await imageCredit(url);
+  return cr ? url : '';
+}
+
 const norm = (x) => String(x ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]/g, ' ');
 const tokens = (x) => norm(x).split(/\s+/).filter((t) => t.length > 3 && !['cafe', 'restaurant', 'museum', 'der', 'und', 'bar'].includes(t));
 
@@ -69,45 +129,44 @@ async function commonsNear(place) {
   return hit?.imageinfo?.[0]?.thumburl ?? '';
 }
 
-async function placeImage(place, googleKey) {
-  if (googleKey) {
-    const g = await googleDetails(place, googleKey).catch(() => null);
-    if (g?.photo) return g.photo;
-  }
+async function placeImage(place) {
   if (place.wikipedia) {
     const [lang, title] = place.wikipedia.includes(':') ? place.wikipedia.split(/:(.+)/) : ['de', place.wikipedia];
     const s = await wikiSummary(title, lang).catch(() => null);
-    if (s?.image) return s.image;
+    const ok = await licensed(s?.image);
+    if (ok) return ok;
   }
   const s = await wikiSummary(place.name).catch(() => null);
   // Nur übernehmen, wenn der Artikel wirklich diesen Ort meint
-  if (s?.image && norm(s.title) === norm(place.name)) return s.image;
-  return commonsNear(place).catch(() => '');
+  if (s?.image && norm(s.title) === norm(place.name)) {
+    const ok = await licensed(s.image);
+    if (ok) return ok;
+  }
+  return licensed(await commonsNear(place).catch(() => ''));
 }
 
 /**
  * Bild für einen Ort oder ein Thema finden.
  * job: { place?: {id,name,lat,lon,wikipedia,category}, topic?: string }
  */
-export async function findImage(job, googleKey = '') {
+export async function findImage(job) {
   const c = load();
-  const key = job.place ? `${googleKey ? 'gp' : 'p'}:${job.place.id ?? `${job.place.name}@${job.place.lat}`}` : `t:${job.topic}`;
+  const key = job.place ? `p:${job.place.id ?? `${job.place.name}@${job.place.lat}`}` : `t:${job.topic}`;
   if (key in c) return c[key];
   if (session.has(key)) return session.get(key);
   if (pending.has(key)) return pending.get(key);
   const p = (async () => {
     let url = '';
     try {
-      if (job.place?.lat != null) url = await placeImage(job.place, googleKey);
+      if (job.place?.lat != null) url = await placeImage(job.place);
       const fallback = job.place ? job.topic ?? TOPIC[job.place.category] : null;
       if (!url && fallback) url = await findImage({ topic: fallback });
-      if (!url && !job.place && job.topic) url = (await wikiSummary(job.topic).catch(() => null))?.image ?? '';
+      if (!url && !job.place && job.topic) url = await licensed((await wikiSummary(job.topic).catch(() => null))?.image);
     } catch {
       url = '';
     }
-    // Ohne Google-Foto (z. B. Schlüssel noch nicht aktiv) nur für diese Sitzung merken – später erneut versuchen
-    // Nichts gefunden oder noch kein Google-Foto: nur für diese Sitzung merken, später erneut versuchen
-    if (!url || (googleKey && job.place && !/googleapis\.com|functions\/v1\/places/.test(url))) session.set(key, url);
+    // Nichts gefunden: nur für diese Sitzung merken, später erneut versuchen
+    if (!url) session.set(key, url);
     else {
       c[key] = url;
       save();

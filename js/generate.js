@@ -47,6 +47,17 @@ const stylish = (p) => STYLISH.test(`${p.cuisine ?? ''} ${p.name ?? ''}`);
 const MAIN_MIN = { cocktail: 75, livemusic: 120, museum: 120, gallery: 75, cinema: 135, theatre: 150, bowling: 90, escape: 75, climbing: 120, minigolf: 75, zoo: 180, park: 90, viewpoint: 60, spa: 240, icerink: 90, xmas: 90, restaurant: 105, wine: 90, bar: 90, beergarden: 90, openair: 150, lake: 150, boat: 60, icecream: 40, cafe: 75 };
 const MAIN_LABEL = { cocktail: 'Cocktailbar', livemusic: 'Live-Musik', museum: 'Museum', gallery: 'Galerie', cinema: 'Kino', theatre: 'Vorstellung', bowling: 'Bowling', escape: 'Escape Room', climbing: 'Bouldern', minigolf: 'Minigolf', zoo: 'Zoo', park: 'Spaziergang', viewpoint: 'Aussicht', spa: 'Therme', icerink: 'Eislaufen', xmas: 'Weihnachtsmarkt', restaurant: 'Essen', wine: 'Weinbar', bar: 'Bar', beergarden: 'Biergarten', openair: 'Open-Air-Kino', lake: 'Am See', boat: 'Boot fahren', icecream: 'Eis', cafe: 'Café' };
 
+// Kurze Namen für Date-Titel wie „Kino & Jazz“
+const SHORT = { cocktail: 'Cocktails', livemusic: 'Live-Musik', museum: 'Museum', gallery: 'Galerie', cinema: 'Kino', theatre: 'Theater', bowling: 'Bowling', escape: 'Escape Room', climbing: 'Bouldern', minigolf: 'Minigolf', zoo: 'Zoo', park: 'Spaziergang', viewpoint: 'Aussicht', spa: 'Therme', icerink: 'Eislaufen', xmas: 'Weihnachtsmarkt', restaurant: 'Dinner', finedining: 'Dinner', wine: 'Wein', bar: 'Drinks', beergarden: 'Biergarten', openair: 'Open-Air-Kino', lake: 'See', boat: 'Boot', icecream: 'Eis', cafe: 'Kaffee' };
+const MUSIC = [[/jazz/i, 'Jazz'], [/blues/i, 'Blues'], [/piano/i, 'Piano-Bar'], [/karaoke/i, 'Karaoke']];
+export function shortLabel(p, daytime = 'abend') {
+  const name = p?.name ?? '';
+  const m = MUSIC.find(([re]) => re.test(name));
+  if (m) return m[1];
+  if (['restaurant', 'finedining'].includes(p?.category) && daytime !== 'abend') return 'Essen';
+  return SHORT[p?.category] ?? categoryById(p?.category)?.label ?? name;
+}
+
 const month = (iso) => Number(iso.slice(5, 7));
 const isSummer = (iso) => month(iso) >= 6 && month(iso) <= 8;
 const isWinter = (iso) => month(iso) === 12 || month(iso) <= 2;
@@ -113,14 +124,16 @@ export function buildGeneratedIdea(main, follow, pairing, { start, date }) {
   }
   const amount = main.price?.amount;
   const cost = Math.round((amount != null ? amount * 2 : cat.cost) + (follow ? Math.min(categoryById(follow.category).cost, 60) : 0));
+  const dt = cat.times.includes('abend') && !cat.times.includes('tag') ? 'abend' : st && st >= '17:00' ? 'abend' : 'tag';
   const first = before ? follow : main;
   const second = before ? main : follow;
   return {
     id: `gen-${main.id}${follow ? `-${follow.id}` : ''}`,
-    title: follow ? `${first.name} & ${second.name}` : withFood ? `Weinabend: ${main.name}` : main.name,
+    title: follow ? `${shortLabel(first, dt)} & ${shortLabel(second, dt)}` : withFood ? 'Weinabend' : MAIN_LABEL[main.category] ?? main.name,
+    subtitle: follow ? `${first.name} · ${second.name}` : main.name,
     emoji: cat.emoji,
     teaser: withFood ? 'Wein und kleine Gerichte an einem Ort – ganz entspannt.'
-      : follow ? (before ? `${pairing[1].replace(/ vorher$/, '')}, danach ${mainLabel.toLowerCase()}` : `${mainLabel}, danach ${pairing[1].replace(/ danach$/, '').toLowerCase()}`) + (gap < 0.6 ? ' – gleich nebenan' : ` – ${fmtKm(gap)} entfernt`)
+      : follow ? (before ? `${pairing[1].replace(/ vorher$/, '')}, danach ${mainLabel}` : `${mainLabel}, danach ${pairing[1].replace(/ danach$/, '')}`) + (gap < 0.6 ? ' – gleich nebenan' : ` – ${fmtKm(gap)} entfernt`)
         : cat.label,
     place: cat.place,
     moods: cat.moods ?? [],

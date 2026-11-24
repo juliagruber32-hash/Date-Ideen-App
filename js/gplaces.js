@@ -53,7 +53,7 @@ export async function googleDetails(place, apiKey) {
     headers: {
       'Content-Type': 'application/json',
       'X-Goog-Api-Key': apiKey,
-      'X-Goog-FieldMask': 'places.id,places.displayName,places.rating,places.userRatingCount,places.photos,places.googleMapsUri,places.websiteUri,places.priceLevel,places.location',
+      'X-Goog-FieldMask': 'places.id,places.displayName,places.rating,places.userRatingCount,places.googleMapsUri,places.websiteUri,places.priceLevel,places.location',
     },
     body: JSON.stringify({
       textQuery: `${place.name} ${place.street ?? ''}`.trim(),
@@ -68,11 +68,10 @@ export async function googleDetails(place, apiKey) {
   const g = json.places?.[0];
   let data = null;
   if (g) {
-    const photo = g.photos?.[0]?.name;
     data = {
       rating: g.rating ?? null,
       count: g.userRatingCount ?? 0,
-      photo: photo ? `https://places.googleapis.com/v1/${photo}/media?maxWidthPx=800&key=${encodeURIComponent(apiKey)}` : '',
+      photo: '', // keine Google-Fotos (Bildrechte)
       mapsUri: g.googleMapsUri ?? '',
       website: g.websiteUri ?? '',
       price: PRICE[g.priceLevel] ?? '',
@@ -117,7 +116,7 @@ export async function googleSearch(text, center, radiusM, apiKey) {
     headers: {
       'Content-Type': 'application/json',
       'X-Goog-Api-Key': apiKey,
-      'X-Goog-FieldMask': 'places.id,places.displayName,places.location,places.formattedAddress,places.websiteUri,places.rating,places.userRatingCount,places.photos,places.businessStatus',
+      'X-Goog-FieldMask': 'places.id,places.displayName,places.location,places.formattedAddress,places.websiteUri,places.rating,places.userRatingCount,places.businessStatus',
     },
     body: JSON.stringify({
       textQuery: text,
@@ -140,7 +139,7 @@ export async function googleSearch(text, center, radiusM, apiKey) {
       website: g.websiteUri ?? '',
       hours: '',
       price: null,
-      image: g.photos?.[0]?.name ? `https://places.googleapis.com/v1/${g.photos[0].name}/media?maxWidthPx=800&key=${encodeURIComponent(apiKey)}` : '',
+      image: '', // keine Google-Fotos (Bildrechte)
       google: { rating: g.rating ?? null, count: g.userRatingCount ?? 0 },
     }));
   cache[ck] = { at: Date.now(), data };

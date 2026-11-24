@@ -3,20 +3,20 @@ import { isHiddenFromMe, myRole, nameOf, other } from './store.js';
 import { geocode, geocodeList, getWeather, manualWeather } from './weather.js';
 import { setAvailability } from './engine.js';
 import { agbHTML, datenschutzHTML, impressumHTML, legalComplete } from './legal.js';
-import { allIdeas, buildPlan, combineWishes, setPreferences, defaultStart, ideaDuration, loadIdeas, MOODS, moodLabel, REACH, recommend, rhythmStatus, setExtraIdeas, suggest, toICS } from './engine.js';
+import { allIdeas, buildPlan, combineWishes, setPreferences, defaultStart, ideaDuration, loadIdeas, MOODS, moodLabel, REACH, recommend, rhythmStatus, setExtraIdeas, stepLinks, suggest, toICS } from './engine.js';
 import { isCasualFood, searchNotable } from './places.js';
 import { appleMapsLink, CATEGORIES, CUISINES, catForStep, isXmasSeason, categoryById, directionsLink, distanceKm, fmtKm, fmtMin, formatHours, hoursOn, isOpenAt, locate, mapLink, placeName, reservationLinks, searchByName, searchMixed, searchNearby, travelEstimates } from './places.js';
 import { googleDetails, googleSearch, googleViaServer, setGoogleProxy } from './gplaces.js';
 import { setPlacesProxy } from './places.js';
 import { generateLocalDates, travelLine } from './generate.js';
 import { eventWhen, fetchEvents, ideaFromEvent } from './events.js';
-import { findImage, topicFor } from './images.js';
+import { allowedImage, findImage, imageCredit, topicFor } from './images.js';
 import { areaProgress, ensureArea, getArea, onAreaChange } from './area.js';
 import { buildProfile, learnScore, mainCat } from './taste.js';
 import * as photos from './photos.js';
 import { SUPABASE } from './config.js';
 import * as gcal from './gcal.js';
-import { callNotify, callPlaces, connectSupabase, currentSession, logClientError, deleteAccount, getConfig, getRemember, lastEmail, setRemember, inviteLink, onAuthChange, readInvite, resetPassword, saveConfig, signIn, signOut, signUp, updatePassword } from './remote.js';
+import { callNotify, callPlaces, connectSupabase, currentSession, logClientError, deleteAccount, getConfig, getRemember, lastEmail, setRemember, inviteLink, onAuthChange, readInvite, resetPassword, saveConfig, signIn, signInWithApple, signOut, signUp, updatePassword } from './remote.js';
 import { nearSpecial, specialsOn, upcomingSpecials } from './special.js';
 import { glyph, icon } from './icons.js';
 import {
@@ -39,7 +39,7 @@ const drafts = {}; // ungespeicherte Eingaben auf dem Plan-Bildschirm, pro Idee
 
 /* ================================================================ Navigation */
 
-const TAB_OF = { start: 'start', suggest: 'start', plan: 'start', poll: 'start', match: 'start', neu: 'start', impressum: 'mehr', datenschutz: 'mehr', agb: 'mehr', entdecken: 'entdecken', idee: 'entdecken', ort: 'entdecken', teilen: 'entdecken', kosten: 'dates', rueckblick: 'dates', kalender: 'kalender', listen: 'listen', dates: 'dates', date: 'dates', mehr: 'mehr' };
+const TAB_OF = { start: 'start', suggest: 'start', plan: 'start', poll: 'start', match: 'start', neu: 'start', impressum: 'mehr', datenschutz: 'mehr', agb: 'mehr', entdecken: 'entdecken', idee: 'entdecken', ort: 'entdecken', teilen: 'entdecken', kosten: 'dates', eigen: 'dates', rueckblick: 'dates', kalender: 'kalender', listen: 'listen', dates: 'dates', date: 'dates', mehr: 'mehr' };
 const RENDER = {};
 // Ohne Anmeldung erreichbar: Anmeldung und rechtliche Seiten
 const OPEN_ROUTES = new Set(['konto', 'impressum', 'datenschutz', 'agb']);
@@ -117,7 +117,8 @@ window.addEventListener('popstate', (e) => {
 
 function render(scrollTop = false) {
   if (auth.needed && !OPEN_ROUTES.has(current.name)) current = { name: 'konto', param: null };
-  document.body.classList.toggle('auth-screen', current.name === 'konto');
+  const obStep = !auth.needed && !OPEN_ROUTES.has(current.name) ? onboardingStep() : null;
+  document.body.classList.toggle('auth-screen', current.name === 'konto' || !!obStep);
   formDirty = false;
   pendingRender = false;
   setPreferences(S().settings.prefs);
@@ -133,8 +134,9 @@ function render(scrollTop = false) {
     root.classList.remove('enter');
     clearTimeout(enterTimer);
   }
-  (RENDER[current.name] ?? RENDER.start)(current.param);
+  (obStep ? RENDER.onboarding : RENDER[current.name] ?? RENDER.start)(current.param);
   offlineNote();
+  enhanceDateInputs();
   hydrateMedia();
   if (current.name === 'plan' || current.name === 'date') drawPlanMap(lastPlan ?? { steps: [] });
   if (scrollTop) {
@@ -183,6 +185,22 @@ root.addEventListener('focusout', () => {
 });
 
 /* ================================================================ Bausteine */
+
+/** Leere Datumsfelder zeigen „TT.MM.JJJJ“ (iPhone zeigt sonst ein leeres Feld). */
+function enhanceDateInputs() {
+  $$('input[type="date"]', root).forEach((inp) => {
+    if (inp.parentNode.classList.contains('date-wrap')) return;
+    const wrap = document.createElement('span');
+    wrap.className = 'date-wrap';
+    inp.parentNode.insertBefore(wrap, inp);
+    wrap.appendChild(inp);
+    wrap.insertAdjacentHTML('beforeend', '<span class="date-ph" aria-hidden="true">TT.MM.JJJJ</span>');
+    const sync = () => wrap.classList.toggle('is-empty', !inp.value);
+    inp.addEventListener('input', sync);
+    inp.addEventListener('change', sync);
+    sync();
+  });
+}
 
 const chips = (group, options, value, cls = '') => `
   <div class="chips ${cls}" role="group" data-group="${group}">
@@ -366,16 +384,23 @@ function reveal(id, announce = true) {
 
 /* ================================================================ Wer bin ich? */
 
+const noRoleMsg = () => (store.syncInfo().backend === 'supabase' ? 'Einen Moment – dein Konto wird noch geladen' : 'Wähle zuerst auf der Startseite, wer du bist');
+
 function whoAmICard() {
   const role = myRole();
   if (role) return '';
+  // Mit Konto ordnet Datewell dich automatisch zu
+  if (store.syncInfo().backend === 'supabase') {
+    const m = S().settings.members ?? {};
+    return m.a && m.b && store.syncInfo().ready ? `<section class="panel who"><p>Dieses Paar ist schon vollständig verbunden. Prüfe in den Einstellungen, ob du den richtigen Einladungslink geöffnet hast.</p></section>` : '';
+  }
   const st = S().settings;
   const taken = st.members ?? {};
   const shared = store.syncInfo().backend === 'claude';
   return `
     <section class="panel who">
       <div class="panel-head">${icon('user')}<h2>Wer bist du?</h2></div>
-      <p class="muted">Damit die App weiß, wer plant und wer überrascht wird.${!st.nameA && !st.nameB ? ' Eure Namen tragt ihr unter „Mehr“ ein.' : ''}</p>
+      <p class="muted">Damit die App weiß, wer plant und wer überrascht wird.${!st.nameA && !st.nameB ? ' Eure Namen tragt ihr in den Einstellungen ein.' : ''}</p>
       <div class="row gap">
         ${['a', 'b'].map((r) => `<button class="btn grow" data-claim="${r}" ${shared && taken[r] ? 'disabled' : ''}>${esc(nameOf(r))}${shared && taken[r] ? ' (vergeben)' : ''}</button>`).join('')}
       </div>
@@ -409,12 +434,46 @@ window.addEventListener('offline', () => offlineNote());
 
 function syncChip() {
   const s = store.syncInfo();
-  if (s.mode !== 'shared') return `<span class="sync local">${icon('lock')}Nur dieses Gerät</span>`;
-  if (s.stale) return ''; // Verbindungshinweis erscheint dezent unten
-  const m = S().settings.members ?? {};
-  const role = myRole();
-  const partnerJoined = role && m[other(role)];
-  return partnerJoined ? `<span class="sync ok">${icon('rings')}Mit ${esc(nameOf(other(role)))} verbunden</span>` : `<span class="sync ok">${icon('users')}${esc(nameOf(other(role ?? 'a')))} einladen</span>`;
+  if (s.mode !== 'shared' || s.stale) return ''; // Verbindungshinweis erscheint dezent unten
+  return partnerJoined() ? `<span class="sync ok">${icon('rings')}Mit ${esc(nameOf(other(myRole())))} verbunden</span>` : '';
+}
+
+/** Solange der Partner noch nicht verbunden ist: Karte zum Einladen. */
+function inviteCard() {
+  if (!myRole() || partnerJoined() || !canInvite() || L().inviteHiddenUntil > Date.now()) return '';
+  const p = S().settings[myNameKey(other(myRole()))]?.trim();
+  return `
+    <section class="panel invite-card">
+      <div class="row gap"><span class="invite-ico">${icon('users')}</span>
+        <div class="grow"><strong>${p ? `${esc(p)} einladen` : 'Deinen Schatz einladen'}</strong><br><small class="muted">Zu zweit seht ihr dieselben Dates und plant abwechselnd.</small></div>
+        <button type="button" class="icon-btn small" id="invite-hide" aria-label="Ausblenden">${icon('x')}</button>
+      </div>
+      <button type="button" class="btn primary" id="invite-share">${icon('share')}Einladung senden</button>
+    </section>`;
+}
+function bindInviteCard() {
+  $('#invite-share')?.addEventListener('click', async () => {
+    const p = S().settings[myNameKey(other(myRole()))]?.trim();
+    const text = `${p ? `${p}, ` : ''}lass uns unsere Dates zusammen planen – mit Datewell: ${inviteLink(getConfig())}`;
+    if (navigator.share) {
+      try {
+        return await navigator.share({ title: 'Datewell', text });
+      } catch (e) {
+        if (e?.name === 'AbortError') return;
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('Einladung kopiert – füge sie in WhatsApp oder eine Nachricht ein');
+    } catch {
+      prompt('Einladungslink', inviteLink(getConfig()));
+    }
+  });
+  $('#invite-hide')?.addEventListener('click', () => {
+    L().inviteHiddenUntil = Date.now() + 7 * 864e5;
+    store.saveLocal();
+    render();
+  });
 }
 const settingsButton = () => `<button class="icon-btn" data-go="mehr" aria-label="Einstellungen">${icon('gear')}</button>`;
 
@@ -487,7 +546,7 @@ function calendarButtons() {
   return `
     <div class="cal-actions">
       <button class="btn primary" id="cal-google">${icon('calendar')}${gcal.isConnected() ? 'In Google Kalender eintragen' : 'Zu Google Kalender'}</button>
-      <button class="btn" id="cal-ics">${icon('download')}Handy-Kalender (.ics)</button>
+      <button class="btn" id="cal-ics">${icon('calendar')}Apple Kalender</button>
     </div>`;
 }
 
@@ -510,19 +569,129 @@ function bindCalendarButtons(plan) {
   $('#cal-ics').addEventListener('click', () => saveFile(`date-${plan.date}.ics`, toICS(plan), 'text/calendar'));
 }
 
+/** Blatt, das von unten einfährt. Gibt das Element zurück; close() schließt es. */
+function openSheet(title, html, bind = () => {}) {
+  closeSheet();
+  const wrap = document.createElement('div');
+  wrap.className = 'sheet-backdrop';
+  wrap.innerHTML = `
+    <section class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+      <div class="sheet-grip" aria-hidden="true"></div>
+      <header class="sheet-head"><h2>${esc(title)}</h2><button type="button" class="icon-btn" data-sheet-close aria-label="Schließen">${icon('x')}</button></header>
+      <div class="sheet-body">${html}</div>
+    </section>`;
+  document.body.append(wrap);
+  document.body.classList.add('sheet-open');
+  requestAnimationFrame(() => wrap.classList.add('in'));
+  wrap.addEventListener('click', (e) => {
+    if (e.target === wrap || e.target.closest('[data-sheet-close]')) closeSheet();
+  });
+  const sheet = wrap.querySelector('.sheet');
+  bind(sheet);
+  sheet.querySelector('input, select, textarea')?.focus({ preventScroll: true });
+  return sheet;
+}
+function closeSheet() {
+  const w = document.querySelector('.sheet-backdrop');
+  if (!w) return;
+  document.body.classList.remove('sheet-open');
+  w.classList.remove('in');
+  w.classList.add('out');
+  setTimeout(() => w.parentNode?.removeChild(w), 220);
+}
+document.addEventListener('keydown', (e) => e.key === 'Escape' && closeSheet());
+window.addEventListener('hashchange', closeSheet);
+
+/* --- Kalender verbinden: Apple (Abo) und Google ---------------------------- */
+
+const feedToken = () => S().secrets['calendar-feed']?.token ?? '';
+function ensureFeedToken(renew = false) {
+  if (feedToken() && !renew) return feedToken();
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  const token = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  store.update((st) => (st.secrets['calendar-feed'] = { kind: 'feed', token, createdAt: Date.now() }));
+  return token;
+}
+const feedUrl = (token) => `${(getConfig()?.url || SUPABASE.url).replace(/\/$/, '')}/functions/v1/calendar?t=${token}`;
+const feedAvailable = () => store.syncInfo().mode === 'shared' && store.syncInfo().backend === 'supabase' && !!store.syncInfo().uid;
+
+function upcomingICS() {
+  const plans = S().dates.filter((d) => d.date >= isoDate(today())).map((d) => (isHiddenFromMe(d) ? { ...d, title: dateTitle(d), emoji: '🎁', steps: [] } : fullPlanOrMeta(d)));
+  const parts = plans.map((p) => toICS({ ...p, steps: (p.steps ?? []).map((x) => ({ ...x, title: x.title ?? x.t ?? '', time: x.time ?? '', links: x.links ?? [] })), emoji: p.emoji ?? '', title: p.title ?? 'Date' }));
+  const events = parts.map((t) => t.split('BEGIN:VEVENT')[1]?.split('END:VEVENT')[0]).filter(Boolean).map((e) => `BEGIN:VEVENT${e}END:VEVENT`);
+  return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Datewell//DE', 'X-WR-CALNAME:Datewell', ...events, 'END:VCALENDAR'].join('\r\n');
+}
+
+function openCalendarSheet() {
+  const apple = /iPhone|iPad|Macintosh/.test(navigator.userAgent);
+  const gId = S().settings.googleClientId;
+  const hasFeed = feedAvailable();
+  const tok = hasFeed ? feedToken() : '';
+  const order = apple ? ['apple', 'google'] : ['google', 'apple'];
+  const blocks = {
+    apple: `
+      <article class="cal-choice">
+        <div class="cal-choice-head"><span class="cal-logo apple">${icon('calendar')}</span><div><h3>Apple Kalender</h3><p class="muted small">iPhone, iPad und Mac</p></div></div>
+        ${hasFeed ? `
+        <p class="small">Eure Dates erscheinen in deinem Apple Kalender und bleiben automatisch aktuell. Überraschungen für dich zeigen nur Uhrzeit und Hinweis.</p>
+        <button type="button" class="btn primary" id="feed-apple">${icon('calendar')}${tok ? 'Erneut im Apple Kalender öffnen' : 'Im Apple Kalender abonnieren'}</button>`
+        : `<p class="small">Ladet eure kommenden Dates als Kalenderdatei und öffnet sie im Apple Kalender.</p>
+        <button type="button" class="btn primary" id="ics-all">${icon('download')}Kommende Dates hinzufügen</button>`}
+        <p class="muted small">Apple erlaubt Web-Apps keinen Zugriff auf deine anderen Termine. Deshalb zeigt Datewell sie hier nicht an.</p>
+      </article>`,
+    google: `
+      <article class="cal-choice">
+        <div class="cal-choice-head"><span class="cal-logo google">${icon('calendar')}</span><div><h3>Google Kalender</h3><p class="muted small">Android, Web und iPhone mit Google-Konto</p></div></div>
+        ${gId ? (gcal.isConnected()
+          ? `<p class="small">Verbunden: ${L().gcal.events.length} Termine geladen. Belegte Zeiten (ohne Titel) helfen bei der Planung.</p><button type="button" class="btn" id="gcal-refresh-s">${icon('repeat')}Aktualisieren</button>`
+          : `<p class="small">Datewell zeigt deine Termine im Kalender und trägt Dates direkt ein.</p><button type="button" class="btn primary" id="gcal-connect-s">${icon('calendar')}Mit Google verbinden</button>`)
+          : hasFeed ? '<p class="small">Abonniere eure Dates in Google: Kopiere den Link und füge ihn bei Google Kalender unter „Weitere Kalender → Per URL“ ein.</p>' : '<p class="small">Google-Verbindung ist in dieser Version noch nicht eingerichtet.</p>'}
+        ${hasFeed ? `<button type="button" class="btn soft" id="feed-copy">${icon('share')}Kalender-Link kopieren</button>` : ''}
+      </article>`,
+  };
+  openSheet('Kalender verbinden', `
+    ${order.map((k) => blocks[k]).join('')}
+    ${hasFeed && tok ? '<button type="button" class="linkish small" id="feed-renew">Link erneuern (alter Link wird ungültig)</button>' : ''}`, (sh) => {
+    const openFeed = () => {
+      const url = feedUrl(ensureFeedToken());
+      // Kurz warten, damit der neue Schlüssel auf dem Server gespeichert ist
+      setTimeout(() => (location.href = url.replace(/^https:/, 'webcal:')), feedToken() ? 0 : 1200);
+    };
+    sh.querySelector('#feed-apple')?.addEventListener('click', openFeed);
+    sh.querySelector('#feed-copy')?.addEventListener('click', async () => {
+      const url = feedUrl(ensureFeedToken());
+      try {
+        await navigator.clipboard.writeText(url);
+        toast('Link kopiert');
+      } catch {
+        prompt('Kalender-Link', url);
+      }
+    });
+    sh.querySelector('#feed-renew')?.addEventListener('click', () => {
+      ensureFeedToken(true);
+      toast('Neuer Link erstellt – bitte neu abonnieren');
+      closeSheet();
+    });
+    sh.querySelector('#ics-all')?.addEventListener('click', () => saveFile('datewell-dates.ics', upcomingICS(), 'text/calendar'));
+    sh.querySelector('#gcal-connect-s')?.addEventListener('click', (e) => withBusy(e.currentTarget, async () => {
+      await connectGcal();
+      closeSheet();
+    }));
+    sh.querySelector('#gcal-refresh-s')?.addEventListener('click', (e) => withBusy(e.currentTarget, async () => {
+      await syncGcal();
+      closeSheet();
+    }));
+  });
+}
+
 function gcalBar() {
   if (store.inArtifact()) return '';
-  const id = S().settings.googleClientId;
-  const fetched = L().gcal.fetchedAt;
-  if (!id) return `<button class="banner neutral-row" data-go="mehr">${icon('calendar')}<span class="grow"><strong>Google Kalender verbinden</strong><br><small class="muted">Dann seht ihr hier eure Termine.</small></span>${icon('right')}</button>`;
-  if (!gcal.isConnected()) return `<div class="banner neutral-row">${icon('calendar')}<span class="grow"><strong>Google Kalender</strong><br><small class="muted">${fetched ? `Stand ${new Date(fetched).toLocaleString('de-DE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}` : 'Noch nicht verbunden'}</small></span><button class="btn sm primary" id="gcal-connect">Verbinden</button></div>`;
-  return `<div class="banner neutral-row">${icon('check')}<span class="grow"><strong>Google Kalender verbunden</strong><br><small class="muted">${L().gcal.events.length} Termine geladen</small></span><button class="btn sm" id="gcal-refresh">Aktualisieren</button></div>`;
+  const parts = [feedToken() ? 'Apple/Abo' : '', gcal.isConnected() ? 'Google' : ''].filter(Boolean);
+  return `<button type="button" class="banner neutral-row" id="cal-connect">${icon(parts.length ? 'check' : 'calendar')}<span class="grow"><strong>${parts.length ? 'Kalender verbunden' : 'Kalender verbinden'}</strong><br><small class="muted">${parts.length ? parts.join(' · ') : 'Apple oder Google – eure Dates automatisch im Kalender'}</small></span>${icon('right')}</button>`;
 }
 
 function bindGcalBar() {
-  on('[data-go]', 'click', (_, el) => go(el.dataset.go));
-  $('#gcal-connect')?.addEventListener('click', (e) => withBusy(e.currentTarget, connectGcal));
-  $('#gcal-refresh')?.addEventListener('click', (e) => withBusy(e.currentTarget, syncGcal));
+  $('#cal-connect')?.addEventListener('click', openCalendarSheet);
 }
 
 async function connectGcal() {
@@ -656,7 +825,7 @@ async function doConnectRemote(cfg, announce) {
   render(current.name === 'konto');
 }
 // Fehlerprotokoll: höchstens 5 Meldungen pro Sitzung, nur mit Konto, ohne Inhalte
-const APP_VERSION = 'v54';
+const APP_VERSION = 'v55';
 let errorsSent = 0;
 function reportError(err) {
   if (!auth.user || !auth.cfg || errorsSent >= 5 || navigator.onLine === false) return;
@@ -962,19 +1131,39 @@ const gJob = (place) => {
 const refPol = (src) => (/googleapis\.com/.test(src) ? 'strict-origin-when-cross-origin' : 'no-referrer');
 const imgTag = (src) => `<img src="${esc(src)}" alt="" loading="lazy" referrerpolicy="${refPol(src)}" onerror="this.parentNode.classList.add('noimg');this.remove()">`;
 
+/** Urheber und Lizenz unter freie Fotos schreiben; Fotos ohne freie Lizenz ausblenden. */
+function creditImages() {
+  $$('.thumb > img, .hero-img > img', root).forEach((img) => {
+    if (img.dataset.cr) return;
+    img.dataset.cr = '1';
+    const src = img.getAttribute('src');
+    if (!/upload\.wikimedia\.org/.test(src)) return;
+    imageCredit(src).then((cr) => {
+      if (cr === null) {
+        img.parentNode?.classList.add('noimg');
+        img.hidden = true;
+      } else if (cr && img.isConnected && !img.parentNode.querySelector('.img-credit')) {
+        img.insertAdjacentHTML('afterend', `<span class="img-credit">${esc(cr)}</span>`);
+      }
+    });
+  });
+}
+
 function hydrateMedia() {
   const key = googleKey();
   $$('[data-img]', root).forEach((el) => {
     const j = imgJobs.get(el.dataset.img);
     el.removeAttribute('data-img');
     if (!j) return;
-    findImage(j.job, key).then((url) => {
+    findImage(j.job).then((url) => {
       if (!url) return;
       if (j.target) j.target.image = url;
       el.classList.remove('noimg');
       el.insertAdjacentHTML('afterbegin', imgTag(url));
+      creditImages();
     });
   });
+  creditImages();
   if (!key) return;
   $$('[data-grating]', root).forEach((el) => {
     const p = gJobs.get(el.dataset.grating);
@@ -997,7 +1186,8 @@ const gRating = (p) => (googleKey() && p?.lat != null ? `<span class="g-rating" 
 // Farbstimmung für Karten ohne Foto – passend zur Art des Dates
 const TONES = { romantisch: 'rose', kultur: 'ink', aktiv: 'olive', abenteuerlich: 'olive', kulinarisch: 'clay', gemütlich: 'sand', entspannt: 'sage', lustig: 'plum', kreativ: 'plum' };
 const toneOf = (t) => TONES[t?.moods?.[0]] ?? TONES[categoryById(t?.category)?.moods?.[0]] ?? 'rose';
-const thumb = (src, emoji, cls = '', job = null, target = null) =>
+const thumb = (src, emoji, cls = '', job = null, target = null) => thumbHTML(allowedImage(src) ? src : '', emoji, cls, job, target);
+const thumbHTML = (src, emoji, cls = '', job = null, target = null) =>
   !src && job ? `<span class="thumb noimg ${cls}" data-tone="${toneOf(target)}" data-img="${imgJob(job, target)}"><span class="thumb-emoji" aria-hidden="true">${glyph(emoji)}</span></span>`
   : !src ? `<span class="thumb noimg ${cls}" data-tone="${toneOf(target)}"><span class="thumb-emoji" aria-hidden="true">${glyph(emoji)}</span></span>`
   : src ? `<span class="thumb ${cls}"><img src="${esc(src)}" alt="" loading="lazy" referrerpolicy="${refPol(src)}" onerror="this.parentNode.classList.add('noimg');this.remove()"><span class="thumb-emoji" aria-hidden="true">${glyph(emoji)}</span></span>`
@@ -1054,7 +1244,7 @@ function ideaFromPlace(p) {
 }
 
 async function planIdeaNow(idea, el) {
-  if (!myRole()) return toast('Wähle zuerst auf „Planen“, wer du bist');
+  if (!myRole()) return toast(noRoleMsg());
   tempIdeas.set(idea.id, idea);
   const ls = L().lastSearch;
   await withBusy(el, async () => {
@@ -1501,7 +1691,7 @@ RENDER.ort = (id) => {
     return [label, hoursOn(p.hours, day)];
   });
   const hasWeek = week.some(([, h]) => h);
-  const img = g?.photo || p.image;
+  const img = allowedImage(p.image) ? p.image : '';
   const est = travelEstimates(p.km);
   const apple = /iPhone|iPad|Mac/.test(navigator.userAgent);
 
@@ -2028,7 +2218,7 @@ function favBtn(idea, cls = '') {
 }
 
 async function toggleFav(id) {
-  if (!myRole()) return toast('Wähle zuerst auf „Planen“, wer du bist');
+  if (!myRole()) return toast(noRoleMsg());
   const idea = favRegistry.get(id) ?? ideaById(id);
   if (!idea) return;
   const builtin = (await loadIdeas()).some((i) => i.id === id);
@@ -2165,6 +2355,30 @@ function ideaJobFor(i) {
 }
 const ideaImg = (i) => i.photos?.[0] || i.image || i.steps?.find((s) => s.place?.image)?.place.image;
 
+/** Was gerade zur Jahreszeit passt – solange ihr noch nichts bewertet habt. */
+const SEASON_WORDS = {
+  advent: ['Beliebt in der Adventszeit', /weihnacht|advent|punsch|glüh|plätzchen|fondue|eislauf|eisstock|lichter|therme|kamin|raclette/i],
+  winter: ['Beliebt im Winter', /fondue|eislauf|eisstock|therme|sauna|kamin|raclette|schnee|rodel|kino|museum/i],
+  fruehling: ['Beliebt im Frühling', /picknick|radtour|blüte|garten|wander|markt|café|spazier/i],
+  sommer: ['Beliebt im Sommer', /see|picknick|open-air|biergarten|eis|sonnenuntergang|rooftop|radtour|baden/i],
+  herbst: ['Beliebt im Herbst', /wander|weinfest|wein|kürbis|museum|kino|töpfer|koch|therme|café/i],
+};
+function seasonalPicks(iso) {
+  const m = Number(iso.slice(5, 7));
+  const key = isXmasSeason(iso) ? 'advent' : m === 12 || m <= 2 ? 'winter' : m <= 5 ? 'fruehling' : m <= 8 ? 'sommer' : 'herbst';
+  const [title, re] = SEASON_WORDS[key];
+  const md = iso.slice(5);
+  const inSeason = (i) => !i.season || (i.season[0] <= i.season[1] ? md >= i.season[0] && md <= i.season[1] : md >= i.season[0] || md <= i.season[1]);
+  const list = allIdeas()
+    .filter((i) => inSeason(i) && !i.generated && !i.event)
+    .map((i) => ({ i, s: (i.season ? 2 : 0) + (re.test(`${i.title} ${i.teaser ?? ''}`) ? 1 : 0) }))
+    .filter((x) => x.s > 0)
+    .sort((a, b) => b.s - a.s)
+    .slice(0, 4)
+    .map((x) => x.i);
+  return { title, list };
+}
+
 /** Kurze Angaben: Entfernung, Preis, Dauer, Bewertung. */
 function ideaMeta(i) {
   const r = communityRatingFor(i);
@@ -2188,7 +2402,7 @@ function heroCard(i) {
   if (!why || shownWhy.has(why)) {
     const prefMoods = preferredMoods();
     const m = (i.moods ?? []).find((x) => prefMoods.includes(x));
-    why = i.generated ? 'Aus Orten in eurer Nähe zusammengestellt' : m ? `Passt zu eurer Vorliebe: ${moodLabel(m)}` : '';
+    why = m ? `Passt zu eurer Vorliebe: ${moodLabel(m)}` : '';
     if (shownWhy.has(why)) why = '';
   }
   if (why) shownWhy.add(why);
@@ -2199,6 +2413,7 @@ function heroCard(i) {
       ${favBtn(i, 'fav-pos')}
       <div class="hc-body">
         <h3>${esc(i.title)}</h3>
+        ${i.subtitle ? `<p class="hc-places">${icon('pin')}${esc(i.subtitle)}</p>` : ''}
         <p class="hc-teaser">${esc(i.teaser ?? '')}</p>
         <p class="hc-meta">${ideaMeta(i).map(esc).join(' · ')}</p>
         ${why ? `<p class="hc-why">${icon('sparkle')}${esc(why)}</p>` : ''}
@@ -2214,7 +2429,7 @@ function ideaRow(i) {
       ${thumb(ideaImg(i), i.emoji ?? '💡', 'row', ideaJobFor(i), i)}
       <div class="grow">
         <h3>${esc(i.title)}</h3>
-        <p class="clamp muted small">${esc(i.teaser ?? '')}</p>
+        <p class="clamp muted small">${esc(i.subtitle ?? i.teaser ?? '')}</p>
         <p class="ir-meta">${ideaMeta(i).map(esc).join(' · ')}</p>
       </div>
       ${favBtn(i)}
@@ -2354,7 +2569,10 @@ function renderForYou(head) {
   if (!d.feed && !d.feedLoading) loadFeed();
   if (center && !d.gen && !d.genLoading && !store.inArtifact() && feedFilter.radiusKm !== 0) loadGenerated();
   if (center && S().settings.ticketmasterKey && !d.events && !d.eventsLoading && !store.inArtifact()) loadEvents();
-  const recos = recommend(S().dates.map(fullPlanOrMeta), 3);
+  // Persönliche Empfehlungen erst, wenn ihr schon Dates bewertet habt
+  const rated = S().dates.some((x) => Object.values(x.ratings ?? {}).some((v) => v > 0));
+  const recos = rated ? recommend(S().dates.map(fullPlanOrMeta), 3) : [];
+  const season = recos.length ? null : seasonalPicks(feedDate());
   const topCommunity = (d.community ?? []).filter((r) => r.rating_count).sort((a, b) => b.avg_stars - a.avg_stars).slice(0, 3);
   if (community.api && !d.community && !d.cLoading) loadCommunity();
   const w = d.feedWeather;
@@ -2415,6 +2633,10 @@ function renderForYou(head) {
     <section class="stack">
       ${secHead('Weil es euch gefallen hat')}
       <div class="mini-row">${recos.map(({ idea }) => miniCard(idea)).join('')}</div>
+    </section>` : season?.list.length ? `
+    <section class="stack">
+      ${secHead(season.title)}
+      <div class="mini-row">${season.list.map(miniCard).join('')}</div>
     </section>` : ''}
 
     ${topCommunity.length ? `
@@ -2680,7 +2902,8 @@ RENDER.konto = () => {
   const pw = (id, label, auto) => `
     <div class="field"><label class="label" for="${id}">${label}</label>
       <div class="pw-row"><input class="input" id="${id}" type="password" autocomplete="${auto}" minlength="8" required>
-      <button type="button" class="icon-btn small pw-toggle" data-show="${id}" aria-pressed="false" aria-label="Passwort anzeigen">${icon('eye')}</button></div></div>`;
+      <button type="button" class="pw-toggle" data-show="${id}" aria-pressed="false" aria-label="Passwort anzeigen">${icon('eye')}</button></div></div>`;
+  const appleBtn = SUPABASE.apple ? `<div class="or-line"><span>oder</span></div><button type="button" class="btn big apple-btn" id="apple-login"><svg viewBox="0 0 24 24" aria-hidden="true" class="ico"><path fill="currentColor" d="M16.4 12.6c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.1-.8 1.5 0 1.9.8 3.2.8 1.3 0 2.2-1.2 3-2.4.9-1.4 1.3-2.7 1.3-2.8 0 0-2.5-1-2.5-3.9ZM14 5.4c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1 .1 2.1-.6 2.8-1.4Z"/></svg>Mit Apple anmelden</button>` : '';
   const forms = {
     anmelden: `
       <form class="panel form" id="auth-form" novalidate>
@@ -2689,12 +2912,15 @@ RENDER.konto = () => {
         <label class="switch"><input type="checkbox" id="a-remember" ${getRemember() ? 'checked' : ''}><span>Angemeldet bleiben</span></label>
         <button class="btn primary big" type="submit">Anmelden</button>
         <button class="linkish small center" type="button" data-amode="vergessen">Passwort vergessen?</button>
+        ${appleBtn}
       </form>`,
     registrieren: `
       <form class="panel form" id="auth-form" novalidate>
         <div class="field"><label class="label" for="a-email">E-Mail-Adresse</label><input class="input" id="a-email" type="email" autocomplete="email" inputmode="email" required></div>
         ${pw('a-pw', 'Passwort (mindestens 8 Zeichen)', 'new-password')}
         <button class="btn primary big" type="submit">Konto erstellen</button>
+        <p class="muted small center consent">Mit der Registrierung akzeptierst du die <a href="#agb" data-legal="agb">AGB</a> und die <a href="#datenschutz" data-legal="datenschutz">Datenschutzerklärung</a>.</p>
+        ${appleBtn}
       </form>`,
     vergessen: `
       <form class="panel form" id="auth-form" novalidate>
@@ -2731,8 +2957,7 @@ RENDER.konto = () => {
       ${auth.error ? `<p class="warn-text" role="alert">${esc(auth.error)}</p>` : ''}
       ${auth.info && mode !== 'bestaetigen' ? `<p class="hint" role="status">${esc(auth.info)}</p>` : ''}
       ${forms[mode] ?? forms.anmelden}
-      <p class="muted small center">Mit dem Konto speichert Datewell eure gemeinsamen Dates, Listen und Fotos sicher – nur ihr zwei seht sie.</p>
-      ${mode === 'registrieren' ? '<p class="muted small center">Mit der Registrierung akzeptierst du die <a href="#agb" data-legal="agb">Nutzungsbedingungen</a>. Wie wir mit Daten umgehen, steht in der <a href="#datenschutz" data-legal="datenschutz">Datenschutzerklärung</a>.</p>' : ''}
+      <p class="muted small center">Mit dem Konto speichert Datewell eure gemeinsamen Dates, Listen und Fotos sicher – privat für euch zwei.</p>
       ${legalLinks()}
     </section>`;
 
@@ -2749,6 +2974,16 @@ RENDER.konto = () => {
     el.innerHTML = icon(show ? 'eyeOff' : 'eye');
     el.setAttribute('aria-pressed', String(show));
     el.setAttribute('aria-label', show ? 'Passwort verbergen' : 'Passwort anzeigen');
+  });
+  $('#apple-login')?.addEventListener('click', async (e) => {
+    await withBusy(e.currentTarget, async () => {
+      try {
+        await signInWithApple(auth.cfg);
+      } catch (err) {
+        auth.error = err.message;
+        render();
+      }
+    });
   });
   $('#auth-form')?.addEventListener('input', () => $('.auth .warn-text')?.remove());
   $('#auth-form')?.addEventListener('submit', async (e) => {
@@ -2831,6 +3066,19 @@ async function startAccount(cfg) {
 /* ================================================================ Einstieg: Namen, besondere Tage, Vorlieben */
 
 const PREF_DIET = [['alles', 'Alles'], ['vegetarisch', 'Vegetarisch'], ['vegan', 'Vegan']];
+const REL_OPTS = [['zusammen', 'Zusammen'], ['verlobt', 'Verlobt'], ['verheiratet', 'Verheiratet']];
+
+const partnerJoined = () => {
+  const role = myRole();
+  return !!(role && (S().settings.members ?? {})[other(role)]);
+};
+const canInvite = () => store.syncInfo().backend === 'supabase' && !!getConfig()?.code;
+const myNameKey = (role) => (role === 'a' ? 'nameA' : 'nameB');
+
+/** Welche Schritte hat der Einstieg für diese Person? */
+function onboardingSteps() {
+  return ['name', ...(canInvite() && !partnerJoined() ? ['einladen'] : []), 'tage', 'vorlieben'];
+}
 
 function onboardingStep() {
   const st = S().settings;
@@ -2840,96 +3088,184 @@ function onboardingStep() {
   const sync = store.syncInfo();
   if (sync.mode === 'shared' && !sync.ready) return null;
   if (session.obForce) return session.obForce;
-  if (!st.nameA || !st.nameB) return 'namen';
+  if (!st[myNameKey(role)]?.trim()) return 'name';
   if (st.onboarded?.[role]) return null;
-  return session.obStep ?? 'tage';
+  const steps = onboardingSteps();
+  return steps.includes(session.obStep) ? session.obStep : steps[1];
 }
 
 const specialOf = (kind, who) => S().settings.specialDays.find((d) => d.kind === kind && (!who || d.who === who));
+const relationOf = (st) => st.relationship ?? (specialOf('standesamt') || specialOf('hochzeit') ? 'verheiratet' : specialOf('hochzeit-geplant') ? 'verlobt' : 'zusammen');
+const partnerLabel = (role) => {
+  const n = S().settings[myNameKey(other(role))]?.trim();
+  return n || 'deines Schatzes';
+};
 
-function onboardingCard() {
-  const step = onboardingStep();
-  if (!step) return '';
+/** Einstieg als eigener Vollbild-Screen vor der Startseite. */
+function onboardingScreen(step) {
   const st = S().settings;
   const role = myRole();
   const partner = other(role);
-  const nr = { namen: 1, tage: 2, vorlieben: 3 }[step];
+  const steps = session.obForce ? [step] : onboardingSteps();
+  const nr = steps.indexOf(step) + 1;
+  const pName = st[myNameKey(partner)]?.trim();
   const head = (title, sub) => `
-    <div class="ob-progress"><span class="kicker">Schritt ${nr} von 3</span><span class="dots-row">${[1, 2, 3].map((n) => `<i class="${n <= nr ? 'on' : ''}"></i>`).join('')}</span></div>
-    <div class="panel-head">${icon(step === 'namen' ? 'users' : step === 'tage' ? 'heart' : 'sparkle')}<h2>${title}</h2></div>
-    <p class="muted small">${sub}</p>`;
+    ${steps.length > 1 ? `<div class="ob-progress"><span class="kicker">Schritt ${nr} von ${steps.length}</span><span class="dots-row">${steps.map((_, i) => `<i class="${i < nr ? 'on' : ''}"></i>`).join('')}</span></div>` : ''}
+    <h1 class="ob-title">${title}</h1>
+    ${sub ? `<p class="ob-sub">${sub}</p>` : ''}`;
+  const actions = (submit, skip = true) => `
+    <div class="ob-actions">
+      <button class="btn primary big" type="submit">${submit}</button>
+      ${session.obForce ? '<button class="btn ghost" type="button" data-ob-cancel>Abbrechen</button>' : skip ? '<button class="linkish center" type="button" data-ob-skip>Später</button>' : ''}
+    </div>`;
+  let body = '';
 
-  if (step === 'namen') {
-    const field = (r, label) => `<div class="field grow"><label class="label" for="nm-${r}">${label}</label><input class="input" id="nm-${r}" maxlength="30" value="${esc(r === 'a' ? st.nameA : st.nameB)}" placeholder="Name" autocomplete="${r === role ? 'given-name' : 'off'}"></div>`;
-    return `
-      <form class="panel form onboarding" id="ob-form" data-step="namen" novalidate>
-        ${head('Wie heißt ihr?', 'Die Namen seht ihr überall in Datewell. Ihr könnt sie jederzeit in den Einstellungen ändern.')}
-        <div class="row gap wrap">${field(role, 'Dein Name')}${field(partner, 'Name deines Gegenübers')}</div>
-        <button class="btn primary" type="submit">Weiter</button>
-      </form>`;
-  }
-
-  if (step === 'tage') {
-    const married = session.obMarried ?? !!(specialOf('standesamt') || specialOf('hochzeit'));
+  if (step === 'name') {
+    body = `
+      ${head('Willkommen bei Datewell.', 'Schön, dass du da bist. Wie heißt du?')}
+      <div class="field"><label class="label" for="ob-name">Dein Vorname</label><input class="input" id="ob-name" maxlength="30" value="${esc(st[myNameKey(role)] ?? '')}" placeholder="z. B. Julia" autocomplete="given-name" autocapitalize="words"></div>
+      ${!canInvite() && !partnerJoined() ? `<div class="field"><label class="label" for="ob-pname">Name deines Schatzes <small class="muted">(optional)</small></label><input class="input" id="ob-pname" maxlength="30" value="${esc(pName ?? '')}" autocapitalize="words"></div>` : ''}
+      ${partnerJoined() && pName ? `<p class="muted small">${icon('rings')} Du bist schon mit ${esc(pName)} verbunden.</p>` : ''}
+      ${actions('Weiter', false)}`;
+  } else if (step === 'einladen') {
+    const link = inviteLink(getConfig());
+    body = `
+      ${head(`${pName ? `${esc(pName)}` : 'Deinen Schatz'} einladen`, 'Datewell macht zu zweit am meisten Spaß: Ihr seht dieselben Dates, plant abwechselnd und stimmt gemeinsam ab.')}
+      <div class="field"><label class="label" for="ob-pname">Wie heißt dein Schatz?</label><input class="input" id="ob-pname" maxlength="30" value="${esc(pName ?? '')}" placeholder="z. B. Maxi" autocapitalize="words"></div>
+      <div class="ob-invite">
+        <button class="btn primary big" type="button" id="ob-share">${icon('share')}Einladung senden</button>
+        <a class="btn big whatsapp" id="ob-wa" href="#" target="_blank" rel="noopener">Per WhatsApp teilen</a>
+        <div class="copy-row"><input class="input" id="ob-link" readonly value="${esc(link)}" aria-label="Einladungslink"><button class="btn" id="ob-copy" type="button">Kopieren</button></div>
+        <p class="muted small">Wer den Link öffnet und ein Konto erstellt, ist mit dir verbunden. Schick ihn nur an die Person, mit der du Datewell nutzt.</p>
+      </div>
+      <div class="ob-actions">
+        <button class="btn big" type="submit">Weiter</button>
+        <button class="linkish center" type="button" data-ob-skip>Später einladen</button>
+      </div>`;
+  } else if (step === 'tage') {
+    const rel = session.obRel ?? relationOf(st);
     const val = (kind, who) => esc(specialOf(kind, who)?.date ?? '');
-    return `
-      <form class="panel form onboarding" id="ob-form" data-step="tage" novalidate>
-        ${head('Eure besonderen Tage', 'Datewell erinnert euch rechtzeitig und schlägt dann besondere Dates vor. Alles ist freiwillig.')}
-        <div class="field"><label class="label" for="ob-anniv">Seit wann seid ihr zusammen?</label><input class="input" type="date" id="ob-anniv" value="${esc(st.anniversary)}"></div>
-        <div class="field"><span class="label">Seid ihr verheiratet?</span>${chips('ob-married', [['ja', 'Ja'], ['nein', 'Nein']], married ? 'ja' : 'nein', 'seg')}</div>
-        <div class="stack-sm" id="ob-wedding" ${married ? '' : 'hidden'}>
-          <div class="field"><label class="label" for="ob-standesamt">Standesamtliche Hochzeit</label><input class="input" type="date" id="ob-standesamt" value="${val('standesamt')}"></div>
-          <div class="field"><label class="label" for="ob-hochzeit">Kirchliche oder freie Trauung <small class="muted">(falls an einem anderen Tag)</small></label><input class="input" type="date" id="ob-hochzeit" value="${val('hochzeit')}"></div>
-        </div>
-        <div class="row gap wrap">
-          <div class="field grow"><label class="label" for="ob-geb-${role}">Dein Geburtstag</label><input class="input" type="date" id="ob-geb-${role}" value="${val('geburtstag', role)}"></div>
-          <div class="field grow"><label class="label" for="ob-geb-${partner}">Geburtstag ${esc(nameOf(partner))}</label><input class="input" type="date" id="ob-geb-${partner}" value="${val('geburtstag', partner)}"></div>
-        </div>
-        <div class="row gap"><button class="btn ghost" type="button" data-ob-skip>Überspringen</button><button class="btn primary grow" type="submit">Weiter</button></div>
-      </form>`;
-  }
-
-  const p = st.prefs?.[role] ?? {};
-  const theirs = st.prefs?.[partner];
-  return `
-    <form class="panel form onboarding" id="ob-form" data-step="vorlieben" novalidate>
-      ${head('Was gefällt dir bei Dates?', `Deine Antworten helfen Datewell, passende Ideen für euch zu finden.${theirs ? ` ${esc(nameOf(partner))} hat schon geantwortet.` : ` ${esc(nameOf(partner))} beantwortet das auf dem eigenen Handy.`}`)}
+    const dateField = (id, label, value) => `<div class="field"><label class="label" for="${id}">${label}</label><input class="input date-input" type="date" id="${id}" value="${value}" placeholder="TT.MM.JJJJ" max="2100-12-31"></div>`;
+    body = `
+      ${head('Eure besonderen Tage', 'Datewell erinnert euch rechtzeitig und schlägt dann besondere Dates vor. Alles ist freiwillig.')}
+      <div class="field"><span class="label">Ihr seid …</span>${chips('ob-rel', REL_OPTS, rel, 'seg')}</div>
+      ${dateField('ob-anniv', 'Seit wann seid ihr zusammen?', esc(st.anniversary ?? ''))}
+      <div class="stack-sm" data-rel="verlobt" ${rel === 'verlobt' ? '' : 'hidden'}>
+        ${dateField('ob-verlobung', 'Tag der Verlobung', val('verlobung'))}
+        ${dateField('ob-geplant', 'Geplantes Hochzeitsdatum <small class="muted">(falls schon bekannt)</small>', val('hochzeit-geplant'))}
+      </div>
+      <div class="stack-sm" data-rel="verheiratet" ${rel === 'verheiratet' ? '' : 'hidden'}>
+        ${dateField('ob-standesamt', 'Hochzeitstag (Standesamt)', val('standesamt'))}
+        ${dateField('ob-hochzeit', 'Kirchliche oder freie Trauung <small class="muted">(falls an einem anderen Tag)</small>', val('hochzeit'))}
+      </div>
+      ${dateField(`ob-geb-${role}`, 'Dein Geburtstag', val('geburtstag', role))}
+      ${dateField(`ob-geb-${partner}`, `Geburtstag ${esc(pName || 'deines Schatzes')}`, val('geburtstag', partner))}
+      ${actions('Weiter')}`;
+  } else {
+    const p = st.prefs?.[role] ?? {};
+    const theirs = st.prefs?.[partner];
+    body = `
+      ${head('Was gefällt dir bei Dates?', `Deine Antworten helfen Datewell, passende Ideen für euch zu finden.${theirs ? ` ${esc(nameOf(partner))} hat schon geantwortet.` : pName ? ` ${esc(pName)} beantwortet das auf dem eigenen Handy.` : ''}`)}
       <div class="field"><span class="label">Worauf hast du am meisten Lust? <small class="muted">(bis zu 4)</small></span>
         <div class="chips" id="ob-moods">${MOODS.map(([v, l]) => `<button type="button" class="chip" data-m="${v}" aria-pressed="${(p.moods ?? []).includes(v)}">${l}</button>`).join('')}</div></div>
       <div class="field"><span class="label">Lieber drinnen oder draußen?</span>${chips('ob-place', [['drinnen', 'Drinnen', 'home'], ['draußen', 'Draußen', 'sun'], ['egal', 'Beides']], p.place ?? 'egal', 'seg')}</div>
       <div class="field"><span class="label">Wie isst du?</span>${chips('ob-diet', PREF_DIET, p.diet ?? 'alles', 'seg')}</div>
       <div class="field">
-        <div class="label-row"><span class="label">Typisches Budget für ein Date (zu zweit)</span><output id="ob-budget-out" class="budget-out">${p.budget ?? 50} €</output></div>
+        <div class="label-row"><span class="label">Typisches Budget für ein Date (zu zweit)</span><output id="ob-budget-out" class="budget-out">${budgetLabel(p.budget ?? 50)}</output></div>
         <input type="range" id="ob-budget" min="0" max="200" step="5" value="${p.budget ?? 50}" aria-label="Budget in Euro">
+        <div class="scale"><span>0 €</span><span>50 €</span><span>100 €</span><span>150 €</span><span>200 €+</span></div>
       </div>
-      <div class="row gap"><button class="btn ghost" type="button" data-ob-skip>Überspringen</button><button class="btn primary grow" type="submit">${icon('check')}Fertig</button></div>
-    </form>`;
+      ${actions(session.obForce ? 'Speichern' : `${icon('check')}Fertig`)}`;
+  }
+  return `
+    <section class="ob-screen">
+      <div class="ob-brand">${icon('rings', 'brand-mark')}<span class="logo">Date<i>well</i></span></div>
+      <form class="form ob-form" id="ob-form" data-step="${step}" novalidate>${body}</form>
+    </section>`;
 }
+
+RENDER.onboarding = () => {
+  const step = onboardingStep();
+  root.innerHTML = onboardingScreen(step);
+  bindOnboarding();
+};
 
 function bindOnboarding() {
   const form = $('#ob-form');
   if (!form) return;
   const step = form.dataset.step;
   const role = myRole();
-  const finish = () => {
-    store.update((st) => (st.settings.onboarded = { ...(st.settings.onboarded ?? {}), [role]: true }));
+  const steps = onboardingSteps();
+  const done = () => {
     session.obStep = null;
-    session.obForce = null;
+    if (session.obForce) {
+      session.obForce = null;
+      toast('Gespeichert');
+      go('mehr', null, { replace: true });
+      return;
+    }
+    store.update((st) => (st.settings.onboarded = { ...(st.settings.onboarded ?? {}), [role]: true }));
     toast('Alles eingerichtet – viel Freude mit Datewell!');
+    go('start', null, { replace: true });
     render(true);
   };
-  const next = (s) => {
-    if (session.obForce) session.obForce = s;
-    else session.obStep = s;
-    render();
-    $('#ob-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const next = () => {
+    if (session.obForce) return done();
+    const i = steps.indexOf(step);
+    if (i < 0 || i >= steps.length - 1) return done();
+    session.obStep = steps[i + 1];
+    render(true);
   };
-  $$('[data-ob-skip]', form).forEach((b) => b.addEventListener('click', () => (step === 'tage' ? next('vorlieben') : finish())));
+  $$('[data-ob-skip]', form).forEach((b) => b.addEventListener('click', next));
+  $('[data-ob-cancel]', form)?.addEventListener('click', () => {
+    session.obForce = null;
+    go('mehr', null, { replace: true });
+  });
+  const savePartnerName = () => {
+    const v = $('#ob-pname')?.value.trim();
+    if (v) store.update((st) => (st.settings[myNameKey(other(role))] = v));
+  };
 
+  if (step === 'einladen') {
+    const text = () => {
+      const p = $('#ob-pname').value.trim();
+      return `${p ? `${p}, ` : ''}lass uns unsere Dates zusammen planen – mit Datewell: ${$('#ob-link').value}`;
+    };
+    const wa = $('#ob-wa');
+    const setWa = () => (wa.href = `https://wa.me/?text=${encodeURIComponent(text())}`);
+    setWa();
+    $('#ob-pname').addEventListener('input', setWa);
+    wa.addEventListener('click', savePartnerName);
+    $('#ob-share').addEventListener('click', async () => {
+      savePartnerName();
+      if (navigator.share) {
+        try {
+          await navigator.share({ title: 'Datewell', text: text() });
+          return;
+        } catch (e) {
+          if (e?.name === 'AbortError') return;
+        }
+      }
+      try {
+        await navigator.clipboard.writeText(text());
+        toast('Einladung kopiert – füge sie in WhatsApp oder eine Nachricht ein');
+      } catch {
+        $('#ob-link').select();
+      }
+    });
+    $('#ob-copy').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText($('#ob-link').value);
+        toast('Link kopiert');
+      } catch {
+        $('#ob-link').select();
+      }
+    });
+  }
   if (step === 'tage') {
-    bindChips(form, 'ob-married', (v) => {
-      session.obMarried = v === 'ja';
-      $('#ob-wedding').hidden = v !== 'ja';
+    bindChips(form, 'ob-rel', (v) => {
+      session.obRel = v;
+      $$('[data-rel]', form).forEach((el) => (el.hidden = el.dataset.rel !== v));
     });
   }
   const moods = new Set(S().settings.prefs?.[role]?.moods ?? []);
@@ -2948,34 +3284,46 @@ function bindOnboarding() {
     bindChips(form, 'ob-diet', (v) => (prefs.diet = v));
     $('#ob-budget').addEventListener('input', (e) => {
       prefs.budget = Number(e.target.value);
-      $('#ob-budget-out').textContent = `${prefs.budget} €`;
+      $('#ob-budget-out').textContent = budgetLabel(prefs.budget);
     });
   }
 
   form.addEventListener('submit', (e) => {
     e.preventDefault();
-    if (step === 'namen') {
-      const a = $('#nm-a').value.trim();
-      const b = $('#nm-b').value.trim();
-      if (!a || !b) return toast('Bitte beide Namen eintragen');
-      store.update((st) => Object.assign(st.settings, { nameA: a, nameB: b }));
-      return next('tage');
+    if (step === 'name') {
+      const n = $('#ob-name').value.trim();
+      if (!n) {
+        toast('Wie heißt du?');
+        return $('#ob-name').focus();
+      }
+      store.update((st) => (st.settings[myNameKey(role)] = n));
+      savePartnerName();
+      return next();
+    }
+    if (step === 'einladen') {
+      savePartnerName();
+      return next();
     }
     if (step === 'tage') {
-      const married = !$('#ob-wedding').hidden;
+      const rel = session.obRel ?? relationOf(S().settings);
+      const v = (id) => $(`#${id}`)?.value ?? '';
       store.update((st) => {
-        st.settings.anniversary = $('#ob-anniv').value || st.settings.anniversary;
+        st.settings.relationship = rel;
+        st.settings.anniversary = v('ob-anniv') || st.settings.anniversary;
         const setDay = (kind, who, date) => {
           const id = `sp-${kind}${who ? `-${who}` : ''}`;
           st.settings.specialDays = st.settings.specialDays.filter((d) => d.id !== id && !(d.kind === kind && (!who || d.who === who)));
           if (date) st.settings.specialDays.push({ id, kind, who: who ?? null, name: '', date });
         };
-        setDay('standesamt', null, married ? $('#ob-standesamt').value : '');
-        setDay('hochzeit', null, married ? $('#ob-hochzeit').value : '');
-        setDay('geburtstag', 'a', $('#ob-geb-a').value);
-        setDay('geburtstag', 'b', $('#ob-geb-b').value);
+        setDay('verlobung', null, rel !== 'zusammen' ? v('ob-verlobung') || specialOf('verlobung')?.date || '' : '');
+        setDay('hochzeit-geplant', null, rel === 'verlobt' ? v('ob-geplant') : '');
+        setDay('standesamt', null, rel === 'verheiratet' ? v('ob-standesamt') : '');
+        setDay('hochzeit', null, rel === 'verheiratet' ? v('ob-hochzeit') : '');
+        setDay('geburtstag', 'a', v('ob-geb-a'));
+        setDay('geburtstag', 'b', v('ob-geb-b'));
       });
-      return next('vorlieben');
+      session.obRel = null;
+      return next();
     }
     store.update((st) => {
       st.settings.prefs = { ...(st.settings.prefs ?? {}), [role]: { moods: [...moods], ...prefs } };
@@ -2983,7 +3331,7 @@ function bindOnboarding() {
     });
     L().lastSearch.budget = prefs.budget;
     store.saveLocal();
-    finish();
+    next();
   });
 }
 
@@ -3220,13 +3568,14 @@ RENDER.start = () => {
     </header>
     <section class="hello">
       <p class="eyebrow">${hasNames ? `${esc(nameOf('a'))} & ${esc(nameOf('b'))}` : 'Zeit zu zweit'}</p>
-      <h1>${role ? `${greeting()}, ${esc(nameOf(role))}.` : 'Worauf habt ihr Lust?'}</h1>
+      <h1>${role && S().settings[myNameKey(role)]?.trim() ? `${greeting()}, ${esc(nameOf(role))}.` : 'Willkommen bei Datewell.'}</h1>
     </section>
 
     ${whoAmICard()}
-    ${onboardingCard()}
+    ${inviteCard()}
     ${dateDayCard()}
-    ${myRole() ? `<button type="button" class="oclock-cta" data-go-neu><span><b>It’s date</b> <i>o’clock</i></span><small>Neues Date planen</small>${icon('right')}</button>` : ''}
+    ${myRole() ? `<button type="button" class="oclock-cta" data-go-neu><span><b>It’s date</b> <i>o’clock</i></span><small>Neues Date planen</small>${icon('right')}</button>
+    <button type="button" class="linkish center own-link" data-go-own>${icon('plus')}Schon etwas vor? Eigenes Date eintragen</button>` : ''}
 
     ${role ? `
     <section class="rhythm ${r.due ? 'due' : ''}">
@@ -3298,6 +3647,7 @@ RENDER.start = () => {
   root.innerHTML = planMode ? formHTML : homeHTML;
   bindBack();
   on('[data-go-neu]', 'click', () => go('neu'));
+  on('[data-go-own]', 'click', () => go('eigen'));
   const form = $('#start-form');
   if (form) {
   const updatePlanner = () => {
@@ -3346,7 +3696,7 @@ RENDER.start = () => {
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!myRole()) {
-      toast('Wähle zuerst oben, wer du bist');
+      toast(noRoleMsg());
       $('.who')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
@@ -3380,7 +3730,7 @@ RENDER.start = () => {
   }
 
   bindWhoAmI();
-  bindOnboarding();
+  bindInviteCard();
   $('#swap-turn')?.addEventListener('click', () => {
     store.update((st) => (st.settings.nextTurn = other(np)));
     session.plannerTouched = false;
@@ -3411,7 +3761,7 @@ RENDER.start = () => {
   $('#start-match')?.addEventListener('click', (e) => startMatch(e.currentTarget));
   on('[data-scroll-form]', 'click', () => go('neu'));
   on('[data-special]', 'click', async (_, el) => {
-    if (!myRole()) return toast('Wähle zuerst oben, wer du bist');
+    if (!myRole()) return toast(noRoleMsg());
     await withBusy(el, async () => {
       await prepareSession({ date: el.dataset.special, daytime: 'abend', budget: Math.max(150, f.budget), reach: 2, special: true }, null);
       go('suggest');
@@ -3665,6 +4015,7 @@ function planHead(plan, eyebrow = '') {
       ${img || job ? thumb(img, plan.emoji, 'hero', job, null) : `<span class="plan-emoji" aria-hidden="true">${glyph(plan.emoji)}</span>`}
       ${eyebrow ? `<p class="eyebrow">${eyebrow}</p>` : ''}
       <h1>${esc(plan.title)}</h1>
+      ${plan.subtitle ? `<p class="plan-places">${esc(plan.subtitle)}</p>` : ''}
       <p class="sub">${day ? day + ', ' : ''}${fmtDate(plan.date)} · ${plan.start}–${plan.end} Uhr</p>
       <div class="pills">
         ${weatherPill(plan.weather, plan.daytime)}
@@ -3854,7 +4205,7 @@ RENDER.plan = (ideaId) => {
   if (variant) plan.title = `${idea.title}: ${variant.name}`;
   if (idea.generated && !idea.event) {
     const names = picked.map((x) => x.place?.name).filter(Boolean);
-    if (names.length) plan.title = names.join(' & ');
+    if (names.length) plan.subtitle = names.join(' · '); // kurzer Titel bleibt, Orte stehen darunter
   }
   plan.cost = (idea.cost ?? 0) + baseSteps.filter((x) => x.ext).reduce((a, x) => a + (x.cost ?? 0), 0);
   const stepExtra = (k) => {
@@ -4465,14 +4816,14 @@ RENDER.poll = (id) => {
 
 /* ================================================================ Rechtliches */
 
-const legalLinks = () => `<nav class="legal-links"><a href="#impressum" data-legal="impressum">Impressum</a> · <a href="#datenschutz" data-legal="datenschutz">Datenschutz</a> · <a href="#agb" data-legal="agb">Nutzungsbedingungen</a></nav>`;
+const legalLinks = () => `<nav class="legal-links"><a href="#impressum" data-legal="impressum">Impressum</a> · <a href="#datenschutz" data-legal="datenschutz">Datenschutz</a> · <a href="#agb" data-legal="agb">AGB</a></nav>`;
 function bindLegalLinks() {
   on('[data-legal]', 'click', (e, el) => {
     e.preventDefault();
     go(el.dataset.legal);
   });
 }
-const LEGAL_PAGES = { impressum: ['Impressum', impressumHTML], datenschutz: ['Datenschutzerklärung', datenschutzHTML], agb: ['Nutzungsbedingungen', agbHTML] };
+const LEGAL_PAGES = { impressum: ['Impressum', impressumHTML], datenschutz: ['Datenschutzerklärung', datenschutzHTML], agb: ['AGB', agbHTML] };
 for (const [route, [title, html]] of Object.entries(LEGAL_PAGES)) {
   RENDER[route] = () => {
     root.innerHTML = `
@@ -4541,7 +4892,7 @@ async function buildDeck(ctx, weather, exclude = new Set()) {
 }
 
 async function startMatch(el) {
-  if (!myRole()) return toast('Wähle zuerst auf „Planen“, wer du bist');
+  if (!myRole()) return toast(noRoleMsg());
   await withBusy(el, async () => {
     const r = feedRadiusKm();
     const ctx = { date: feedDate(), daytime: feedFilter.daytime, budget: budgetVal(feedFilter.budget ?? L().lastSearch.budget ?? 60), reach: kmToReach(r), radiusKm: r, moods: preferredMoods() };
@@ -4729,6 +5080,9 @@ function entriesFor(date) {
   return list.sort((a, b) => (a.time || '00:00').localeCompare(b.time || '00:00'));
 }
 
+// Vier Farben im Kalender: Date · Geplant · Besonderer Tag · Termin
+const DOT_OF = { date: 'date', pending: 'pending', special: 'special', fixed: 'event', event: 'event', todo: 'event', gcal: 'event', busy: 'event' };
+
 RENDER.kalender = () => {
   const s = S();
   if (!cal.month) {
@@ -4749,7 +5103,7 @@ RENDER.kalender = () => {
   for (let d = 1; d <= daysInMonth; d++) {
     const date = new Date(m.getFullYear(), m.getMonth(), d);
     const iso = isoDate(date);
-    const types = [...new Set(entriesFor(date).map((e) => e.type))];
+    const types = [...new Set(entriesFor(date).map((e) => DOT_OF[e.type] ?? 'event'))];
     cells.push(`
       <button class="cal-cell ${iso === todayIso ? 'today' : ''} ${iso === cal.sel ? 'sel' : ''} ${types.includes('date') ? 'has-date' : ''}" data-day="${iso}" aria-label="${fmtDate(iso)}">
         <span class="num">${d}</span>
@@ -4770,8 +5124,8 @@ RENDER.kalender = () => {
       <div class="cal-grid head">${['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map((d) => `<span>${d}</span>`).join('')}</div>
       <div class="cal-grid">${cells.join('')}</div>
       <div class="legend">
-        <span><i class="dot date"></i>Date</span><span><i class="dot pending"></i>In Planung</span><span><i class="dot fixed"></i>Fest</span>
-        <span><i class="dot special"></i>Besonderer Tag</span><span><i class="dot event"></i>Termin</span><span><i class="dot gcal"></i>Google</span>
+        <span><i class="dot date"></i>Date</span><span><i class="dot pending"></i>Geplant</span>
+        <span><i class="dot special"></i>Besonderer Tag</span><span><i class="dot event"></i>Termin</span>
       </div>
     </section>
 
@@ -4783,8 +5137,9 @@ RENDER.kalender = () => {
           ${e.date || e.poll ? `<button class="grow entry-link" ${e.date ? `data-open-date="${e.date}"` : `data-open-poll="${e.poll}"`}>${esc(e.title)}${icon('right')}</button>` : `<span class="grow">${esc(e.title)}${e.who ? ` <small class="muted">· ${esc(e.who)}</small>` : ''}</span>`}
           ${e.type === 'event' ? `<button class="icon-btn small" data-del-event="${e.id}" aria-label="Termin löschen">${icon('x')}</button>` : ''}
         </li>`).join('')}</ul>` : '<p class="muted">Noch nichts eingetragen.</p>'}
-      <form class="panel add-row" id="add-event">
-        <input class="input" id="ev-title" name="title" placeholder="Eigener Termin, z. B. Yoga" required>
+      <button type="button" class="linkish add-toggle" id="ev-toggle" aria-expanded="${!!cal.addOpen}" ${cal.addOpen ? 'hidden' : ''}>${icon('plus')}Termin</button>
+      <form class="panel add-row" id="add-event" ${cal.addOpen ? '' : 'hidden'}>
+        <input class="input" id="ev-title" name="title" placeholder="Termin, z. B. Yoga" required>
         <div class="row gap">
           <input class="input" id="ev-time" type="time" name="time" value="19:00" aria-label="Uhrzeit">
           <select class="input" id="ev-who" name="who" aria-label="Wer">
@@ -4793,7 +5148,8 @@ RENDER.kalender = () => {
           <button class="btn primary square" aria-label="Termin hinzufügen">${icon('plus')}</button>
         </div>
       </form>
-      ${cal.sel >= todayIso ? `<button class="btn soft big" id="plan-here">${icon('sparkle')}Date für diesen Tag planen</button>` : ''}
+      ${cal.sel >= todayIso ? `<button class="btn soft big" id="plan-here">${icon('sparkle')}Date für diesen Tag planen</button>
+      <button class="linkish center add-toggle" id="own-here">${icon('plus')}Eigenes Date an diesem Tag eintragen</button>` : ''}
       ${(() => {
         const dp = S().polls.filter((p) => p.status === 'open' && p.stage === 'survey' && p.kind === 'day').sort((a, b) => b.createdAt - a.createdAt)[0];
         if (!dp || !myRole()) return '';
@@ -4824,18 +5180,26 @@ RENDER.kalender = () => {
     store.update((st) => (st.events = st.events.filter((e) => e.id !== el.dataset.delEvent)));
     render();
   });
+  $('#ev-toggle').addEventListener('click', (e) => {
+    cal.addOpen = true;
+    e.currentTarget.hidden = true;
+    $('#add-event').hidden = false;
+    $('#ev-title').focus();
+  });
   $('#add-event').addEventListener('submit', (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
     const title = String(fd.get('title')).trim();
     if (!title) return;
     store.update((st) => st.events.push({ id: uid(), date: cal.sel, time: fd.get('time'), title, who: fd.get('who'), createdAt: Date.now() }));
+    cal.addOpen = false;
     render();
   });
   $('#find-day').addEventListener('click', () => {
-    if (!myRole()) return toast('Wähle zuerst auf „Planen“, wer du bist');
+    if (!myRole()) return toast(noRoleMsg());
     go('poll', createSurvey('day'));
   });
+  $('#own-here')?.addEventListener('click', () => go('eigen', cal.sel));
   $('#plan-here')?.addEventListener('click', () => {
     Object.assign(L().lastSearch, { when: 'date', date: cal.sel });
     store.saveLocal();
@@ -5008,7 +5372,7 @@ function costSummaryHTML(d) {
 
 const datesTabs = (active) => `
   <nav class="seg-tabs" role="tablist">
-    <button role="tab" data-dseg="dates" aria-selected="${active === 'dates'}">${icon('bookmark')}Dates</button>
+    <button role="tab" data-dseg="dates" aria-selected="${active === 'dates'}">${icon('album')}Dates</button>
     <button role="tab" data-dseg="kosten" aria-selected="${active === 'kosten'}">${icon('wallet')}Kosten</button>
   </nav>`;
 function bindDatesTabs() {
@@ -5034,6 +5398,20 @@ RENDER.kosten = (param) => {
 
   const groups = {};
   for (const e of list) (groups[e.date.slice(0, 7)] ??= []).push(e);
+  const formHTML = () => `
+    <form class="form" id="exp-form" novalidate>
+      <div class="row gap">
+        <div class="field grow"><label class="label" for="e-title">Wofür?</label><input class="input" id="e-title" maxlength="60" placeholder="z. B. Abendessen" value="${esc(forDate ? dateTitle(forDate).replace(/^Überraschung von .*/, 'Überraschung') : '')}"></div>
+        <div class="field narrow-field"><label class="label" for="e-amount">Betrag €</label><input class="input" id="e-amount" inputmode="decimal" placeholder="0,00"></div>
+      </div>
+      <div class="field"><span class="label">Bezahlt von</span>${chips('payer', [['a', role === 'a' ? 'Mir' : esc(nameOf('a'))], ['b', role === 'b' ? 'Mir' : esc(nameOf('b'))]], draft.paidBy, 'seg')}</div>
+      <div class="field"><span class="label">Aufteilung</span>${chips('split', [['half', 'Halbe-halbe'], ['gift', 'Eingeladen']], draft.split, 'seg')}</div>
+      <div class="field"><label class="label" for="e-date">Zum Date</label>
+        <select class="input" id="e-date"><option value="">Ohne Date</option>${upcomingDates.map((d) => `<option value="${d.id}" ${forDate?.id === d.id ? 'selected' : ''}>${esc(fmtShort(d.date))} · ${esc(dateTitle(d))}</option>`).join('')}</select>
+      </div>
+      <label class="switch"><input type="checkbox" id="e-private" ${defaultPrivate ? 'checked' : ''}><span><strong>Vor ${esc(nameOf(partner))} verstecken</strong><br><small class="muted">Für Überraschungen und Geschenke. Nur du siehst diese Ausgabe.</small></span></label>
+      <button class="btn primary big" type="submit">${icon('check')}Speichern</button>
+    </form>`;
 
   root.innerHTML = `
     ${topbar({ title: 'Unsere Dates' })}
@@ -5059,20 +5437,7 @@ RENDER.kosten = (param) => {
       ${Math.abs(mine) >= 0.01 ? `<button class="btn sm" id="settle">Ausgeglichen</button>` : ''}
     </section>
 
-    <form class="panel form" id="exp-form" novalidate>
-      <div class="panel-head">${icon('plus')}<h2>Ausgabe eintragen</h2></div>
-      <div class="row gap">
-        <div class="field grow"><label class="label" for="e-title">Wofür?</label><input class="input" id="e-title" maxlength="60" placeholder="z. B. Abendessen" value="${esc(forDate ? dateTitle(forDate).replace(/^Überraschung von .*/, 'Überraschung') : '')}"></div>
-        <div class="field narrow-field"><label class="label" for="e-amount">Betrag €</label><input class="input" id="e-amount" inputmode="decimal" placeholder="0,00"></div>
-      </div>
-      <div class="field"><span class="label">Bezahlt von</span>${chips('payer', [['a', role === 'a' ? 'Mir' : esc(nameOf('a'))], ['b', role === 'b' ? 'Mir' : esc(nameOf('b'))]], draft.paidBy, 'seg')}</div>
-      <div class="field"><span class="label">Aufteilung</span>${chips('split', [['half', 'Halbe-halbe'], ['gift', 'Eingeladen']], draft.split, 'seg')}</div>
-      <div class="field"><label class="label" for="e-date">Zum Date</label>
-        <select class="input" id="e-date"><option value="">Ohne Date</option>${upcomingDates.map((d) => `<option value="${d.id}" ${forDate?.id === d.id ? 'selected' : ''}>${esc(fmtShort(d.date))} · ${esc(dateTitle(d))}</option>`).join('')}</select>
-      </div>
-      <label class="switch"><input type="checkbox" id="e-private" ${defaultPrivate ? 'checked' : ''}><span><strong>Vor ${esc(nameOf(partner))} verstecken</strong><br><small class="muted">Für Überraschungen und Geschenke. Nur du siehst diese Ausgabe.</small></span></label>
-      <button class="btn primary big" type="submit">${icon('check')}Speichern</button>
-    </form>
+    <button type="button" class="btn primary big exp-add" id="exp-open">${icon('plus')}Ausgabe eintragen</button>
 
     ${Object.keys(groups).length ? Object.entries(groups).map(([m, items]) => `
       <section class="stack">
@@ -5094,28 +5459,34 @@ RENDER.kosten = (param) => {
   bindDatesTabs();
   bindWhoAmI();
   if (!role) return;
-  const form = $('#exp-form');
-  bindChips(form, 'payer', (v) => (draft.paidBy = v));
-  bindChips(form, 'split', (v) => (draft.split = v));
-  form.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const amount = Math.round(Number($('#e-amount').value.replace(/\./g, '').replace(',', '.')) * 100) / 100;
-    const title = $('#e-title').value.trim() || 'Date';
-    if (!(amount > 0)) {
-      toast('Bitte einen Betrag eintragen');
-      return $('#e-amount').focus();
-    }
-    const dateId = $('#e-date').value;
-    const date = S().dates.find((d) => d.id === dateId)?.date ?? isoDate(today());
-    const item = { id: `exp-${uid()}`, kind: 'expense', title, amount, paidBy: draft.paidBy, split: draft.split, date, dateId: dateId || null, createdAt: Date.now() };
-    const priv = $('#e-private').checked;
-    store.update((s) => {
-      if (priv) s.secrets[item.id] = item;
-      else s.expenses.push(item);
+  const openForm = () => openSheet('Ausgabe eintragen', formHTML(), (sh) => {
+    const form = sh.querySelector('#exp-form');
+    bindChips(form, 'payer', (v) => (draft.paidBy = v));
+    bindChips(form, 'split', (v) => (draft.split = v));
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const amount = Math.round(Number(form.querySelector('#e-amount').value.replace(/\./g, '').replace(',', '.')) * 100) / 100;
+      const title = form.querySelector('#e-title').value.trim() || 'Date';
+      if (!(amount > 0)) {
+        toast('Bitte einen Betrag eintragen');
+        return form.querySelector('#e-amount').focus();
+      }
+      const dateId = form.querySelector('#e-date').value;
+      const date = S().dates.find((d) => d.id === dateId)?.date ?? isoDate(today());
+      const item = { id: `exp-${uid()}`, kind: 'expense', title, amount, paidBy: draft.paidBy, split: draft.split, date, dateId: dateId || null, createdAt: Date.now() };
+      const priv = form.querySelector('#e-private').checked;
+      store.update((s) => {
+        if (priv) s.secrets[item.id] = item; // nur in deinem privaten Bereich gespeichert – für die andere Person auf dem Server nicht lesbar
+        else s.expenses.push(item);
+      });
+      toast(priv ? 'Geheim gespeichert' : 'Ausgabe gespeichert');
+      closeSheet();
+      if (forDate) go('kosten', null, { replace: true });
+      else render();
     });
-    toast(priv ? 'Geheim gespeichert' : 'Ausgabe gespeichert');
-    go('kosten');
   });
+  $('#exp-open').addEventListener('click', openForm);
+  if (forDate) openForm();
   $('#settle')?.addEventListener('click', () => {
     const debtor = mine > 0 ? partner : role;
     store.update((s) => s.expenses.push({ id: `exp-${uid()}`, kind: 'settle', title: 'Ausgleich', amount: Math.abs(mine), paidBy: debtor, split: 'settle', date: isoDate(today()), createdAt: Date.now() }));
@@ -5378,11 +5749,12 @@ RENDER.dates = () => {
   root.innerHTML = `
     ${topbar({ title: 'Unsere Dates' })}
     ${datesTabs('dates')}
-    <button class="book-teaser" data-go-book>${icon('book')}<span class="grow"><strong>Jahresrückblick ${today().getFullYear()}</strong><br><small class="muted">Euer Fotobuch mit allen Dates</small></span>${icon('right')}</button>
+    ${past.length ? `<button class="book-teaser" data-go-book>${icon('book')}<span class="grow"><strong>Jahresrückblick ${today().getFullYear()}</strong><br><small class="muted">Euer Fotobuch mit allen Dates</small></span>${icon('right')}</button>`
+      : upcoming.length ? `<div class="book-teaser waiting" aria-disabled="true">${icon('book')}<span class="grow"><strong>Jahresrückblick ${today().getFullYear()}</strong><br><small class="muted">Füllt sich mit eurem ersten Date</small></span></div>` : ''}
     <section class="stack">
-      <h2 class="section-title">Geplant</h2>
+      <div class="row between"><h2 class="section-title">Geplant</h2><button type="button" class="btn sm soft" data-go-own>${icon('plus')}Eigenes Date</button></div>
       ${upcoming.length ? `<div class="list-card">${upcoming.map((d) => item(d, false)).join('')}</div>` : `
-        <div class="empty"><p>Noch kein Date geplant.</p><button class="btn primary" data-back="start">Date planen</button></div>`}
+        <div class="empty"><p>Noch kein Date geplant.</p><div class="row gap center-row"><button class="btn primary" data-go-neu>Date planen</button><button class="btn" data-go-own>Eigenes eintragen</button></div></div>`}
     </section>
     <section class="stack">
       <h2 class="section-title">Erinnerungen</h2>
@@ -5391,7 +5763,178 @@ RENDER.dates = () => {
   bindBack();
   bindDatesTabs();
   on('[data-go-book]', 'click', () => go('rueckblick'));
+  on('[data-go-own]', 'click', () => go('eigen'));
+  on('[data-go-neu]', 'click', () => go('neu'));
   on('[data-open-date]', 'click', (_, el) => go('date', el.dataset.openDate));
+};
+
+/* ================================================================ Eigenes Date eintragen */
+
+const ownDraft = { stations: [] };
+const toMin = (hhmm) => {
+  const [h, m] = String(hhmm || '0:0').split(':').map(Number);
+  return h * 60 + m;
+};
+
+RENDER.eigen = (param) => {
+  const role = myRole();
+  const d = ownDraft;
+  if (d.key !== param || !d.stations.length) {
+    Object.assign(d, {
+      key: param,
+      title: '',
+      emoji: '✨',
+      date: /^\d{4}-\d{2}-\d{2}$/.test(param ?? '') ? param : isoDate(today()),
+      start: '19:00',
+      end: '',
+      cost: '',
+      note: '',
+      surprise: false,
+      hint: '',
+      saveIdea: false,
+      stations: [{ k: uid(), time: '', text: '', place: null }],
+    });
+  }
+  const canSurprise = !!role && (store.syncInfo().mode !== 'shared' || partnerJoined());
+  root.innerHTML = `
+    ${topbar({ title: 'Eigenes Date', sub: 'Ihr habt schon etwas vor? Tragt es hier ein.', back: ['dates', '', 'Dates'] })}
+    <form class="panel form" id="own-form" novalidate>
+      <div class="field"><label class="label" for="o-title">Was habt ihr vor?</label><input class="input" id="o-title" maxlength="60" required placeholder="z. B. Konzert & Dinner" value="${esc(d.title)}"></div>
+      <div class="field"><span class="label">Symbol</span>${chips('o-emoji', ['✨', ...EMOJIS.filter((e) => e !== '💡')].slice(0, 12).map((e) => [e, glyph(e)]), d.emoji, 'emoji-chips')}</div>
+      <div class="field"><label class="label" for="o-date">Wann?</label><input class="input" type="date" id="o-date" value="${esc(d.date)}"></div>
+      <div class="row gap">
+        <div class="field grow"><label class="label" for="o-start">Von</label><input class="input" type="time" id="o-start" value="${esc(d.start)}"></div>
+        <div class="field grow"><label class="label" for="o-end">Bis <small class="muted">(optional)</small></label><input class="input" type="time" id="o-end" value="${esc(d.end)}"></div>
+      </div>
+
+      <div class="field">
+        <span class="label">Ablauf <small class="muted">(optional)</small></span>
+        <div class="own-stations">
+          ${d.stations.map((st, i) => `
+            <div class="own-station" data-k="${st.k}">
+              <div class="row gap">
+                <input class="input own-time" type="time" data-st-time="${st.k}" value="${esc(st.time)}" aria-label="Uhrzeit Station ${i + 1}">
+                <input class="input grow" data-st-text="${st.k}" maxlength="60" placeholder="${i === 0 ? 'z. B. Aperitif' : 'z. B. Abendessen'}" value="${esc(st.text)}" aria-label="Station ${i + 1}">
+                ${d.stations.length > 1 ? `<button type="button" class="icon-btn small" data-st-del="${st.k}" aria-label="Station entfernen">${icon('x')}</button>` : ''}
+              </div>
+              ${locField(`o-loc-${st.k}`, st.place, 'Ort (optional), z. B. Restaurant oder Adresse')}
+            </div>`).join('')}
+        </div>
+        <button type="button" class="linkish add-toggle" id="o-add">${icon('plus')}Station</button>
+      </div>
+
+      <div class="field"><label class="label" for="o-cost">Kosten ca. für euch beide (€)</label><input class="input" id="o-cost" inputmode="decimal" placeholder="z. B. 60" value="${esc(d.cost)}"></div>
+      <div class="field"><label class="label" for="o-note">Notiz <small class="muted">(optional)</small></label><textarea class="input" id="o-note" rows="2" maxlength="300" placeholder="z. B. Tickets liegen in der Mail">${esc(d.note)}</textarea></div>
+      ${canSurprise ? `
+      <label class="switch"><input type="checkbox" id="o-surprise" ${d.surprise ? 'checked' : ''}><span><strong>Als Überraschung planen</strong><br><small class="muted">${esc(nameOf(other(role)))} sieht nur Tag, Uhrzeit und deinen Hinweis.</small></span></label>
+      <div class="field" id="o-hint-field" ${d.surprise ? '' : 'hidden'}><label class="label" for="o-hint">Hinweis</label><input class="input" id="o-hint" maxlength="80" placeholder="z. B. Bequeme Schuhe anziehen" value="${esc(d.hint)}"></div>` : ''}
+      <label class="switch"><input type="checkbox" id="o-idea" ${d.saveIdea ? 'checked' : ''}><span><strong>Auch als Idee merken</strong><br><small class="muted">Dann könnt ihr das Date später einfach wiederholen.</small></span></label>
+      <button class="btn primary big" type="submit">${icon('check')}Date speichern</button>
+    </form>`;
+
+  bindBack();
+  const form = $('#own-form');
+  const read = () => {
+    d.title = $('#o-title').value;
+    d.date = $('#o-date').value;
+    d.start = $('#o-start').value;
+    d.end = $('#o-end').value;
+    d.cost = $('#o-cost').value;
+    d.note = $('#o-note').value;
+    d.surprise = !!$('#o-surprise')?.checked;
+    d.hint = $('#o-hint')?.value ?? '';
+    d.saveIdea = $('#o-idea').checked;
+    for (const st of d.stations) {
+      st.time = $(`[data-st-time="${st.k}"]`)?.value ?? st.time;
+      st.text = $(`[data-st-text="${st.k}"]`)?.value ?? st.text;
+      const typed = $(`#o-loc-${st.k}`)?.value.trim() ?? '';
+      if (st.place && typed !== st.place.name) st.place = typed ? { name: typed } : null;
+      else if (!st.place && typed) st.place = { name: typed };
+    }
+  };
+  bindChips(form, 'o-emoji', (v) => (d.emoji = v));
+  for (const st of d.stations) bindLocField(`o-loc-${st.k}`, (g) => (st.place = { name: g.name, sub: g.sub, lat: g.lat, lon: g.lon }));
+  $('#o-surprise')?.addEventListener('change', (e) => ($('#o-hint-field').hidden = !e.target.checked));
+  $('#o-add').addEventListener('click', () => {
+    read();
+    d.stations.push({ k: uid(), time: '', text: '', place: null });
+    render();
+    $(`[data-st-text="${d.stations.at(-1).k}"]`)?.focus();
+  });
+  on('[data-st-del]', 'click', (_, el) => {
+    read();
+    d.stations = d.stations.filter((x) => x.k !== el.dataset.stDel);
+    render();
+  });
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    read();
+    const title = d.title.trim();
+    if (!title) {
+      toast('Was habt ihr vor?');
+      return $('#o-title').focus();
+    }
+    if (!d.date) {
+      toast('Bitte ein Datum wählen');
+      return $('#o-date').focus();
+    }
+    const start = d.start || '19:00';
+    // Stationen mit Uhrzeiten: fehlende Zeiten im Stundentakt ergänzen
+    const filled = d.stations.filter((x) => x.text.trim() || x.place?.name);
+    let t = start;
+    const timed = (filled.length ? filled : [{ text: title, place: null, time: start }]).map((x, i) => {
+      const time = x.time || (i === 0 ? start : addMinutes(t, 60));
+      t = time;
+      return { ...x, time };
+    });
+    const endTime = d.end || addMinutes(timed.at(-1).time, timed.length > 1 ? 60 : 120);
+    const steps = timed.map((x, i) => {
+      const nextT = timed[i + 1]?.time ?? endTime;
+      let min = toMin(nextT) - toMin(x.time);
+      if (min <= 0) min += 24 * 60;
+      const place = x.place?.name ? { name: x.place.name, street: x.place.sub ?? '', city: '', lat: x.place.lat ?? null, lon: x.place.lon ?? null, website: '', hours: '', price: '', image: '', category: '' } : null;
+      const raw = { t: x.text.trim() || place?.name || title, min, ...(place?.lat != null ? { place } : place ? { q: place.name } : {}) };
+      const step = { time: x.time, title: raw.t, min, note: '', links: stepLinks(raw, {}, { city: S().settings.city, vegan: S().settings.vegan }) };
+      if (place?.lat != null) step.place = place;
+      else if (place) step.note = place.name;
+      return step;
+    });
+    let duration = toMin(endTime) - toMin(start);
+    if (duration <= 0) duration += 24 * 60;
+    const cost = Math.max(0, Math.round(Number(String(d.cost).replace(',', '.')) || 0));
+    const ideaId = `eigen-${uid()}`;
+    const plan = {
+      ideaId, title, subtitle: '', emoji: d.emoji, teaser: d.note.trim(), place: '', moods: [], communityId: null, cost, duration,
+      date: d.date, daytime: toMin(start) >= 17 * 60 ? 'abend' : 'tag', start, end: endTime, steps, recipe: null, todos: [], weather: null, own: true,
+      ...(d.note.trim() ? { notes: d.note.trim() } : {}),
+    };
+    const id = uid();
+    const surprise = d.surprise && !!role;
+    const meta = { id, date: plan.date, start: plan.start, end: plan.end, daytime: plan.daytime, plannedBy: role ?? 'both', createdAt: Date.now(), ratings: {} };
+    store.update((s) => {
+      if (surprise) {
+        s.dates.push({ ...meta, surprise: true, hint: d.hint.trim() });
+        s.secrets[id] = { ...plan, checks: {} };
+      } else {
+        s.dates.push({ ...plan, ...meta, surprise: false });
+      }
+      if (meta.plannedBy === 'a' || meta.plannedBy === 'b') s.settings.nextTurn = other(meta.plannedBy);
+      if (d.saveIdea) {
+        s.ideas.push({
+          id: ideaId, title, emoji: d.emoji, teaser: d.note.trim() || 'Euer eigenes Date', place: 'drinnen', cost, reach: 1,
+          times: [plan.daytime], moods: [], custom: true, createdBy: role, createdAt: Date.now(),
+          steps: steps.map((x) => ({ t: x.title, min: x.min, ...(x.place ? { place: x.place } : {}) })),
+          start: { [plan.daytime]: start },
+        });
+      }
+    });
+    ownDraft.stations = [];
+    ownDraft.key = null;
+    nudgePush();
+    toast(surprise ? 'Überraschung gespeichert' : 'Date gespeichert');
+    go('date', id, { replace: true });
+  });
 };
 
 /* ================================================================ 7. Mehr / Einstellungen */
@@ -5407,13 +5950,12 @@ RENDER.mehr = () => {
     <section class="panel form">
       <div class="panel-head">${icon('users')}<h2>Ihr zwei</h2></div>
       <div class="row gap wrap">
-        <div class="field grow"><label class="label" for="s-nameA">Person 1</label><input class="input" id="s-nameA" data-set="nameA" value="${esc(st.nameA)}" placeholder="Name"></div>
-        <div class="field grow"><label class="label" for="s-nameB">Person 2</label><input class="input" id="s-nameB" data-set="nameB" value="${esc(st.nameB)}" placeholder="Name"></div>
+        ${(role === 'b' ? ['b', 'a'] : ['a', 'b']).map((r) => `<div class="field grow"><label class="label" for="s-name${r.toUpperCase()}">${!role ? (r === 'a' ? 'Person 1' : 'Person 2') : r === role ? 'Dein Name' : 'Name deines Schatzes'}</label><input class="input" id="s-name${r.toUpperCase()}" data-set="name${r.toUpperCase()}" value="${esc(r === 'a' ? st.nameA : st.nameB)}" placeholder="Name"></div>`).join('')}
       </div>
-      <div class="field">
+      ${store.syncInfo().backend === 'supabase' ? '' : `<div class="field">
         <span class="label">Ich bin</span>
         ${chips('me', [['a', esc(nameOf('a'))], ['b', esc(nameOf('b'))]], role ?? '', 'seg')}
-      </div>
+      </div>`}
     </section>
 
     <section class="panel form">
@@ -5469,7 +6011,7 @@ RENDER.mehr = () => {
       <div class="field"><label class="label" for="s-anniv">Jahrestag</label><input class="input" type="date" id="s-anniv" data-set="anniversary" value="${esc(st.anniversary)}"></div>
       <label class="switch"><input type="checkbox" id="s-val" data-set="valentine" ${st.valentine ? 'checked' : ''}><span><strong>An Valentinstag erinnern</strong></span></label>
       <ul class="mini-list">
-        ${st.specialDays.map((d) => `<li><span class="grow">${esc(d.kind === 'geburtstag' ? `Geburtstag ${d.who ? nameOf(d.who) : d.name}` : d.kind === 'standesamt' ? 'Hochzeitstag (Standesamt)' : d.kind === 'hochzeit' ? 'Hochzeitstag' : d.name)}</span><span class="muted">${fmtDate(d.date, { day: 'numeric', month: 'long' })}</span><button class="icon-btn small" data-del-special="${d.id}" aria-label="Entfernen">${icon('x')}</button></li>`).join('')}
+        ${st.specialDays.map((d) => `<li><span class="grow">${esc(d.kind === 'geburtstag' ? `Geburtstag ${d.who ? nameOf(d.who) : d.name}` : d.kind === 'standesamt' ? 'Hochzeitstag (Standesamt)' : d.kind === 'hochzeit' ? 'Hochzeitstag' : d.kind === 'verlobung' ? 'Tag der Verlobung' : d.kind === 'hochzeit-geplant' ? 'Eure Hochzeit' : d.name)}</span><span class="muted">${fmtDate(d.date, { day: 'numeric', month: 'long' })}</span><button class="icon-btn small" data-del-special="${d.id}" aria-label="Entfernen">${icon('x')}</button></li>`).join('')}
       </ul>
       <form id="add-special" class="stack-sm">
         <div class="row gap">

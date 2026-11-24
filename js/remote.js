@@ -178,6 +178,13 @@ export async function signIn(cfg, { email, password }) {
   return data.session;
 }
 
+/** Mit Apple anmelden (nur wenn in config.js eingeschaltet und in Supabase eingerichtet). */
+export async function signInWithApple(cfg) {
+  const client = await getClient(cfg);
+  const { error } = await client.auth.signInWithOAuth({ provider: 'apple', options: { redirectTo: location.href.split('#')[0] } });
+  if (error) throw new Error(authError(error));
+}
+
 export async function resetPassword(cfg, email) {
   const client = await getClient(cfg);
   const { error } = await client.auth.resetPasswordForEmail(email.trim(), { redirectTo: appUrl() });

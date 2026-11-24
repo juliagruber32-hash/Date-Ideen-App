@@ -87,10 +87,13 @@ einträgt, braucht sie eine Client-ID von Google:
 Ihr verbindet beide euren eigenen Google Kalender. Die andere Person sieht von deinen Terminen nur „belegt“, keine Titel.
 Die Google-Verbindung hält etwa eine Stunde; danach im Kalender-Tab auf **Verbinden** tippen.
 
-### 4. Google-Bewertungen & Fotos (optional)
+### 4. Google-Bewertungen (optional)
 
-Ohne Einrichtung zeigt die App Bilder aus Wikimedia (für bekannte Orte wie Museen) und verlinkt bei jedem
-Ort die Google-Bewertungen. Für Google-Sterne und Fotos direkt in der App:
+**Bildrechte:** Datewell zeigt nur frei lizenzierte Fotos von Wikimedia Commons (mit Urheber und Lizenz direkt
+am Foto) und eure eigenen Fotos. Fotos aus Google Maps werden nicht angezeigt – sie gehören den jeweiligen
+Fotografen bzw. Google. Eigene Fotos einer Location bitte nur mit deren schriftlicher Erlaubnis einbauen.
+
+Für Google-Sterne direkt in der App:
 
 1. In der Google Cloud Console (gleiches Projekt wie Schritt 3) **Places API (New)** aktivieren.
    Google verlangt dafür ein Abrechnungskonto; für ein Paar bleibt die Nutzung im kostenlosen Kontingent.
@@ -99,7 +102,7 @@ Ort die Google-Bewertungen. Für Google-Sterne und Fotos direkt in der App:
    **API-Einschränkung: Places API (New)**.
 4. In der App: **Zahnrad → Weitere Datenquellen → Google-Places-Schlüssel** einfügen.
 
-Die App zeigt dann Google-Sterne und Fotos auf den Date-Karten und im Plan und merkt sich jedes Ergebnis 7 Tage,
+Die App zeigt dann Google-Sterne auf den Date-Karten und im Plan und merkt sich jedes Ergebnis 7 Tage,
 damit möglichst wenige Abfragen anfallen.
 
 ### 5. Veranstaltungen in der Nähe (optional, ca. 3 Minuten)
@@ -146,6 +149,30 @@ Erinnerungen am Vorabend und 2 Stunden vorher, „Wie war’s?“ am Tag danach 
 4. In Datewell (jede Person auf ihrem Handy): **Einstellungen → Mitteilungen → Mitteilungen aktivieren**.
    - **iPhone:** Mitteilungen gibt es nur, wenn Datewell auf dem Home-Bildschirm liegt
      (Safari → Teilen → „Zum Home-Bildschirm“) und von dort geöffnet wird.
+
+### 8. Kalender-Abo für Apple & Google (ca. 3 Minuten)
+
+Damit eure Dates automatisch im Apple Kalender (iPhone, Mac) oder Google Kalender erscheinen:
+
+1. Supabase → **Edge Functions** → **Deploy a new function** → **Via Editor** → Name `calendar` →
+   Inhalt von [`supabase/functions/calendar/index.ts`](supabase/functions/calendar/index.ts) einfügen → **Deploy function**.
+2. In der Funktion `calendar` → **Details** → **Enforce JWT verification** ausschalten → **Save**
+   (Kalender-Apps können sich nicht anmelden; geschützt ist das Abo über einen langen, geheimen Link pro Person).
+3. In Datewell: **Kalender → Kalender verbinden → Im Apple Kalender abonnieren**. Bei Google: Link kopieren und
+   im Google Kalender unter **Weitere Kalender → Per URL** einfügen.
+
+Überraschungen erscheinen bei der überraschten Person nur als „Überraschung von …“ mit Uhrzeit und Hinweis.
+Ohne diese Funktion bietet Datewell eine Kalenderdatei mit den kommenden Dates zum Hinzufügen an.
+Hinweis: Apple erlaubt Web-Apps keinen Zugriff auf andere Termine im iPhone-Kalender – deshalb geht die Verbindung
+nur in eine Richtung (Datewell → Kalender).
+
+### 9. Mit Apple anmelden (optional, kostet 99 €/Jahr)
+
+„Mit Apple anmelden“ ist vorbereitet, aber ausgeschaltet. Apple verlangt dafür eine Mitgliedschaft im
+Apple Developer Program (99 € im Jahr). Pflicht ist es nur für Apps im App Store, die andere Logins wie Google
+anbieten – Datewell als Web-App mit E-Mail-Login braucht es nicht.
+Zum Einschalten: im Apple-Developer-Konto eine **Services ID** mit „Sign in with Apple“ anlegen, in Supabase unter
+**Authentication → Sign In / Providers → Apple** eintragen und in [`js/config.js`](js/config.js) `apple: true` setzen.
 
 ### Community: Gut zu wissen
 

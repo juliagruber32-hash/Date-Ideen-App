@@ -12,10 +12,10 @@ export function specialDefs(settings) {
   for (const s of settings.specialDays) {
     if (!s.date) continue;
     const person = s.who === 'a' ? settings.nameA : s.who === 'b' ? settings.nameB : s.name;
-    const names = { geburtstag: `Geburtstag ${person || ''}`.trim(), standesamt: 'Hochzeitstag (Standesamt)', hochzeit: 'Hochzeitstag' };
+    const names = { geburtstag: `Geburtstag ${person || ''}`.trim(), standesamt: 'Hochzeitstag (Standesamt)', hochzeit: 'Hochzeitstag', verlobung: 'Tag der Verlobung', 'hochzeit-geplant': 'Eure Hochzeit' };
     list.push({
       name: names[s.kind] ?? s.name,
-      icon: s.kind === 'geburtstag' ? '🎂' : s.kind === 'standesamt' || s.kind === 'hochzeit' ? '💍' : '⭐',
+      icon: s.kind === 'geburtstag' ? '🎂' : ['standesamt', 'hochzeit', 'hochzeit-geplant', 'verlobung'].includes(s.kind) ? '💍' : '⭐',
       mmdd: s.date.slice(5),
       year: Number(s.date.slice(0, 4)) || null,
       kind: s.kind,
@@ -25,6 +25,16 @@ export function specialDefs(settings) {
 }
 
 function label(def, date) {
+  // Geplante Hochzeit: einmalig „Eure Hochzeit“, danach jährlich Hochzeitstag; vorher nicht anzeigen
+  if (def.kind === 'hochzeit-geplant' && def.year) {
+    const n = date.getFullYear() - def.year;
+    if (n < 0) return null;
+    return n === 0 ? 'Eure Hochzeit' : `${n}. Hochzeitstag`;
+  }
+  if (def.kind === 'verlobung' && def.year) {
+    const n = date.getFullYear() - def.year;
+    if (n > 0) return `${n}. Verlobungstag`;
+  }
   if (def.kind === 'jahrestag' && def.year) {
     const n = date.getFullYear() - def.year;
     if (n > 0) return `${n}. Jahrestag`;
@@ -44,7 +54,7 @@ export function upcomingSpecials(settings, within = 21) {
       const date = nextOccurrence(def.mmdd, now);
       return { ...def, label: label(def, date), iso: isoDate(date), days: daysBetween(now, date) };
     })
-    .filter((x) => x.days <= within)
+    .filter((x) => x.label && x.days <= within)
     .sort((a, b) => a.days - b.days);
 }
 
@@ -53,7 +63,8 @@ export function specialsOn(settings, date) {
   const mmdd = isoDate(date).slice(5);
   return specialDefs(settings)
     .filter((d) => d.mmdd === mmdd)
-    .map((d) => ({ ...d, label: label(d, date) }));
+    .map((d) => ({ ...d, label: label(d, date) }))
+    .filter((d) => d.label);
 }
 
 /** Liegt das Datum nahe an einem besonderen Tag (±2 Tage)? */

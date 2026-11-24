@@ -56,8 +56,8 @@ export function datenschutzHTML() {
     <ul>
       <li>OpenStreetMap-Dienste (Nominatim, Overpass, Photon/Komoot) für Orte und Adressen; Kartenbilder von tile.openstreetmap.org (OpenStreetMap Foundation, Vereinigtes Königreich).</li>
       <li>Open-Meteo (Schweiz) für das Wetter.</li>
-      <li>Wikipedia/Wikimedia Commons (Wikimedia Foundation, USA) für Fotos bekannter Orte.</li>
-      <li>Über unseren Server (Supabase): Google Places (Google Ireland Ltd./Google LLC) für Bewertungen, Fotos und Öffnungszeiten von Orten. Dabei werden nur Ortsnamen und -koordinaten übertragen, keine Daten über euch.</li>
+      <li>Wikipedia/Wikimedia Commons (Wikimedia Foundation, USA) für frei lizenzierte Fotos bekannter Orte; Urheber und Lizenz stehen jeweils am Foto.</li>
+      <li>Über unseren Server (Supabase): Google Places (Google Ireland Ltd./Google LLC) für Bewertungen und Öffnungszeiten von Orten (Fotos aus Google Maps zeigen wir nicht). Dabei werden nur Ortsnamen und -koordinaten übertragen, keine Daten über euch.</li>
     </ul>
     <p>Diese Dienste erhalten technisch bedingt eure IP-Adresse. Rechtsgrundlage ist unser berechtigtes Interesse an einer funktionierenden Ortssuche (Art. 6 Abs. 1 lit. f DSGVO).</p>
 
@@ -65,6 +65,7 @@ export function datenschutzHTML() {
     <ul>
       <li><strong>Google Kalender:</strong> Nur wenn ihr ihn verbindet. Datewell liest eure Termine, um freie Zeiten zu zeigen, und trägt Dates ein. Die Verbindung erfolgt direkt zwischen eurem Gerät und Google und lässt sich jederzeit trennen.</li>
       <li><strong>Veranstaltungen (Ticketmaster):</strong> Nur wenn ein Schlüssel hinterlegt ist; übertragen werden ungefähre Koordinaten und der Zeitraum.</li>
+      <li><strong>Kalender-Abo (Apple/Google):</strong> Nur wenn ihr es einrichtet. Über einen geheimen Link pro Person ruft euer Kalender eure Dates (Titel, Zeit, Orte) bei unserem Server ab; der Link lässt sich jederzeit erneuern.</li>
       <li><strong>Mitteilungen:</strong> Wenn ihr sie aktiviert, speichern wir eine technische Adresse eures Geräts, über die der Push-Dienst von Apple, Google bzw. Mozilla Erinnerungen zustellt. Abschaltbar in den Einstellungen.</li>
     </ul>
 

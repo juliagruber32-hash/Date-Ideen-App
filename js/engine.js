@@ -251,6 +251,7 @@ export function buildPlan(idea, { date, daytime, start }, settings, weather) {
   return {
     ideaId: idea.id,
     title: idea.title,
+    subtitle: idea.subtitle ?? '',
     emoji: idea.emoji,
     teaser: idea.teaser,
     place: idea.place,

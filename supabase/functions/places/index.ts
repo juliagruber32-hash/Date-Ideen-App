@@ -150,7 +150,6 @@ async function google(path, body, fieldMask) {
   return res.json();
 }
 
-const photoUrl = (name, self) => (name ? `${self}?photo=${encodeURIComponent(name)}` : '');
 
 async function googleDetails({ name, street = '', lat, lon }, self) {
   const data = await google('places:searchText', {
@@ -158,13 +157,13 @@ async function googleDetails({ name, street = '', lat, lon }, self) {
     languageCode: 'de',
     maxResultCount: 1,
     locationBias: { circle: { center: { latitude: lat, longitude: lon }, radius: 300 } },
-  }, 'places.id,places.displayName,places.rating,places.userRatingCount,places.photos,places.googleMapsUri,places.websiteUri,places.priceLevel,places.regularOpeningHours');
+  }, 'places.id,places.displayName,places.rating,places.userRatingCount,places.googleMapsUri,places.websiteUri,places.priceLevel,places.regularOpeningHours');
   const g = data.places?.[0];
   if (!g) return null;
   return {
     rating: g.rating ?? null,
     count: g.userRatingCount ?? 0,
-    photo: photoUrl(g.photos?.[0]?.name, self),
+    photo: '', // keine Google-Fotos (Bildrechte)
     mapsUri: g.googleMapsUri ?? '',
     website: g.websiteUri ?? '',
     price: PRICE[g.priceLevel] ?? '',
@@ -178,7 +177,7 @@ async function googleSearch({ text, lat, lon, radius = 30000 }, self) {
     languageCode: 'de',
     maxResultCount: 10,
     locationBias: { circle: { center: { latitude: lat, longitude: lon }, radius: Math.min(radius, 50000) } },
-  }, 'places.id,places.displayName,places.location,places.formattedAddress,places.websiteUri,places.rating,places.userRatingCount,places.photos,places.businessStatus,places.regularOpeningHours');
+  }, 'places.id,places.displayName,places.location,places.formattedAddress,places.websiteUri,places.rating,places.userRatingCount,places.businessStatus,places.regularOpeningHours');
   return (data.places ?? [])
     .filter((g) => g.location && g.businessStatus !== 'CLOSED_PERMANENTLY')
     .map((g) => ({
@@ -191,35 +190,17 @@ async function googleSearch({ text, lat, lon, radius = 30000 }, self) {
       website: g.websiteUri ?? '',
       hours: toOsmHours(g.regularOpeningHours?.periods),
       price: null,
-      image: photoUrl(g.photos?.[0]?.name, self),
+      image: '', // keine Google-Fotos (Bildrechte)
       google: { rating: g.rating ?? null, count: g.userRatingCount ?? 0 },
     }));
 }
 
-/** Google-Foto ausliefern (der Schlüssel bleibt auf dem Server). */
-async function googlePhoto(name) {
-  if (!GOOGLE_KEY || !/^places\/[\w-]+\/photos\/[\w-]+$/.test(name)) return new Response('Nicht gefunden', { status: 404, headers: CORS });
-  const key = `photo|${name}`;
-  const cached = await cacheGet(key);
-  let url = cached?.url;
-  if (!url) {
-    if (!(await googleTake())) return new Response('Tageslimit', { status: 429, headers: CORS });
-    const res = await fetch(`https://places.googleapis.com/v1/${name}/media?maxWidthPx=800&skipHttpRedirect=true&key=${encodeURIComponent(GOOGLE_KEY)}`, { headers: { Referer: `${APP_ORIGIN}/` } });
-    if (!res.ok) return new Response('Foto nicht verfügbar', { status: 404, headers: CORS });
-    url = (await res.json()).photoUri;
-    if (url) await cachePut(key, { url });
-  }
-  // Weiterleitung auf das Foto bei Google (ohne Schlüssel in der Adresse)
-  return new Response(null, { status: 302, headers: { ...CORS, Location: url, 'Cache-Control': 'public, max-age=604800' } });
-}
-
-/* ------------------------------------------------------------ Anfragen */
 
 export async function handle(req) {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   const url = new URL(req.url);
   const self = `${SUPABASE_URL || url.origin}/functions/v1/places`;
-  if (req.method === 'GET' && url.searchParams.get('photo')) return googlePhoto(url.searchParams.get('photo'));
+  if (req.method === 'GET' && url.searchParams.get('photo')) return new Response('Nicht verfügbar', { status: 404, headers: CORS });
   if (req.method !== 'POST') return json({ error: 'Nur POST' }, 405);
   if (!(await signedIn(req))) return json({ error: 'Bitte in Datewell anmelden' }, 401);
 
