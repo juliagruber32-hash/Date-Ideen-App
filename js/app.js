@@ -16,7 +16,7 @@ import { buildProfile, learnScore, mainCat } from './taste.js';
 import * as photos from './photos.js';
 import { SUPABASE } from './config.js';
 import * as gcal from './gcal.js';
-import { callNotify, callPlaces, connectSupabase, currentSession, logClientError, deleteAccount, getConfig, getRemember, lastEmail, setRemember, inviteLink, onAuthChange, readInvite, resetPassword, saveConfig, signIn, signInWithApple, signOut, signUp, updatePassword } from './remote.js';
+import { callNotify, callPlaces, connectSupabase, currentSession, logClientError, deleteAccount, getConfig, getRemember, lastEmail, setRemember, inviteErrorText, invitationInfo, inviteLinkFor, normCode, onAuthChange, readInvite, resetPassword, saveConfig, signIn, signInWithApple, signOut, signUp, updatePassword } from './remote.js';
 import { nearSpecial, specialsOn, upcomingSpecials } from './special.js';
 import { glyph, icon } from './icons.js';
 import {
@@ -39,7 +39,7 @@ const drafts = {}; // ungespeicherte Eingaben auf dem Plan-Bildschirm, pro Idee
 
 /* ================================================================ Navigation */
 
-const TAB_OF = { start: 'start', suggest: 'start', plan: 'start', poll: 'start', match: 'start', neu: 'start', impressum: 'mehr', datenschutz: 'mehr', agb: 'mehr', entdecken: 'entdecken', idee: 'entdecken', ort: 'entdecken', teilen: 'entdecken', kosten: 'dates', eigen: 'dates', moderation: 'mehr', rueckblick: 'dates', kalender: 'kalender', listen: 'listen', dates: 'dates', date: 'dates', mehr: 'mehr' };
+const TAB_OF = { start: 'start', suggest: 'start', plan: 'start', poll: 'start', match: 'start', neu: 'start', impressum: 'mehr', datenschutz: 'mehr', agb: 'mehr', entdecken: 'entdecken', idee: 'entdecken', ort: 'entdecken', teilen: 'entdecken', kosten: 'dates', eigen: 'dates', moderation: 'mehr', einladen: 'mehr', code: 'mehr', trennen: 'mehr', rueckblick: 'dates', kalender: 'kalender', listen: 'listen', dates: 'dates', date: 'dates', mehr: 'mehr' };
 const RENDER = {};
 // Ohne Anmeldung erreichbar: Anmeldung und rechtliche Seiten
 const OPEN_ROUTES = new Set(['konto', 'impressum', 'datenschutz', 'agb']);
@@ -185,6 +185,26 @@ root.addEventListener('focusout', () => {
 });
 
 /* ================================================================ Bausteine */
+
+/** Paar-Funktionen sind ohne verbundenen Partner sichtbar, aber ausgegraut. */
+const pairLocked = () => store.syncInfo().backend === 'supabase' && !!myRole() && !partnerJoined();
+const lockAttr = () => (pairLocked() ? ' data-pair-lock aria-disabled="true"' : '');
+document.addEventListener('click', (e) => {
+  const el = e.target.closest?.('[data-pair-lock]');
+  if (!el || !pairLocked()) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  const p = partnerName();
+  openSheet('Das macht ihr zusammen', `
+    <p>${esc(el.dataset.pairLockText || 'Diese Funktion ist für euch zwei gemacht.')} ${coupleState() === 'offen' ? `Sobald ${esc(p || 'dein Lieblingsmensch')} dabei ist, geht es los.` : ''}</p>
+    <button type="button" class="btn primary big" data-sheet-invite>${icon('heart')}${coupleState() === 'offen' ? 'Erinnerung schicken' : 'Partner einladen'}</button>`, (sh) => {
+    sh.querySelector('[data-sheet-invite]').addEventListener('click', () => {
+      closeSheet();
+      if (coupleState() === 'offen') shareInvite(partnerState.invite);
+      else go('einladen');
+    });
+  });
+}, true);
 
 /** Leere Datumsfelder zeigen „TT.MM.JJJJ“ (iPhone zeigt sonst ein leeres Feld). */
 function enhanceDateInputs() {
@@ -438,40 +458,52 @@ function syncChip() {
   return partnerJoined() ? `<span class="sync ok">${icon('rings')}Mit ${esc(nameOf(other(myRole())))} verbunden</span>` : '';
 }
 
-/** Solange der Partner noch nicht verbunden ist: Karte zum Einladen. */
+/** Oberste Karte: allein → einladen; Einladung offen → erinnern/zurückziehen. Dazu Hinweise in der App. */
 function inviteCard() {
-  if (!myRole() || partnerJoined() || !canInvite() || L().inviteHiddenUntil > Date.now()) return '';
-  const p = S().settings[myNameKey(other(myRole()))]?.trim();
-  return `
+  if (!myRole() || store.syncInfo().backend !== 'supabase') return '';
+  const st = S().settings;
+  const notes = [];
+  if (st.notice?.type === 'getrennt') notes.push(['getrennt', `Die Verbindung mit ${st.notice.name || 'deinem Partner'} wurde getrennt.`]);
+  if (st.notice?.type === 'getrennt-selbst') notes.push(['getrennt', `Ihr seid nicht mehr verbunden. Eure vergangenen Dates findest du weiter unter „Dates“.`]);
+  if (st.pairNotice && st.pairNotice.by !== myRole()) notes.push(['pair', st.pairNotice.text]);
+  if (session.inviteError) notes.push(['invite', session.inviteError]);
+  const noteHTML = notes.map(([k, t]) => `<div class="banner neutral-row note-${k}">${icon('users')}<span class="grow">${esc(t)}</span><button type="button" class="icon-btn small" data-dismiss-note="${k}" aria-label="Ausblenden">${icon('x')}</button></div>`).join('');
+  const state = coupleState();
+  if (state === 'verbunden' || !canInvite()) return noteHTML;
+  const p = partnerName();
+  if (state === 'offen') {
+    return `${noteHTML}
     <section class="panel invite-card">
-      <div class="row gap"><span class="invite-ico">${icon('users')}</span>
-        <div class="grow"><strong>${p ? `${esc(p)} einladen` : 'Deinen Schatz einladen'}</strong><br><small class="muted">Zu zweit seht ihr dieselben Dates und plant abwechselnd.</small></div>
-        <button type="button" class="icon-btn small" id="invite-hide" aria-label="Ausblenden">${icon('x')}</button>
-      </div>
-      <button type="button" class="btn primary" id="invite-share">${icon('share')}Einladung senden</button>
+      <div class="row gap"><span class="invite-ico">${icon('clock')}</span>
+        <div class="grow"><strong>${esc(p || 'Dein Lieblingsmensch')} ist noch nicht dabei</strong><br><small class="muted">Code ${esc(partnerState.invite.code)} · gültig bis ${esc(fmtExpiry(partnerState.invite.expires_at))}</small></div></div>
+      <button type="button" class="btn primary" id="invite-remind">${icon('share')}Erinnerung schicken</button>
+      <button type="button" class="linkish small center" id="invite-revoke">Einladung zurückziehen</button>
+    </section>`;
+  }
+  return `${noteHTML}
+    <section class="panel invite-card">
+      <div class="row gap"><span class="invite-ico">${icon('heart')}</span>
+        <div class="grow"><strong>Lad deinen Lieblingsmenschen ein</strong><br><small class="muted">Zu zweit plant ihr abwechselnd, wischt beim Date-Match und überrascht euch.</small></div></div>
+      <button type="button" class="btn primary" data-go="einladen">${icon('heart')}Einladen</button>
     </section>`;
 }
 function bindInviteCard() {
-  $('#invite-share')?.addEventListener('click', async () => {
-    const p = S().settings[myNameKey(other(myRole()))]?.trim();
-    const text = `${p ? `${p}, ` : ''}lass uns unsere Dates zusammen planen – mit Datewell: ${inviteLink(getConfig())}`;
-    if (navigator.share) {
-      try {
-        return await navigator.share({ title: 'Datewell', text });
-      } catch (e) {
-        if (e?.name === 'AbortError') return;
-      }
-    }
+  $('#invite-remind')?.addEventListener('click', () => shareInvite(partnerState.invite));
+  const rv = $('#invite-revoke');
+  if (rv) armed(rv, async () => {
     try {
-      await navigator.clipboard.writeText(text);
-      toast('Einladung kopiert – füge sie in WhatsApp oder eine Nachricht ein');
-    } catch {
-      prompt('Einladungslink', inviteLink(getConfig()));
+      await partnerState.api.revoke();
+      partnerState.invite = null;
+      toast('Einladung zurückgezogen');
+      render();
+    } catch (err) {
+      toast(err.message);
     }
-  });
-  $('#invite-hide')?.addEventListener('click', () => {
-    L().inviteHiddenUntil = Date.now() + 7 * 864e5;
-    store.saveLocal();
+  }, 'Nochmal tippen zum Zurückziehen');
+  on('[data-dismiss-note]', 'click', (_, el) => {
+    const k = el.dataset.dismissNote;
+    if (k === 'invite') session.inviteError = null;
+    else store.update((st) => (k === 'pair' ? delete st.settings.pairNotice : delete st.settings.notice));
     render();
   });
 }
@@ -739,6 +771,7 @@ function connectRemote(cfg, announce = false) {
 /* --- Mitteilungen aufs Handy ------------------------------------------------- */
 
 const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const PUSH_KINDS = [['dates', 'Erinnerungen an eure Dates'], ['wishes', 'Date-Wünsche'], ['match', 'Date-Match'], ['idle', '„Mal wieder Zeit für ein Date?“'], ['partner', 'Einladung und Verbindung'], ['community', 'Community']];
 const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
 const isStandalone = () => window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true;
 const b64ToBytes = (b64) => {
@@ -799,14 +832,28 @@ async function doConnectRemote(cfg, announce) {
   remoteError = null;
   auth.cfg = cfg;
   try {
-    const { db, uid, user, community: api, photos: photosApi } = await connectSupabase(cfg);
+    const pend = pendingInvite();
+    const res = await connectSupabase(pend?.code ? { ...cfg, invite: pend.code } : cfg);
+    const { db, uid, user, community: api, photos: photosApi } = res;
+    if (pend) setPendingInvite(null);
+    partnerState.api = res.partner;
+    if (res.inviteError) session.inviteError = res.inviteError;
+    if (res.joined) {
+      setJoinInfo({ oldSettings: res.joined.oldSettings, oldRole: res.joined.oldRole, inviter: res.joined.inviter });
+      try {
+        localStorage.removeItem('date-ideen.v1'); // alter Zwischenspeicher gehört zum bisherigen Konto
+      } catch {
+        /* egal */
+      }
+    }
     auth.user = user;
     auth.needed = false;
     store.attach(db, uid, { backend: 'supabase' });
     community.api = api;
     photos.setRemote(photosApi);
     enableServerPlaces(cfg);
-    if (announce) toast('Willkommen bei Datewell!');
+    loadInvite();
+    if (announce && !res.joined) toast('Willkommen bei Datewell!');
     if (current.name === 'konto') current = { name: 'start', param: null };
     connectTries = 0;
     clearTimeout(retryConnect);
@@ -825,7 +872,7 @@ async function doConnectRemote(cfg, announce) {
   render(current.name === 'konto');
 }
 // Fehlerprotokoll: höchstens 5 Meldungen pro Sitzung, nur mit Konto, ohne Inhalte
-const APP_VERSION = 'v56';
+const APP_VERSION = 'v57';
 let errorsSent = 0;
 function reportError(err) {
   if (!auth.user || !auth.cfg || errorsSent >= 5 || navigator.onLine === false) return;
@@ -888,19 +935,31 @@ function sharingHTML() {
       <p class="muted small">Standort, Wetter und Ortssuche funktionieren nur in der Webseiten-Version der App.</p>`;
   }
   const cfg = getConfig();
-  if (sync.backend === 'supabase' && cfg?.code) {
+  if (sync.backend === 'supabase' && auth.user) {
+    const state = coupleState();
+    const inv = partnerState.invite;
+    const p = partnerName();
+    const since = S().settings.connectedSince;
     return `
-      <p>Verbunden. Alles, was ihr eintragt, seht ihr beide live.</p>
-      <div class="field">
-        <span class="label">Einladungslink für ${esc(myRole() ? nameOf(other(myRole())) : 'die andere Person')}</span>
-        <div class="copy-row"><input class="input" id="invite" readonly value="${esc(inviteLink(cfg))}"><button class="btn" id="copy-invite" type="button">Kopieren</button></div>
-        <small class="muted">Schick den Link per WhatsApp oder Mail. Wer ihn öffnet, ist mit euch verbunden – schick ihn also nur an die Person, mit der du Datewell nutzt.</small>
-      </div>
+      ${state === 'verbunden' ? `
+      <p>${icon('rings')} Verbunden mit <strong>${esc(p || nameOf(other(myRole())))}</strong>${since ? ` seit ${esc(fmtDate(since, { day: 'numeric', month: 'long', year: 'numeric' }))}` : ''}.</p>
+      <button class="btn soft" type="button" data-ob-open="tage">${icon('heart')}Eure besonderen Tage bearbeiten</button>`
+      : state === 'offen' ? `
+      <p><strong>${esc(inv.partner_name || p || 'Dein Lieblingsmensch')}</strong> ist eingeladen, aber noch nicht dabei.</p>
+      <p class="muted small">Code <strong>${esc(inv.code)}</strong> · gültig bis ${esc(fmtExpiry(inv.expires_at))}</p>
+      <div class="row gap wrap">
+        <button class="btn primary" type="button" id="pt-share">${icon('share')}Erneut teilen</button>
+        <button class="btn" type="button" id="pt-copy">Code kopieren</button>
+        <button class="btn ghost" type="button" data-go="einladen">Name ändern · Zurückziehen</button>
+      </div>`
+      : `
+      <p>Du nutzt Datewell gerade allein. Zu zweit plant ihr abwechselnd, wischt beim Date-Match und überrascht euch.</p>
+      <div class="row gap wrap">
+        <button class="btn primary" type="button" data-go="einladen">${icon('heart')}Partner einladen</button>
+        <button class="btn" type="button" data-go="code">Ich habe einen Code</button>
+      </div>`}
       ${sync.writeError ? `<p class="warn-text">${esc(sync.writeError)}</p>` : ''}
-      <details class="join-other">
-        <summary>Einladung von jemand anderem bekommen?</summary>
-        <div class="row gap"><input class="input" id="join-code" placeholder="Einladungscode oder -link" autocomplete="off"><button class="btn" id="join-btn" type="button">Beitreten</button></div>
-      </details>
+      ${state === 'verbunden' ? '<button class="btn ghost danger" type="button" data-go="trennen">Verbindung trennen</button>' : ''}
     </section>
     <section class="panel form">
       <div class="panel-head">${icon('user')}<h2>Dein Konto</h2></div>
@@ -930,6 +989,8 @@ function sharingHTML() {
 }
 
 function bindSharing() {
+  $('#pt-share')?.addEventListener('click', () => shareInvite(partnerState.invite));
+  $('#pt-copy')?.addEventListener('click', () => copyCode(partnerState.invite.code));
   $('#copy-invite')?.addEventListener('click', async () => {
     const input = $('#invite');
     try {
@@ -1818,7 +1879,7 @@ function renderCommunity(head) {
             <button class="btn primary sm" data-adopt="${r.id}">${icon('sparkle')}Übernehmen</button>
             ${favBtn(communityIdea(r), 'labelled')}
             <button class="btn sm ghost" data-creviews="${r.id}">Bewertungen</button>
-            ${r.mine ? `<button class="btn sm ghost danger" data-cdel="${r.id}">Zurückziehen</button>` : `<button class="btn sm ghost" data-creport="${r.id}">Melden</button>`}
+            ${r.mine ? `<button class="btn sm ghost danger" data-cdel="${r.id}">Zurückziehen</button>` : `<button class="icon-btn small more-btn" data-cmenu="${r.id}" aria-label="Mehr">⋯</button>`}
           </div>
           ${mine ? `<p class="muted small">Eure Bewertung: ${'★'.repeat(mine.stars)}</p>` : ''}
           <div class="reviews" id="rev-${r.id}" hidden></div>
@@ -1877,6 +1938,27 @@ function renderCommunity(head) {
     }
   });
   on('[data-creport]', 'click', (_, el) => openReportSheet(el.dataset.creport));
+  on('[data-cmenu]', 'click', (_, el) => {
+    const id = el.dataset.cmenu;
+    const r = row(id);
+    openSheet(r?.idea?.title ?? 'Date', `
+      <button type="button" class="btn big" data-m-report>${icon('bell')}Melden</button>
+      <button type="button" class="btn big ghost" data-m-hide>${icon('x')}Diese Person ausblenden</button>
+      <p class="muted small">Ausgeblendete Personen siehst du nicht mehr. Das lässt sich in den Einstellungen rückgängig machen.</p>`, (sh) => {
+      sh.querySelector('[data-m-report]').addEventListener('click', () => openReportSheet(id));
+      sh.querySelector('[data-m-hide]').addEventListener('click', (e) => withBusy(e.currentTarget, async () => {
+        try {
+          await community.api.block(id);
+          closeSheet();
+          toast('Ausgeblendet');
+          d.community = null;
+          loadCommunity();
+        } catch (err) {
+          toast(err.message);
+        }
+      }));
+    });
+  });
   on('[data-cdel]', 'click', async (_, el) => {
     try {
       await community.api.remove(el.dataset.cdel);
@@ -1913,17 +1995,24 @@ function renderCommunity(head) {
 /* --- Community: Anzeigename, Paarname mit Zustimmung, Melden, Blockieren ------- */
 
 const REPORT_REASONS = [
-  ['sexuell', 'Sexuelle oder anstößige Inhalte'],
-  ['hass', 'Beleidigung, Hass oder Belästigung'],
-  ['gefahr', 'Gefährlich oder rechtswidrig'],
-  ['privat', 'Persönliche Daten anderer'],
-  ['spam', 'Werbung oder Spam'],
-  ['falsch', 'Falsche Angaben zum Ort'],
-  ['sonstiges', 'Etwas anderes'],
+  ['unangemessen', 'Unangemessen'],
+  ['spam', 'Spam oder Werbung'],
+  ['gefahr', 'Gefährlich'],
+  ['falsch', 'Falsche Infos'],
+  ['sonstiges', 'Anderes'],
 ];
 // Grobe Vorprüfung vor dem Teilen – die eigentliche Kontrolle sind Meldungen und Moderation
 const BLOCKED_WORDS = /\b(fick\w*|fotze|hure\w*|nutte\w*|schlampe|wichs\w*|porn\w*|sex(?:treff|date|party)\w*|escort\w*|nazi\w*|hitler|heil\s+h|kanake\w*|neger\w*|schwuchtel\w*|missgeburt|kill\s+yourself|bitch|whore|cunt|nigg\w*)\b/i;
 const unsafeText = (...texts) => texts.some((t) => BLOCKED_WORDS.test(String(t ?? '')));
+/** Anzeigenamen prüfen: 2–24 Zeichen, nichts Beleidigendes, keine E-Mail-Adresse oder Telefonnummer. */
+function nameProblem(n) {
+  const v = String(n ?? '').trim();
+  if (v.length < 2 || v.length > 24) return 'Der Name braucht 2 bis 24 Zeichen.';
+  if (/@|\bwww\.|https?:/i.test(v)) return 'Bitte keine E-Mail-Adresse oder Webadresse.';
+  if ((v.match(/\d/g) ?? []).length >= 5) return 'Bitte keine Telefonnummer.';
+  if (unsafeText(v)) return 'Bitte wähle einen freundlichen Namen.';
+  return '';
+}
 
 const commPrefs = (role = myRole()) => S().settings.community?.[role] ?? {};
 const pairName = () => S().settings.communityPair ?? null;
@@ -1937,6 +2026,7 @@ const firstName = (role) => (S().settings[role === 'b' ? 'nameB' : 'nameA'] ?? '
 function displayNameFor(role = myRole()) {
   const mode = commPrefs(role).mode ?? 'vorname';
   if (mode === 'anonym') return null;
+  if (mode === 'fantasie' && commPrefs(role).alias) return commPrefs(role).alias;
   if (mode === 'paar' && pairAgreed()) return pairName().name;
   return firstName(role) || null;
 }
@@ -1990,7 +2080,7 @@ function openReportSheet(ideaId, reviewId = null) {
     <div class="field"><label class="label" for="rr-note">Was genau? <small class="muted">(optional)</small></label><textarea class="input" id="rr-note" rows="2" maxlength="500"></textarea></div>
     <label class="switch"><input type="checkbox" id="rr-block"><span><strong>Inhalte dieser Person nicht mehr anzeigen</strong><br><small class="muted">Du siehst ihre Dates und Kommentare dann nicht mehr. Aufheben in den Einstellungen.</small></span></label>
     <button type="button" class="btn primary big" id="rr-send">Meldung senden</button>
-    ${reviewId ? '' : '<button type="button" class="linkish center" id="rr-only-block">Nur blockieren, ohne zu melden</button>'}
+    ${reviewId ? '' : '<button type="button" class="linkish center" id="rr-only-block">Nur ausblenden, ohne zu melden</button>'}
     <p class="muted small">Bei Gefahr für Leib und Leben wende dich bitte direkt an die Polizei (110).</p>`, (sh) => {
     sh.querySelector('#rr-send').addEventListener('click', (e) => withBusy(e.currentTarget, async () => {
       const reason = sh.querySelector('input[name=rr]:checked')?.value;
@@ -2159,8 +2249,11 @@ RENDER.teilen = (param) => {
     <div class="field"><span class="label">Wie sollen andere euch sehen?</span>
       <div class="radio-list" role="radiogroup">
         <label class="radio-row"><input type="radio" name="sh-mode" value="vorname" ${mode === 'vorname' ? 'checked' : ''}><span><strong>${esc(firstName(role) || 'Mit Vornamen')}</strong><br><small class="muted">Dein Vorname</small></span></label>
-        <label class="radio-row"><input type="radio" name="sh-mode" value="paar" ${mode === 'paar' ? 'checked' : ''}><span><strong>Als Paar</strong><br><small class="muted">z. B. „Die Abenteurer“ – erscheint erst, wenn ${esc(nameOf(partner))} zustimmt</small></span></label>
-        <label class="radio-row"><input type="radio" name="sh-mode" value="anonym" ${mode === 'anonym' ? 'checked' : ''}><span><strong>Ohne Namen</strong><br><small class="muted">„Ein Paar aus …“</small></span></label>
+        ${partnerJoined() ? `<label class="radio-row"><input type="radio" name="sh-mode" value="paar" ${mode === 'paar' ? 'checked' : ''}><span><strong>Als Paar</strong><br><small class="muted">z. B. „Die Abenteurer“ – erscheint erst, wenn ${esc(nameOf(partner))} zustimmt</small></span></label>` : ''}
+        <label class="radio-row"><input type="radio" name="sh-mode" value="fantasie" ${mode === 'fantasie' ? 'checked' : ''}><span><strong>Fantasiename</strong><br><small class="muted">z. B. „Sonntagskinder“</small></span></label>
+      </div>
+      <div class="field" id="sh-alias-field" ${mode === 'fantasie' ? '' : 'hidden'}>
+        <input class="input" id="sh-alias" maxlength="24" placeholder="Dein Fantasiename" value="${esc(prefs.alias ?? '')}">
       </div>
       <div class="field" id="sh-pair-field" ${mode === 'paar' ? '' : 'hidden'}>
         <input class="input" id="sh-pair" maxlength="30" placeholder="Euer Paarname" value="${esc(pair?.name ?? '')}">
@@ -2192,7 +2285,9 @@ RENDER.teilen = (param) => {
   $$('input[name=sh-mode]').forEach((r) => r.addEventListener('change', () => {
     session.shareMode = r.value;
     $('#sh-pair-field').hidden = r.value !== 'paar';
+    $('#sh-alias-field').hidden = r.value !== 'fantasie';
     if (r.value === 'paar') $('#sh-pair').focus();
+    if (r.value === 'fantasie') $('#sh-alias').focus();
   }));
   $('#sh-moods').addEventListener('click', (e) => {
     const b = e.target.closest('[data-m]');
@@ -2206,12 +2301,15 @@ RENDER.teilen = (param) => {
     const chosen = $('input[name=sh-mode]:checked')?.value ?? mode;
     const pairText = $('#sh-pair')?.value.trim() ?? '';
     if (chosen === 'paar' && !pairText) return toast('Wie heißt ihr als Paar?');
+    const aliasText = $('#sh-alias')?.value.trim() ?? '';
+    const bad = chosen === 'paar' ? nameProblem(pairText) : chosen === 'fantasie' ? nameProblem(aliasText) : '';
+    if (bad) return toast(bad);
     const title = $('#sh-title').value.trim() || pub.title;
     const teaser = $('#sh-teaser').value.trim();
     if (unsafeText(title, teaser, pairText, ...pub.steps.map((s) => s.t))) return toast('Bitte formuliere den Text ohne anstößige Wörter');
     // Auswahl speichern (Paarname braucht die Zustimmung beider)
     store.update((st) => {
-      st.settings.community = { ...(st.settings.community ?? {}), [role]: { ...(st.settings.community?.[role] ?? {}), mode: chosen, rulesAt: st.settings.community?.[role]?.rulesAt ?? Date.now() } };
+      st.settings.community = { ...(st.settings.community ?? {}), [role]: { ...(st.settings.community?.[role] ?? {}), mode: chosen, ...(chosen === 'fantasie' ? { alias: aliasText } : {}), rulesAt: st.settings.community?.[role]?.rulesAt ?? Date.now() } };
       if (chosen === 'paar') {
         const same = st.settings.communityPair?.name === pairText;
         st.settings.communityPair = { name: pairText, proposedBy: same ? st.settings.communityPair.proposedBy : role, consent: { ...(same ? st.settings.communityPair.consent : {}), [role]: true, ...(same ? {} : { [partner]: null }) } };
@@ -2890,7 +2988,7 @@ function renderForYou(head) {
 
     <section class="stack">
       ${secHead(`${whenLabel(feedDate(), f.daytime)}${isXmasSeason(feedDate()) ? ' · Adventszeit' : ''}`, heroes.length ? `<button type="button" class="linkish small" id="mix-all">${icon('dice')}Neu mischen</button>` : '')}
-      ${heroes.length && myRole() ? `<button type="button" class="match-inline" id="start-match">${icon('heart')}<span><strong>Date-Match</strong> · Gemeinsam wischen – findet heraus, worauf ihr beide Lust habt</span>${icon('right')}</button>` : ''}
+      ${heroes.length && myRole() ? `<button type="button" class="match-inline" id="start-match"${lockAttr()} data-pair-lock-text="Beim Date-Match wischt ihr beide und seht, worauf ihr gemeinsam Lust habt.">${icon('heart')}<span><strong>Date-Match</strong> · Gemeinsam wischen – findet heraus, worauf ihr beide Lust habt</span>${icon('right')}</button>` : ''}
       ${allBusy && !heroes.length ? '<div class="loading"><span class="spinner"></span>Suche Dates für euch …</div>'
         : heroes.length ? `<div class="hero-row">${heroes.map(heroCard).join('')}</div>${genBusy ? '<p class="muted small"><span class="spinner tiny"></span> Stelle zusätzlich Dates aus euren Orten zusammen …</p>' : ''}`
           : '<p class="muted">Gerade passt nichts – lockert die Filter oben.</p>'}
@@ -3011,6 +3109,10 @@ function renderSaved(head) {
   const favs = [...S().favorites].sort((a, b) => b.at - a.at);
   const custom = S().ideas;
   const favIdeas = favs.map((f) => ({ f, idea: f.idea ?? ideaById(f.ideaId) })).filter((x) => x.idea);
+  // Zurückgezogene Community-Ideen bleiben gemerkt, sind aber nicht mehr verfügbar
+  const needFeed = community.api && favIdeas.some(({ idea }) => idea.communityId);
+  if (needFeed && !discover.community && !discover.cLoading) loadCommunity().then(() => current.name === 'entdecken' && discover.tab === 'gemerkt' && render());
+  const gone = (idea) => !!(idea.communityId && discover.community && !discover.community.some((r) => r.id === idea.communityId));
   root.innerHTML = `
     ${head}
     <section class="stack">
@@ -3021,7 +3123,7 @@ function renderSaved(head) {
           <div class="grow">
             <div class="row between top"><h3>${esc(idea.title)}</h3>${favBtn(idea)}</div>
             <p class="muted small">${fmtEuro(idea.cost ?? 0)} · ${fmtDuration(ideaDuration(idea))} · gemerkt von ${f.by === myRole() ? 'dir' : esc(nameOf(f.by))}</p>
-            <button class="btn sm primary" data-feed-plan="${esc(idea.id)}">${icon('sparkle')}Planen</button>
+            ${gone(idea) ? '<span class="tag">Nicht mehr verfügbar</span>' : `<button class="btn sm primary" data-feed-plan="${esc(idea.id)}">${icon('sparkle')}Planen</button>`}
           </div>
         </article>`).join('') : `<p class="muted">Tippe bei einer Idee, einem Ort oder einer Community-Idee auf ${icon('heart', 'inline')}, um sie für später zu speichern. Favoriten kommen auch bei Vorschlägen bevorzugt vor.</p>`}
     </section>
@@ -3032,7 +3134,7 @@ function renderSaved(head) {
           ${ideaThumb(i, 'sq')}
           <span class="grow"><strong>${esc(i.title)}</strong><small class="muted">${i.place === 'drinnen' ? 'Drinnen' : 'Draußen'} · ${fmtEuro(i.cost)} · ${fmtDuration(ideaDuration(i))}${(i.moods ?? []).length ? ` · ${i.moods.map(moodLabel).join(', ')}` : ''}</small></span>
           <button class="icon-btn small" data-feed-plan="${i.id}" aria-label="Planen">${icon('sparkle')}</button>
-          ${community.api && !i.communityId ? `<button class="icon-btn small" data-share-idea="${i.id}" aria-label="Mit der Community teilen">${icon('share')}</button>` : ''}
+          ${community.api ? (i.communityId ? `<button class="btn sm ghost" data-unshare-idea="${i.id}">Nicht mehr teilen</button>` : `<button class="icon-btn small" data-share-idea="${i.id}" aria-label="Mit der Community teilen">${icon('share')}</button>`) : ''}
           <button class="icon-btn small" data-del-idea="${i.id}" aria-label="Löschen">${icon('trash')}</button>
         </div>`).join('')}</div>` : '<p class="muted">Eigene Ideen erscheinen auch bei den Vorschlägen, wenn sie zu Budget, Wetter und Stimmung passen.</p>'}
     </section>`;
@@ -3048,6 +3150,21 @@ function renderSaved(head) {
     render();
   });
   on('[data-share-idea]', 'click', (_, el) => go('teilen', `idea:${el.dataset.shareIdea}`));
+  on('[data-unshare-idea]', 'click', async (_, el) => {
+    const i = S().ideas.find((x) => x.id === el.dataset.unshareIdea);
+    if (!i?.communityId) return;
+    await withBusy(el, async () => {
+      try {
+        await community.api.remove(i.communityId);
+        store.update((st) => delete st.ideas.find((x) => x.id === i.id).communityId);
+        discover.community = null;
+        toast('Nicht mehr geteilt');
+        render();
+      } catch (err) {
+        toast(err.message);
+      }
+    });
+  });
 }
 
 /* ================================================================ Eigene Idee */
@@ -3076,6 +3193,7 @@ RENDER.idee = () => {
         <small class="muted">Ohne Minutenangabe rechnet die App mit 60 Minuten.</small>
       </div>
       <div class="field"><label class="label" for="i-link">Link oder Ort (optional)</label><input class="input" id="i-link" placeholder="https://… oder Suchbegriff für die Karte"></div>
+      ${community.api ? '<label class="switch"><input type="checkbox" id="i-share"><span><strong>Mit der Community teilen</strong><br><small class="muted">Andere Paare sehen deine Idee mit Anzeigenamen und Stadt. Eure Namen und Fotos von euch bleiben privat.</small></span></label>' : ''}
       <button class="btn primary big" type="submit">${icon('check')}Idee speichern</button>
     </form>`;
 
@@ -3127,7 +3245,8 @@ RENDER.idee = () => {
     };
     store.update((s) => s.ideas.push(idea));
     toast('Idee gespeichert');
-    discover.tab = 'eigene';
+    discover.tab = 'gemerkt';
+    if ($('#i-share')?.checked) return go('teilen', `idea:${idea.id}`, { replace: true });
     go('entdecken');
   });
 };
@@ -3159,11 +3278,12 @@ function recommendationsHTML() {
 
 const invitePending = () => {
   const c = getConfig();
-  return !!(c?.code && !c?.coupleId);
+  return !!(pendingInvite()?.code || (c?.code && !c?.coupleId));
 };
 
 RENDER.konto = () => {
-  const mode = auth.mode ?? (invitePending() ? 'registrieren' : 'anmelden');
+  const pend = pendingInvite();
+  const mode = auth.mode ?? (pend?.code ? 'einladung' : getConfig()?.code && !getConfig()?.coupleId ? 'registrieren' : lastEmail() ? 'anmelden' : 'willkommen');
   const tabs = `
     <nav class="seg-tabs" role="tablist">
       <button role="tab" data-amode="anmelden" aria-selected="${mode === 'anmelden'}">Anmelden</button>
@@ -3186,12 +3306,37 @@ RENDER.konto = () => {
       </form>`,
     registrieren: `
       <form class="panel form" id="auth-form" novalidate>
+        ${SUPABASE.apple ? appleBtn.replace('<div class="or-line"><span>oder</span></div>', '') + '<div class="or-line"><span>oder</span></div>' : ''}
         <div class="field"><label class="label" for="a-email">E-Mail-Adresse</label><input class="input" id="a-email" type="email" autocomplete="email" inputmode="email" required></div>
-        ${pw('a-pw', 'Passwort (mindestens 8 Zeichen)', 'new-password')}
-        <button class="btn primary big" type="submit">Konto erstellen</button>
+        ${pw('a-pw', 'Passwort', 'new-password')}
+        <small class="muted pw-hint" id="pw-hint">Mindestens 8 Zeichen</small>
+        <label class="switch"><input type="checkbox" id="a-age"><span>Ich bin mindestens 16 Jahre alt.</span></label>
+        <button class="btn primary big" type="submit" id="a-create" disabled>Konto erstellen</button>
         <p class="muted small center consent">Mit der Registrierung akzeptierst du die <a href="#agb" data-legal="agb">AGB</a> und die <a href="#datenschutz" data-legal="datenschutz">Datenschutzerklärung</a>.</p>
-        ${appleBtn}
+        <button class="linkish small center" type="button" data-amode="anmelden">Ich habe schon ein Konto</button>
       </form>`,
+    willkommen: `
+      <section class="welcome">
+        <ul class="welcome-points">
+          <li>${icon('sun')}<span>Ideen nach Wetter und Budget</span></li>
+          <li>${icon('users')}<span>Gemeinsam planen</span></li>
+          <li>${icon('album')}<span>Eure Momente sammeln</span></li>
+        </ul>
+        <button class="btn primary big" type="button" data-amode="registrieren">Loslegen</button>
+        <button class="linkish center" type="button" data-amode="anmelden">Ich habe schon ein Konto</button>
+      </section>`,
+    einladung: pend?.status && pend.status !== 'ok' ? `
+      <section class="panel stack center">
+        <h2>Diese Einladung ist nicht mehr gültig.</h2>
+        <p>Bitte ${esc(pend.inviter || 'die Person, die dich eingeladen hat')} um eine neue.</p>
+        <button class="btn primary" type="button" data-amode="willkommen" data-drop-invite>Trotzdem loslegen</button>
+      </section>` : `
+      <section class="welcome invite-welcome">
+        <h2 class="ob-title">${esc(pend?.inviter || 'Dein Lieblingsmensch')} hat dich zu Datewell eingeladen 💌</h2>
+        <p class="ob-sub">Plant gemeinsam Dates, passend zu Wetter und Budget.</p>
+        <button class="btn primary big" type="button" data-amode="registrieren">Einladung annehmen</button>
+        <button class="linkish center" type="button" data-amode="anmelden">Ich habe schon ein Konto</button>
+      </section>`,
     vergessen: `
       <form class="panel form" id="auth-form" novalidate>
         <p>Gib deine E-Mail-Adresse ein. Wir schicken dir einen Link, mit dem du ein neues Passwort festlegst.</p>
@@ -3222,16 +3367,17 @@ RENDER.konto = () => {
         <h1 class="wordmark logo">Date<i>well</i></h1>
         <p class="tagline">For the moments that matter.</p>
       </div>
-      ${invitePending() && mode !== 'bestaetigen' ? `<div class="banner neutral-row">${icon('users')}<span>Du wurdest eingeladen. Erstelle ein Konto oder melde dich an – dann seid ihr verbunden.</span></div>` : ''}
-      ${mode === 'anmelden' || mode === 'registrieren' ? tabs : ''}
+      ${invitePending() && ['anmelden', 'registrieren'].includes(mode) ? `<div class="banner neutral-row">${icon('users')}<span>${pend?.inviter ? `Einladung von ${esc(pend.inviter)}: ` : ''}Erstelle ein Konto oder melde dich an – dann seid ihr verbunden.</span></div>` : ''}
+      ${mode === 'anmelden' ? `<button type="button" class="linkish small" data-amode="${pend?.code ? 'einladung' : 'willkommen'}">${icon('left')}Zurück</button>` : mode === 'registrieren' ? `<button type="button" class="linkish small" data-amode="${pend?.code ? 'einladung' : 'willkommen'}">${icon('left')}Zurück</button>` : ''}
       ${auth.error ? `<p class="warn-text" role="alert">${esc(auth.error)}</p>` : ''}
       ${auth.info && mode !== 'bestaetigen' ? `<p class="hint" role="status">${esc(auth.info)}</p>` : ''}
       ${forms[mode] ?? forms.anmelden}
-      <p class="muted small center">Mit dem Konto speichert Datewell eure gemeinsamen Dates, Listen und Fotos sicher – privat für euch zwei.</p>
+      <p class="muted small center">Datewell speichert eure gemeinsamen Dates, Listen und Fotos sicher – privat für euch zwei.</p>
       ${legalLinks()}
     </section>`;
 
   on('[data-amode]', 'click', (_, el) => {
+    if (el.hasAttribute('data-drop-invite')) setPendingInvite(null);
     auth.mode = el.dataset.amode;
     auth.error = '';
     auth.info = '';
@@ -3256,6 +3402,18 @@ RENDER.konto = () => {
     });
   });
   $('#auth-form')?.addEventListener('input', () => $('.auth .warn-text')?.remove());
+  // Registrierung: Knopf erst aktiv, wenn alles gültig ist; Hinweis direkt unter dem Passwort
+  if (mode === 'registrieren') {
+    const check = () => {
+      const okMail = /^\S+@\S+\.\S+$/.test($('#a-email').value.trim());
+      const pwLen = $('#a-pw').value.length;
+      $('#pw-hint').classList.toggle('bad', pwLen > 0 && pwLen < 8);
+      $('#pw-hint').textContent = pwLen > 0 && pwLen < 8 ? `Noch ${8 - pwLen} Zeichen – mindestens 8` : 'Mindestens 8 Zeichen';
+      $('#a-create').disabled = !(okMail && pwLen >= 8 && $('#a-age').checked);
+    };
+    ['input', 'change'].forEach((ev) => $('#auth-form').addEventListener(ev, check));
+    check();
+  }
   $('#auth-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const btn = e.submitter ?? $('#auth-form button[type=submit]');
@@ -3274,7 +3432,7 @@ RENDER.konto = () => {
           if (password.length < 8) throw new Error('Das Passwort braucht mindestens 8 Zeichen.');
           if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error('Bitte eine gültige E-Mail-Adresse eingeben.');
           setRemember(true);
-          const { session } = await signUp(auth.cfg, { email, password, invite: getConfig()?.code ?? null });
+          const { session } = await signUp(auth.cfg, { email, password, invite: pendingInvite()?.code ?? getConfig()?.code ?? null });
           if (session) {
             auth.mode = null;
             await connectRemote(auth.cfg, true);
@@ -3337,17 +3495,114 @@ async function startAccount(cfg) {
 
 const PREF_DIET = [['alles', 'Alles'], ['vegetarisch', 'Vegetarisch'], ['vegan', 'Vegan']];
 const REL_OPTS = [['zusammen', 'Zusammen'], ['verlobt', 'Verlobt'], ['verheiratet', 'Verheiratet']];
+const MONTH_NAMES = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
 
+/* --- Partner-Zustand: allein · Einladung offen · verbunden --------------------- */
+
+const partnerState = { api: null, invite: undefined, loading: false };
 const partnerJoined = () => {
   const role = myRole();
   return !!(role && (S().settings.members ?? {})[other(role)]);
 };
-const canInvite = () => store.syncInfo().backend === 'supabase' && !!getConfig()?.code;
+const canInvite = () => store.syncInfo().backend === 'supabase' && !!partnerState.api;
+const coupleState = () => (partnerJoined() ? 'verbunden' : partnerState.invite ? 'offen' : 'allein');
 const myNameKey = (role) => (role === 'a' ? 'nameA' : 'nameB');
+const myName = () => (S().settings[myNameKey(myRole())] ?? '').trim();
+const partnerName = () => (S().settings[myNameKey(other(myRole()))] ?? '').trim() || partnerState.invite?.partner_name || '';
 
-/** Welche Schritte hat der Einstieg für diese Person? */
-function onboardingSteps() {
-  return ['name', ...(canInvite() && !partnerJoined() ? ['einladen'] : []), 'tage', 'vorlieben'];
+async function loadInvite() {
+  if (!partnerState.api || partnerState.loading) return;
+  partnerState.loading = true;
+  try {
+    partnerState.invite = partnerJoined() ? null : await partnerState.api.mine();
+  } catch {
+    partnerState.invite = partnerState.invite ?? null;
+  }
+  partnerState.loading = false;
+  if (['start', 'mehr', 'einladen'].includes(current.name) || onboardingStep()) render();
+}
+
+const inviteMessage = (inv) => {
+  const p = (inv?.partner_name || partnerName()).trim();
+  return `Hey${p ? ` ${p}` : ''} 💛 Ich habe uns bei Datewell angemeldet – da finden wir zusammen schöne Date-Ideen, passend zu Wetter und Budget. Komm dazu: ${inviteLinkFor(inv.code)} Oder gib in der App den Code ${inv.code} ein.`;
+};
+async function shareInvite(inv) {
+  const text = inviteMessage(inv);
+  if (navigator.share) {
+    try {
+      return await navigator.share({ title: 'Datewell', text });
+    } catch (e) {
+      if (e?.name === 'AbortError') return;
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    toast('Einladung kopiert – füge sie in WhatsApp oder eine Nachricht ein');
+  } catch {
+    prompt('Einladung', text);
+  }
+}
+async function copyCode(code) {
+  try {
+    await navigator.clipboard.writeText(code);
+    toast('Code kopiert');
+  } catch {
+    prompt('Einladungscode', code);
+  }
+}
+const fmtExpiry = (iso) => new Date(iso).toLocaleDateString('de-DE', { day: 'numeric', month: 'long' });
+
+/* --- Einladung, die noch vor der Anmeldung geöffnet wurde (Weg B) --------------- */
+
+const PENDING_KEY = 'date-ideen.invite';
+function pendingInvite() {
+  try {
+    return JSON.parse(localStorage.getItem(PENDING_KEY)) ?? null;
+  } catch {
+    return null;
+  }
+}
+function setPendingInvite(v) {
+  try {
+    if (v) localStorage.setItem(PENDING_KEY, JSON.stringify(v));
+    else localStorage.removeItem(PENDING_KEY);
+  } catch {
+    /* egal */
+  }
+}
+const JOIN_KEY = 'date-ideen.joined';
+function joinInfo() {
+  try {
+    return JSON.parse(localStorage.getItem(JOIN_KEY)) ?? null;
+  } catch {
+    return null;
+  }
+}
+function setJoinInfo(v) {
+  try {
+    if (v) localStorage.setItem(JOIN_KEY, JSON.stringify(v));
+    else localStorage.removeItem(JOIN_KEY);
+  } catch {
+    /* egal */
+  }
+}
+
+/* --- Schritte ------------------------------------------------------------------ */
+
+// Weg A: Name → Partner (Einladen / Code / allein) → Besondere Tage → Vorlieben → Berechtigungen → Abschluss
+// Weg B (eingeladen): Bist du …? → Stimmt das so? → Vorlieben → Berechtigungen → Ihr seid verbunden
+const A_ALL = ['name', 'partner', 'tage', 'vorlieben', 'rechte', 'fertig'];
+const B_STEPS = ['bname', 'check', 'vorlieben', 'rechte', 'verbunden'];
+// Ohne Konto (nur dieses Gerät) gibt es nichts einzuladen
+const aSteps = () => (canInvite() ? A_ALL : A_ALL.filter((x) => x !== 'partner'));
+const COUNTED = { get a() { return aSteps().slice(0, aSteps().indexOf('rechte')); }, b: ['bname', 'check', 'vorlieben'] };
+const SUBSTEP = { einladen: 'partner', code: 'partner' };
+
+/** Weg B, wenn ich eingeladen wurde (der Server merkt sich, wer beigetreten ist). */
+function obFlow() {
+  const st = S().settings;
+  const r = myRole();
+  return st.invitee === r && st.members?.[other(r)] ? 'b' : 'a';
 }
 
 function onboardingStep() {
@@ -3358,100 +3613,227 @@ function onboardingStep() {
   const sync = store.syncInfo();
   if (sync.mode === 'shared' && !sync.ready) return null;
   if (session.obForce) return session.obForce;
-  if (!st[myNameKey(role)]?.trim()) return 'name';
   if (st.onboarded?.[role]) return null;
-  const steps = onboardingSteps();
-  return steps.includes(session.obStep) ? session.obStep : steps[1];
+  const flow = obFlow();
+  const saved = st.obStep?.[role];
+  if (flow === 'b') {
+    if (saved === 'code' || saved === 'partner') return 'check'; // per Code verbunden: weiter ab „Stimmt das so?“
+    if (B_STEPS.includes(saved)) return saved;
+    return 'bname';
+  }
+  if (!myName()) return 'name';
+  // Schon verbunden (z. B. gleichzeitig eingeladen worden): Partner-Schritt überspringen
+  if (partnerJoined() && (!saved || saved === 'name' || saved === 'partner' || SUBSTEP[saved])) return 'tage';
+  if (aSteps().includes(saved) || SUBSTEP[saved]) return saved === 'name' ? aSteps()[1] : saved;
+  return aSteps()[1];
+}
+
+function setObStep(step) {
+  const role = myRole();
+  store.update((st) => (st.settings.obStep = { ...(st.settings.obStep ?? {}), [role]: step }));
 }
 
 const specialOf = (kind, who) => S().settings.specialDays.find((d) => d.kind === kind && (!who || d.who === who));
 const relationOf = (st) => st.relationship ?? (specialOf('standesamt') || specialOf('hochzeit') ? 'verheiratet' : specialOf('hochzeit-geplant') ? 'verlobt' : 'zusammen');
-const partnerLabel = (role) => {
-  const n = S().settings[myNameKey(other(role))]?.trim();
-  return n || 'deines Schatzes';
-};
 
-/** Einstieg als eigener Vollbild-Screen vor der Startseite. */
+/** Geburtstag: Tag und Monat, Jahr freiwillig. */
+function bdayField(id, iso) {
+  const [y, m, d] = String(iso || '').split('-');
+  return `
+    <div class="bday" role="group" aria-labelledby="${id}-l">
+      <select class="input" id="${id}-d" aria-label="Tag"><option value="">Tag</option>${Array.from({ length: 31 }, (_, i) => { const v = String(i + 1).padStart(2, '0'); return `<option value="${v}" ${v === d ? 'selected' : ''}>${i + 1}.</option>`; }).join('')}</select>
+      <select class="input" id="${id}-m" aria-label="Monat"><option value="">Monat</option>${MONTH_NAMES.map((n, i) => { const v = String(i + 1).padStart(2, '0'); return `<option value="${v}" ${v === m ? 'selected' : ''}>${n}</option>`; }).join('')}</select>
+      <input class="input" id="${id}-y" inputmode="numeric" maxlength="4" placeholder="Jahr" aria-label="Jahr (freiwillig)" value="${y && y !== '0000' ? esc(y) : ''}">
+    </div>`;
+}
+function readBday(id) {
+  const d = $(`#${id}-d`)?.value;
+  const m = $(`#${id}-m`)?.value;
+  const y = $(`#${id}-y`)?.value.trim();
+  if (!d || !m) return '';
+  return `${/^(19|20)\d\d$/.test(y) ? y : '0000'}-${m}-${d}`;
+}
+const todayIsoStr = () => isoDate(today());
+const fmtDay = (iso) => (iso ? fmtDate(iso, { day: 'numeric', month: 'long', year: 'numeric' }) : '–');
+
+/* --- Bildschirme ----------------------------------------------------------------- */
+
+function obHead(step, title, sub = '') {
+  const flow = session.obForce ? null : obFlow();
+  const counted = flow ? COUNTED[flow] : [];
+  const base = SUBSTEP[step] ?? step;
+  const idx = counted.indexOf(base);
+  const steps = flow === 'b' ? B_STEPS : aSteps();
+  const canBack = !session.obForce && steps.indexOf(base) > (flow === 'b' ? 0 : 0) && base !== 'fertig' && base !== 'verbunden' && !(flow === 'a' && base === 'name');
+  return `
+    <div class="ob-top">
+      ${canBack || SUBSTEP[step] ? `<button type="button" class="icon-btn ob-back" data-ob-back aria-label="Zurück">${icon('left')}</button>` : '<span></span>'}
+      ${idx >= 0 ? `<div class="ob-progress"><span class="kicker">Schritt ${idx + 1} von ${counted.length}</span><span class="ob-bar"><i style="width:${Math.round(((idx + 1) / counted.length) * 100)}%"></i></span></div>` : '<span></span>'}
+    </div>
+    <h1 class="ob-title">${title}</h1>
+    ${sub ? `<p class="ob-sub">${sub}</p>` : ''}`;
+}
+
 function onboardingScreen(step) {
   const st = S().settings;
   const role = myRole();
-  const partner = other(role);
-  const steps = session.obForce ? [step] : onboardingSteps();
-  const nr = steps.indexOf(step) + 1;
-  const pName = st[myNameKey(partner)]?.trim();
-  const head = (title, sub) => `
-    ${steps.length > 1 ? `<div class="ob-progress"><span class="kicker">Schritt ${nr} von ${steps.length}</span><span class="dots-row">${steps.map((_, i) => `<i class="${i < nr ? 'on' : ''}"></i>`).join('')}</span></div>` : ''}
-    <h1 class="ob-title">${title}</h1>
-    ${sub ? `<p class="ob-sub">${sub}</p>` : ''}`;
-  const actions = (submit, skip = true) => `
-    <div class="ob-actions">
-      <button class="btn primary big" type="submit">${submit}</button>
-      ${session.obForce ? '<button class="btn ghost" type="button" data-ob-cancel>Abbrechen</button>' : skip ? '<button class="linkish center" type="button" data-ob-skip>Später</button>' : ''}
-    </div>`;
+  const pName = partnerName();
+  const skip = (label = 'Überspringen') => (session.obForce ? '<button class="btn ghost" type="button" data-ob-cancel>Abbrechen</button>' : `<button class="linkish center" type="button" data-ob-skip>${label}</button>`);
   let body = '';
 
-  if (step === 'name') {
+  if (step === 'name' || step === 'bname') {
+    const pre = st[myNameKey(role)] ?? '';
+    body = step === 'bname'
+      ? `${obHead(step, pre ? `Bist du ${esc(pre)}?` : 'Wie heißt du?', pre ? 'So hat dich dein Lieblingsmensch eingetragen. Du kannst den Namen ändern.' : 'So begrüßt dich Datewell.')}
+        <div class="field"><label class="label" for="ob-name">Dein Vorname</label><input class="input" id="ob-name" maxlength="30" value="${esc(pre)}" autocomplete="given-name" autocapitalize="words"></div>
+        <div class="ob-actions"><button class="btn primary big" type="submit" id="ob-go" ${pre ? '' : 'disabled'}>${pre ? 'Ja, das bin ich' : 'Weiter'}</button></div>`
+      : `${obHead(step, 'Wie heißt du?', 'So begrüßt dich Datewell.')}
+        <div class="field"><label class="label" for="ob-name">Dein Vorname</label><input class="input" id="ob-name" maxlength="30" value="${esc(pre)}" placeholder="z. B. Julia" autocomplete="given-name" autocapitalize="words"></div>
+        <div class="ob-actions"><button class="btn primary big" type="submit" id="ob-go" ${pre ? '' : 'disabled'}>Weiter</button></div>`;
+  } else if (step === 'partner') {
     body = `
-      ${head('Willkommen bei Datewell.', 'Schön, dass du da bist. Wie heißt du?')}
-      <div class="field"><label class="label" for="ob-name">Dein Vorname</label><input class="input" id="ob-name" maxlength="30" value="${esc(st[myNameKey(role)] ?? '')}" placeholder="z. B. Julia" autocomplete="given-name" autocapitalize="words"></div>
-      ${!canInvite() && !partnerJoined() ? `<div class="field"><label class="label" for="ob-pname">Name deines Schatzes <small class="muted">(optional)</small></label><input class="input" id="ob-pname" maxlength="30" value="${esc(pName ?? '')}" autocapitalize="words"></div>` : ''}
-      ${partnerJoined() && pName ? `<p class="muted small">${icon('rings')} Du bist schon mit ${esc(pName)} verbunden.</p>` : ''}
-      ${actions('Weiter', false)}`;
+      ${obHead(step, 'Nutzt du Datewell mit jemandem?', 'Datewell ist für zwei gemacht. Ihr habt jeder ein eigenes Konto und plant gemeinsam.')}
+      <div class="ob-choices">
+        <button type="button" class="ob-choice main" data-ob-to="einladen">${icon('heart')}<span><strong>Partner einladen</strong><small>Code oder Link per Nachricht schicken</small></span>${icon('right')}</button>
+        <button type="button" class="ob-choice" data-ob-to="code">${icon('users')}<span><strong>Mein Partner hat mich eingeladen</strong><small>Code eingeben</small></span>${icon('right')}</button>
+      </div>
+      <div class="ob-actions"><button type="button" class="linkish center" data-ob-alone>Erstmal allein umschauen</button></div>`;
   } else if (step === 'einladen') {
-    const link = inviteLink(getConfig());
+    const inv = partnerState.invite;
     body = `
-      ${head(`${pName ? `${esc(pName)}` : 'Deinen Schatz'} einladen`, 'Datewell macht zu zweit am meisten Spaß: Ihr seht dieselben Dates, plant abwechselnd und stimmt gemeinsam ab.')}
-      <div class="field"><label class="label" for="ob-pname">Wie heißt dein Schatz?</label><input class="input" id="ob-pname" maxlength="30" value="${esc(pName ?? '')}" placeholder="z. B. Maxi" autocapitalize="words"></div>
-      <div class="ob-invite">
-        <button class="btn primary big" type="button" id="ob-share">${icon('share')}Einladung senden</button>
-        <a class="btn big whatsapp" id="ob-wa" href="#" target="_blank" rel="noopener">Per WhatsApp teilen</a>
-        <div class="copy-row"><input class="input" id="ob-link" readonly value="${esc(link)}" aria-label="Einladungslink"><button class="btn" id="ob-copy" type="button">Kopieren</button></div>
-        <p class="muted small">Wer den Link öffnet und ein Konto erstellt, ist mit dir verbunden. Schick ihn nur an die Person, mit der du Datewell nutzt.</p>
-      </div>
+      ${obHead(step, 'Wie heißt dein Lieblingsmensch?')}
+      <div class="field"><label class="label" for="ob-pname">Vorname</label>
+        <div class="row gap"><input class="input grow" id="ob-pname" maxlength="30" value="${esc(inv?.partner_name ?? pName)}" placeholder="z. B. Maxi" autocapitalize="words">
+        ${inv ? '' : `<button type="button" class="btn" id="ob-mkinvite" ${pName ? '' : 'disabled'}>Einladen</button>`}</div></div>
+      ${inv ? `
+      <div class="invite-box">
+        <span class="kicker">Dein Einladungscode</span>
+        <strong class="invite-code">${esc(inv.code)}</strong>
+        <small class="muted">Gültig bis ${esc(fmtExpiry(inv.expires_at))} · nur einmal verwendbar</small>
+        <button type="button" class="btn primary" id="ob-share">${icon('share')}Einladung teilen</button>
+        <button type="button" class="btn ghost" id="ob-copy">Code kopieren</button>
+      </div>` : ''}
       <div class="ob-actions">
-        <button class="btn big" type="submit">Weiter</button>
-        <button class="linkish center" type="button" data-ob-skip>Später einladen</button>
+        ${inv ? '<button class="btn big" type="submit">Weiter</button>' : ''}
+        <button type="button" class="linkish center" data-ob-later>Später einladen</button>
       </div>`;
-  } else if (step === 'tage') {
+  } else if (step === 'code') {
+    body = `
+      ${obHead(step, 'Gib den Code ein, den du bekommen hast')}
+      <div class="field"><label class="label" for="ob-code">Einladungscode</label>
+        <input class="input code-input" id="ob-code" value="DW-" autocapitalize="characters" autocomplete="one-time-code" spellcheck="false" maxlength="12"></div>
+      <button type="button" class="linkish small" id="ob-paste">Aus der Zwischenablage einfügen</button>
+      <p class="warn-text" id="ob-code-err" role="alert" hidden></p>
+      <div class="ob-actions"><button class="btn primary big" type="submit">Verbinden</button></div>`;
+  } else if (step === 'tage' || step === 'check') {
+    const paired = step === 'check' || partnerJoined() || !!partnerState.invite;
     const rel = session.obRel ?? relationOf(st);
-    const val = (kind, who) => esc(specialOf(kind, who)?.date ?? '');
-    const dateField = (id, label, value) => `<div class="field"><label class="label" for="${id}">${label}</label><input class="input date-input" type="date" id="${id}" value="${value}" placeholder="TT.MM.JJJJ" max="2100-12-31"></div>`;
-    body = `
-      ${head('Eure besonderen Tage', 'Datewell erinnert euch rechtzeitig und schlägt dann besondere Dates vor. Alles ist freiwillig.')}
-      <div class="field"><span class="label">Ihr seid …</span>${chips('ob-rel', REL_OPTS, rel, 'seg')}</div>
-      ${dateField('ob-anniv', 'Seit wann seid ihr zusammen?', esc(st.anniversary ?? ''))}
-      <div class="stack-sm" data-rel="verlobt" ${rel === 'verlobt' ? '' : 'hidden'}>
-        ${dateField('ob-verlobung', 'Tag der Verlobung', val('verlobung'))}
-        ${dateField('ob-geplant', 'Geplantes Hochzeitsdatum <small class="muted">(falls schon bekannt)</small>', val('hochzeit-geplant'))}
-      </div>
-      <div class="stack-sm" data-rel="verheiratet" ${rel === 'verheiratet' ? '' : 'hidden'}>
-        ${dateField('ob-standesamt', 'Hochzeitstag (Standesamt)', val('standesamt'))}
-        ${dateField('ob-hochzeit', 'Kirchliche oder freie Trauung <small class="muted">(falls an einem anderen Tag)</small>', val('hochzeit'))}
-      </div>
-      ${dateField(`ob-geb-${role}`, 'Dein Geburtstag', val('geburtstag', role))}
-      ${dateField(`ob-geb-${partner}`, `Geburtstag ${esc(pName || 'deines Schatzes')}`, val('geburtstag', partner))}
-      ${actions('Weiter')}`;
-  } else {
+    const wed = rel === 'verheiratet' ? specialOf('hochzeit')?.date ?? specialOf('standesamt')?.date ?? '' : '';
+    const planned = specialOf('hochzeit-geplant')?.date ?? '';
+    const me = specialOf('geburtstag', role)?.date ?? '';
+    const ji = step === 'check' ? joinInfo() : null;
+    const conflicts = step === 'check' ? joinConflicts(ji) : [];
+    const hasPair = !!(st.anniversary || st.relationship || wed || planned);
+    if (step === 'check' && hasPair && !session.obEditPair) {
+      const rows = [
+        ['Ihr seid', REL_OPTS.find(([v]) => v === rel)?.[1] ?? 'Zusammen'],
+        ['Zusammen seit', fmtDay(st.anniversary)],
+        ...(rel === 'verheiratet' ? [['Euer Hochzeitstag', fmtDay(wed)]] : rel === 'verlobt' ? [['Wann heiratet ihr?', planned ? fmtDay(planned) : 'noch offen']] : []),
+      ];
+      body = `
+        ${obHead(step, conflicts.length ? 'Kurz abstimmen' : 'Stimmt das so?', conflicts.length ? '' : `${esc(pName || 'Dein Lieblingsmensch')} hat schon eingetragen:`)}
+        ${conflicts.length ? conflicts.map((c, k) => `
+          <div class="field conflict"><span class="label">${esc(c.label)}</span>
+            <p class="small">${esc(pName || 'Dein Partner')} hat ${esc(c.theirsText)} eingetragen, du ${esc(c.mineText)}. Welcher stimmt?</p>
+            ${chips(`ob-cf-${k}`, [['theirs', c.theirsText], ['mine', c.mineText]], 'theirs', 'seg')}</div>`).join('') : `
+        <ul class="ob-pairdata">${rows.map(([l, v]) => `<li><button type="button" data-ob-editpair><span class="muted small">${esc(l)}</span><strong>${esc(v)}</strong>${icon('right')}</button></li>`).join('')}</ul>`}
+        <div class="field"><span class="label" id="ob-bday-l">Dein Geburtstag</span>${bdayField('ob-bday', me)}</div>
+        <div class="ob-actions"><button class="btn primary big" type="submit">Passt so</button></div>`;
+    } else {
+      const maxToday = todayIsoStr();
+      body = paired ? `
+        ${obHead(step, 'Eure besonderen Tage', 'Datewell erinnert euch rechtzeitig und schlägt dann besondere Dates vor. Alles ist freiwillig.')}
+        <div class="field"><span class="label">Ihr seid</span>${chips('ob-rel', REL_OPTS, rel, 'seg')}</div>
+        <div class="field"><label class="label" for="ob-anniv">Zusammen seit</label><input class="input" type="date" id="ob-anniv" max="${maxToday}" value="${esc(st.anniversary ?? '')}"></div>
+        <div class="field" data-rel="verlobt" ${rel === 'verlobt' ? '' : 'hidden'}><label class="label" for="ob-geplant">Wann heiratet ihr? <small class="muted">(freiwillig)</small></label><input class="input" type="date" id="ob-geplant" min="${maxToday}" value="${esc(planned)}"></div>
+        <div class="field" data-rel="verheiratet" ${rel === 'verheiratet' ? '' : 'hidden'}><label class="label" for="ob-hochzeit">Euer Hochzeitstag</label><input class="input" type="date" id="ob-hochzeit" max="${maxToday}" value="${esc(wed)}"></div>
+        <div class="field"><span class="label" id="ob-bday-l">Dein Geburtstag</span>${bdayField('ob-bday', me)}</div>
+        <div class="ob-actions"><button class="btn primary big" type="submit">Weiter</button>${step === 'check' ? '' : skip()}</div>`
+        : `
+        ${obHead(step, 'Wann hast du Geburtstag?', 'Datewell denkt rechtzeitig daran. Das Jahr ist freiwillig.')}
+        <div class="field"><span class="label" id="ob-bday-l">Dein Geburtstag</span>${bdayField('ob-bday', me)}</div>
+        <div class="ob-actions"><button class="btn primary big" type="submit">Weiter</button>${skip()}</div>`;
+    }
+  } else if (step === 'vorlieben') {
     const p = st.prefs?.[role] ?? {};
-    const theirs = st.prefs?.[partner];
+    const paired = partnerJoined() || !!partnerState.invite;
     body = `
-      ${head('Was gefällt dir bei Dates?', `Deine Antworten helfen Datewell, passende Ideen für euch zu finden.${theirs ? ` ${esc(nameOf(partner))} hat schon geantwortet.` : pName ? ` ${esc(pName)} beantwortet das auf dem eigenen Handy.` : ''}`)}
+      ${obHead(step, 'Was gefällt dir bei Dates?', `Deine Antworten helfen Datewell, passende Ideen für euch zu finden.${paired && pName ? ` ${esc(pName)} beantwortet das auf dem eigenen Handy.` : ''}`)}
       <div class="field"><span class="label">Worauf hast du am meisten Lust? <small class="muted">(bis zu 4)</small></span>
-        <div class="chips" id="ob-moods">${MOODS.map(([v, l]) => `<button type="button" class="chip" data-m="${v}" aria-pressed="${(p.moods ?? []).includes(v)}">${l}</button>`).join('')}</div></div>
+        <div class="chips" id="ob-moods">${MOODS.map(([v, l]) => `<button type="button" class="chip" data-m="${v}" aria-pressed="${(p.moods ?? []).includes(v)}">${l}</button>`).join('')}</div>
+        <small class="muted" id="ob-moods-hint" hidden>Du kannst bis zu 4 auswählen.</small></div>
       <div class="field"><span class="label">Lieber drinnen oder draußen?</span>${chips('ob-place', [['drinnen', 'Drinnen', 'home'], ['draußen', 'Draußen', 'sun'], ['egal', 'Beides']], p.place ?? 'egal', 'seg')}</div>
       <div class="field"><span class="label">Wie isst du?</span>${chips('ob-diet', PREF_DIET, p.diet ?? 'alles', 'seg')}</div>
       <div class="field">
         <div class="label-row"><span class="label">Typisches Budget für ein Date (zu zweit)</span><output id="ob-budget-out" class="budget-out">${budgetLabel(p.budget ?? 50)}</output></div>
-        <input type="range" id="ob-budget" min="0" max="200" step="5" value="${p.budget ?? 50}" aria-label="Budget in Euro">
-        <div class="scale"><span>0 €</span><span>50 €</span><span>100 €</span><span>150 €</span><span>200 €+</span></div>
+        <input type="range" id="ob-budget" min="0" max="200" step="10" value="${p.budget ?? 50}" aria-label="Budget in Euro">
+        <div class="scale"><span>0 €</span><span>50</span><span>100</span><span>150</span><span>200 €+</span></div>
       </div>
-      ${actions(session.obForce ? 'Speichern' : `${icon('check')}Fertig`)}`;
+      <div class="ob-actions"><button class="btn primary big" type="submit">${session.obForce ? 'Speichern' : 'Weiter'}</button>${skip()}</div>`;
+  } else if (step === 'rechte') {
+    const pushOn = !!L().push?.on;
+    const pushState = session.permPush ?? (pushOn ? 'ok' : '');
+    const geoState = session.permGeo ?? (L().geo ? 'ok' : '');
+    const status = (s) => (s === 'ok' ? `<span class="perm-ok">${icon('check')}Erlaubt</span>` : s ? `<span class="muted small">${esc(s)}</span>` : '');
+    body = `
+      ${obHead(step, 'Fast geschafft')}
+      <article class="perm-card">
+        <span class="perm-ico" aria-hidden="true">🔔</span>
+        <div class="grow"><strong>Mitteilungen</strong><p class="small">Wir sagen euch Bescheid, wenn es Zeit für euer nächstes Date ist – und denken an euren Jahrestag.</p>
+          ${pushState ? status(pushState) : '<button type="button" class="btn sm primary" id="ob-push">Mitteilungen erlauben</button>'}</div>
+      </article>
+      <article class="perm-card">
+        <span class="perm-ico" aria-hidden="true">📍</span>
+        <div class="grow"><strong>Standort</strong><p class="small">So finden wir die schönsten Ideen ganz in eurer Nähe – nur, während du Datewell nutzt.</p>
+          ${geoState ? status(geoState) : '<button type="button" class="btn sm primary" id="ob-geo">Standort erlauben</button>'}</div>
+      </article>
+      <div class="ob-actions"><button class="btn primary big" type="submit">Fertig</button><button class="linkish center" type="button" data-ob-skip>Später</button></div>`;
+  } else if (step === 'fertig') {
+    body = `
+      <div class="ob-moment" data-ob-next>
+        ${icon('rings', 'brand-mark big')}
+        <h1 class="ob-title">Willkommen bei Datewell, ${esc(myName())}.</h1>
+      </div>`;
+  } else if (step === 'verbunden') {
+    body = `
+      <div class="ob-moment">
+        <span class="rings-anim" aria-hidden="true"><i></i><i></i></span>
+        <h1 class="ob-title">Ihr seid verbunden.</h1>
+        <p class="oclock"><b>It’s date</b> <i>o’clock.</i></p>
+        <button class="btn primary big" type="submit">Los geht’s</button>
+      </div>`;
   }
   return `
     <section class="ob-screen">
-      <div class="ob-brand">${icon('rings', 'brand-mark')}<span class="logo">Date<i>well</i></span></div>
       <form class="form ob-form" id="ob-form" data-step="${step}" novalidate>${body}</form>
     </section>`;
+}
+
+/** Abweichende Paar-Daten zwischen dem eigenen Allein-Konto und dem des Partners. */
+function joinConflicts(ji) {
+  const old = ji?.oldSettings;
+  if (!old) return [];
+  const st = S().settings;
+  const out = [];
+  const oldDay = (kind) => (old.specialDays ?? []).find((d) => d.kind === kind)?.date ?? '';
+  const add = (key, label, mine, theirs, fmt) => {
+    if (mine && theirs && mine !== theirs) out.push({ key, label, mine, theirs, mineText: fmt(mine), theirsText: fmt(theirs) });
+  };
+  add('anniversary', 'Zusammen seit', old.anniversary, st.anniversary, (v) => `den ${fmtDate(v, { day: '2-digit', month: '2-digit', year: 'numeric' })}`);
+  add('relationship', 'Ihr seid', old.relationship, st.relationship, (v) => `„${REL_OPTS.find(([x]) => x === v)?.[1] ?? v}“`);
+  add('hochzeit', 'Hochzeitstag', oldDay('hochzeit'), specialOf('hochzeit')?.date ?? '', (v) => `den ${fmtDate(v, { day: '2-digit', month: '2-digit', year: 'numeric' })}`);
+  add('hochzeit-geplant', 'Hochzeitsdatum', oldDay('hochzeit-geplant'), specialOf('hochzeit-geplant')?.date ?? '', (v) => `den ${fmtDate(v, { day: '2-digit', month: '2-digit', year: 'numeric' })}`);
+  return out;
 }
 
 RENDER.onboarding = () => {
@@ -3465,79 +3847,114 @@ function bindOnboarding() {
   if (!form) return;
   const step = form.dataset.step;
   const role = myRole();
-  const steps = onboardingSteps();
-  const done = () => {
-    session.obStep = null;
-    if (session.obForce) {
-      session.obForce = null;
-      toast('Gespeichert');
-      go('mehr', null, { replace: true });
-      return;
-    }
-    store.update((st) => (st.settings.onboarded = { ...(st.settings.onboarded ?? {}), [role]: true }));
-    toast('Alles eingerichtet – viel Freude mit Datewell!');
+  const flow = obFlow();
+  const steps = flow === 'b' ? B_STEPS : aSteps();
+  const finish = () => {
+    store.update((st) => {
+      st.settings.onboarded = { ...(st.settings.onboarded ?? {}), [role]: true };
+      if (st.settings.obStep) delete st.settings.obStep[role];
+    });
+    setJoinInfo(null);
+    session.obRel = null;
+    session.obEditPair = false;
     go('start', null, { replace: true });
     render(true);
   };
-  const next = () => {
-    if (session.obForce) return done();
-    const i = steps.indexOf(step);
-    if (i < 0 || i >= steps.length - 1) return done();
-    session.obStep = steps[i + 1];
+  const goStep = (s) => {
+    if (session.obForce) {
+      session.obForce = null;
+      toast('Gespeichert');
+      return go('mehr', null, { replace: true });
+    }
+    if (s === 'done') return finish();
+    setObStep(s);
     render(true);
+  };
+  const next = () => {
+    const base = SUBSTEP[step] ?? step;
+    const i = steps.indexOf(base);
+    goStep(i < 0 || i >= steps.length - 1 ? 'done' : steps[i + 1]);
   };
   $$('[data-ob-skip]', form).forEach((b) => b.addEventListener('click', next));
   $('[data-ob-cancel]', form)?.addEventListener('click', () => {
     session.obForce = null;
     go('mehr', null, { replace: true });
   });
-  const savePartnerName = () => {
-    const v = $('#ob-pname')?.value.trim();
-    if (v) store.update((st) => (st.settings[myNameKey(other(role))] = v));
-  };
+  $('[data-ob-back]', form)?.addEventListener('click', () => {
+    if (SUBSTEP[step]) return goStep(SUBSTEP[step]);
+    const i = steps.indexOf(step);
+    let prev = steps[Math.max(0, i - 1)];
+    if (flow === 'a' && prev === 'name') prev = 'name';
+    goStep(prev);
+  });
 
+  // Name
+  if (step === 'name' || step === 'bname') {
+    const inp = $('#ob-name');
+    inp.addEventListener('input', () => ($('#ob-go').disabled = !inp.value.trim()));
+    if (!inp.value) inp.focus();
+  }
+  // Partner-Auswahl
+  on('[data-ob-to]', 'click', (_, el) => goStep(el.dataset.obTo));
+  $('[data-ob-alone]', form)?.addEventListener('click', () => goStep('tage'));
+  // Einladen
   if (step === 'einladen') {
-    const text = () => {
-      const p = $('#ob-pname').value.trim();
-      return `${p ? `${p}, ` : ''}lass uns unsere Dates zusammen planen – mit Datewell: ${$('#ob-link').value}`;
+    const inp = $('#ob-pname');
+    const savePName = () => {
+      const v = inp.value.trim();
+      if (v) store.update((st) => (st.settings[myNameKey(other(role))] = v));
     };
-    const wa = $('#ob-wa');
-    const setWa = () => (wa.href = `https://wa.me/?text=${encodeURIComponent(text())}`);
-    setWa();
-    $('#ob-pname').addEventListener('input', setWa);
-    wa.addEventListener('click', savePartnerName);
-    $('#ob-share').addEventListener('click', async () => {
-      savePartnerName();
-      if (navigator.share) {
-        try {
-          await navigator.share({ title: 'Datewell', text: text() });
-          return;
-        } catch (e) {
-          if (e?.name === 'AbortError') return;
-        }
-      }
+    inp.addEventListener('input', () => $('#ob-mkinvite') && ($('#ob-mkinvite').disabled = !inp.value.trim()));
+    $('#ob-mkinvite')?.addEventListener('click', (e) => withBusy(e.currentTarget, async () => {
+      const v = inp.value.trim();
+      if (!v) return toast('Wie heißt dein Lieblingsmensch?');
+      savePName();
       try {
-        await navigator.clipboard.writeText(text());
-        toast('Einladung kopiert – füge sie in WhatsApp oder eine Nachricht ein');
-      } catch {
-        $('#ob-link').select();
+        partnerState.invite = await partnerState.api.create(v);
+        render();
+      } catch (err) {
+        toast(err.message);
       }
+    }));
+    $('#ob-share')?.addEventListener('click', () => shareInvite(partnerState.invite));
+    $('#ob-copy')?.addEventListener('click', () => copyCode(partnerState.invite.code));
+    $('[data-ob-later]', form).addEventListener('click', () => {
+      savePName();
+      goStep('tage');
     });
-    $('#ob-copy').addEventListener('click', async () => {
+  }
+  // Code eingeben
+  if (step === 'code') {
+    const inp = $('#ob-code');
+    inp.addEventListener('input', () => {
+      const pos = inp.value;
+      inp.value = normCode(pos).slice(0, 12);
+      $('#ob-code-err').hidden = true;
+    });
+    inp.focus();
+    inp.setSelectionRange(inp.value.length, inp.value.length);
+    $('#ob-paste').addEventListener('click', async () => {
       try {
-        await navigator.clipboard.writeText($('#ob-link').value);
-        toast('Link kopiert');
+        const t = await navigator.clipboard.readText();
+        const m = t.match(/DW-?[A-Z0-9]{4,8}/i);
+        inp.value = normCode(m ? m[0] : t).slice(0, 12);
       } catch {
-        $('#ob-link').select();
+        toast('Einfügen ist hier nicht erlaubt – bitte von Hand eintippen');
       }
     });
   }
-  if (step === 'tage') {
+  // Besondere Tage
+  if (step === 'tage' || step === 'check') {
     bindChips(form, 'ob-rel', (v) => {
       session.obRel = v;
       $$('[data-rel]', form).forEach((el) => (el.hidden = el.dataset.rel !== v));
     });
+    on('[data-ob-editpair]', 'click', () => {
+      session.obEditPair = true;
+      render();
+    });
   }
+  // Vorlieben
   const moods = new Set(S().settings.prefs?.[role]?.moods ?? []);
   const prefs = { place: S().settings.prefs?.[role]?.place ?? 'egal', diet: S().settings.prefs?.[role]?.diet ?? 'alles', budget: S().settings.prefs?.[role]?.budget ?? 50 };
   if (step === 'vorlieben') {
@@ -3547,7 +3964,7 @@ function bindOnboarding() {
       const v = b.dataset.m;
       if (moods.has(v)) moods.delete(v);
       else if (moods.size < 4) moods.add(v);
-      else toast('Höchstens vier – entferne erst eine');
+      else $('#ob-moods-hint').hidden = false;
       b.setAttribute('aria-pressed', String(moods.has(v)));
     });
     bindChips(form, 'ob-place', (v) => (prefs.place = v));
@@ -3557,53 +3974,249 @@ function bindOnboarding() {
       $('#ob-budget-out').textContent = budgetLabel(prefs.budget);
     });
   }
-
-  form.addEventListener('submit', (e) => {
-    e.preventDefault();
-    if (step === 'name') {
-      const n = $('#ob-name').value.trim();
-      if (!n) {
-        toast('Wie heißt du?');
-        return $('#ob-name').focus();
+  // Berechtigungen – die Systemabfrage kommt erst nach unserer Erklärung und dem Tippen
+  if (step === 'rechte') {
+    $('#ob-push')?.addEventListener('click', (e) => withBusy(e.currentTarget, async () => {
+      try {
+        await enablePush();
+        session.permPush = 'ok';
+      } catch (err) {
+        session.permPush = /nicht erlaubt/.test(err.message) ? 'Nicht erlaubt – änderbar in den Einstellungen' : err.message;
       }
+      render();
+    }));
+    $('#ob-geo')?.addEventListener('click', (e) => withBusy(e.currentTarget, async () => {
+      try {
+        await useGps();
+        session.permGeo = 'ok';
+      } catch {
+        session.permGeo = 'Nicht erlaubt – änderbar in den Einstellungen';
+      }
+      render();
+    }));
+  }
+  // Abschluss-Moment: nach 1,5 Sekunden oder per Tippen weiter
+  if (step === 'fertig') {
+    const t = setTimeout(finish, 1600);
+    $('[data-ob-next]', form).addEventListener('click', () => {
+      clearTimeout(t);
+      finish();
+    });
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (step === 'name' || step === 'bname') {
+      const n = $('#ob-name').value.trim().replace(/^\p{Ll}/u, (c) => c.toUpperCase());
+      if (!n) return $('#ob-name').focus();
       store.update((st) => (st.settings[myNameKey(role)] = n));
-      savePartnerName();
       return next();
     }
-    if (step === 'einladen') {
-      savePartnerName();
-      return next();
+    if (step === 'einladen') return goStep('tage');
+    if (step === 'code') {
+      const code = normCode($('#ob-code').value);
+      const err = $('#ob-code-err');
+      const btn = e.submitter ?? $('#ob-form button[type=submit]');
+      return withBusy(btn, async () => {
+        try {
+          const res = await partnerState.api.accept(code);
+          if (res.error) {
+            err.textContent = res.error;
+            err.hidden = false;
+            return;
+          }
+          if (res.old_settings) setJoinInfo({ oldSettings: res.old_settings, oldRole: res.old_role, inviter: res.inviter });
+          // Neu verbinden: ab jetzt das gemeinsame Konto
+          const c = getConfig();
+          saveConfig({ url: c.url, key: c.key, coupleId: res.couple_id });
+          location.replace(location.pathname); // neu laden, zur Startseite
+        } catch (ex) {
+          err.textContent = ex.message;
+          err.hidden = false;
+        }
+      });
     }
-    if (step === 'tage') {
+    if (step === 'tage' || step === 'check') {
       const rel = session.obRel ?? relationOf(S().settings);
       const v = (id) => $(`#${id}`)?.value ?? '';
+      const bday = readBday('ob-bday');
+      const conflicts = step === 'check' && !session.obEditPair ? joinConflicts(joinInfo()) : [];
+      const before = JSON.stringify([S().settings.anniversary, S().settings.relationship, specialOf('hochzeit')?.date, specialOf('hochzeit-geplant')?.date]);
       store.update((st) => {
-        st.settings.relationship = rel;
-        st.settings.anniversary = v('ob-anniv') || st.settings.anniversary;
         const setDay = (kind, who, date) => {
           const id = `sp-${kind}${who ? `-${who}` : ''}`;
           st.settings.specialDays = st.settings.specialDays.filter((d) => d.id !== id && !(d.kind === kind && (!who || d.who === who)));
           if (date) st.settings.specialDays.push({ id, kind, who: who ?? null, name: '', date });
         };
-        setDay('verlobung', null, rel !== 'zusammen' ? v('ob-verlobung') || specialOf('verlobung')?.date || '' : '');
-        setDay('hochzeit-geplant', null, rel === 'verlobt' ? v('ob-geplant') : '');
-        setDay('standesamt', null, rel === 'verheiratet' ? v('ob-standesamt') : '');
-        setDay('hochzeit', null, rel === 'verheiratet' ? v('ob-hochzeit') : '');
-        setDay('geburtstag', 'a', v('ob-geb-a'));
-        setDay('geburtstag', 'b', v('ob-geb-b'));
+        if ($('#ob-anniv') || $('[data-group="ob-rel"]')) {
+          st.settings.relationship = rel;
+          st.settings.anniversary = v('ob-anniv') || (step === 'check' ? st.settings.anniversary : '') || '';
+          setDay('hochzeit-geplant', null, rel === 'verlobt' ? v('ob-geplant') : '');
+          if (rel === 'verheiratet') {
+            setDay('hochzeit', null, v('ob-hochzeit'));
+          } else {
+            setDay('hochzeit', null, '');
+            setDay('standesamt', null, '');
+          }
+        }
+        conflicts.forEach((c, k) => {
+          const pick = $(`[data-group="ob-cf-${k}"] [aria-pressed="true"]`)?.dataset.value ?? 'theirs';
+          if (pick !== 'mine') return;
+          if (c.key === 'anniversary' || c.key === 'relationship') st.settings[c.key] = c.mine;
+          else setDay(c.key, null, c.mine);
+        });
+        if (bday) setDay('geburtstag', role, bday);
       });
+      // Ändert die eingeladene Person Paar-Daten, bekommt die andere einen dezenten Hinweis in der App
+      const after = JSON.stringify([S().settings.anniversary, S().settings.relationship, specialOf('hochzeit')?.date, specialOf('hochzeit-geplant')?.date]);
+      if (step === 'check' && before !== after && partnerJoined()) {
+        store.update((st) => (st.settings.pairNotice = { by: role, at: Date.now(), text: `${myName() || 'Dein Partner'} hat eure besonderen Tage aktualisiert.` }));
+      }
       session.obRel = null;
+      session.obEditPair = false;
+      setJoinInfo(null);
       return next();
     }
-    store.update((st) => {
-      st.settings.prefs = { ...(st.settings.prefs ?? {}), [role]: { moods: [...moods], ...prefs } };
-      if (prefs.diet === 'vegan') st.settings.vegan = true;
-    });
-    L().lastSearch.budget = prefs.budget;
-    store.saveLocal();
-    next();
+    if (step === 'vorlieben') {
+      store.update((st) => {
+        st.settings.prefs = { ...(st.settings.prefs ?? {}), [role]: { moods: [...moods], ...prefs } };
+        if (prefs.diet === 'vegan') st.settings.vegan = true;
+      });
+      L().lastSearch.budget = prefs.budget;
+      store.saveLocal();
+      return next();
+    }
+    if (step === 'rechte') return next();
+    if (step === 'verbunden') return finish();
   });
 }
+
+/* --- Einladen, Code eingeben, Trennen (außerhalb des Einstiegs) ---------------- */
+
+RENDER.einladen = () => {
+  const inv = partnerState.invite;
+  const p = partnerName();
+  if (partnerJoined()) return go('mehr', null, { replace: true });
+  root.innerHTML = `
+    ${topbar({ title: inv ? `${esc(inv.partner_name || p || 'Dein Lieblingsmensch')} einladen` : 'Lieblingsmensch einladen', back: ['mehr', '', 'Einstellungen'] })}
+    <section class="panel form">
+      <div class="field"><label class="label" for="iv-name">Wie heißt dein Lieblingsmensch?</label>
+        <input class="input" id="iv-name" maxlength="30" value="${esc(inv?.partner_name ?? p)}" placeholder="z. B. Maxi" autocapitalize="words"></div>
+      ${inv ? `
+      <div class="invite-box">
+        <span class="kicker">Einladungscode</span>
+        <strong class="invite-code">${esc(inv.code)}</strong>
+        <small class="muted">Gültig bis ${esc(fmtExpiry(inv.expires_at))} · nur einmal verwendbar</small>
+        <button type="button" class="btn primary" id="iv-share">${icon('share')}Einladung teilen</button>
+        <button type="button" class="btn ghost" id="iv-copy">Code kopieren</button>
+      </div>
+      <button type="button" class="btn ghost" id="iv-rename">Name ändern (neuer Code)</button>
+      <button type="button" class="btn ghost danger" id="iv-revoke">Einladung zurückziehen</button>` : `
+      <button type="button" class="btn primary big" id="iv-create">${icon('heart')}Einladung erstellen</button>`}
+    </section>`;
+  bindBack();
+  const nameVal = () => $('#iv-name').value.trim();
+  const create = (btn) => withBusy(btn, async () => {
+    if (!nameVal()) return toast('Wie heißt dein Lieblingsmensch?');
+    store.update((st) => (st.settings[myNameKey(other(myRole()))] = nameVal()));
+    try {
+      partnerState.invite = await partnerState.api.create(nameVal());
+      render();
+      shareInvite(partnerState.invite);
+    } catch (err) {
+      toast(err.message);
+    }
+  });
+  $('#iv-create')?.addEventListener('click', (e) => create(e.currentTarget));
+  $('#iv-rename')?.addEventListener('click', (e) => create(e.currentTarget));
+  $('#iv-share')?.addEventListener('click', () => shareInvite(inv));
+  $('#iv-copy')?.addEventListener('click', () => copyCode(inv.code));
+  $('#iv-revoke') && armed($('#iv-revoke'), async () => {
+    try {
+      await partnerState.api.revoke();
+      partnerState.invite = null;
+      toast('Einladung zurückgezogen');
+      go('mehr', null, { replace: true });
+    } catch (err) {
+      toast(err.message);
+    }
+  }, 'Nochmal tippen: Einladung zurückziehen');
+};
+
+RENDER.code = () => {
+  root.innerHTML = `
+    ${topbar({ title: 'Ich habe einen Code', back: ['mehr', '', 'Einstellungen'] })}
+    <form class="panel form" id="cd-form" novalidate>
+      <div class="field"><label class="label" for="cd-code">Gib den Code ein, den du bekommen hast</label>
+        <input class="input code-input" id="cd-code" value="DW-" autocapitalize="characters" spellcheck="false" maxlength="12"></div>
+      <p class="warn-text" id="cd-err" role="alert" hidden></p>
+      <button class="btn primary big" type="submit">Verbinden</button>
+      <small class="muted">Deine eigenen Ideen, Merkliste und Dates nimmst du mit.</small>
+    </form>`;
+  bindBack();
+  const inp = $('#cd-code');
+  inp.addEventListener('input', () => {
+    inp.value = normCode(inp.value).slice(0, 12);
+    $('#cd-err').hidden = true;
+  });
+  $('#cd-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    withBusy(e.submitter, async () => {
+      try {
+        const res = await partnerState.api.accept(inp.value);
+        if (res.error) {
+          $('#cd-err').textContent = res.error;
+          $('#cd-err').hidden = false;
+          return;
+        }
+        if (res.old_settings) setJoinInfo({ oldSettings: res.old_settings, oldRole: res.old_role, inviter: res.inviter });
+        const c = getConfig();
+        saveConfig({ url: c.url, key: c.key, coupleId: res.couple_id });
+        session.justJoined = true;
+        location.replace(location.pathname); // neu laden, zur Startseite
+      } catch (err) {
+        $('#cd-err').textContent = err.message;
+        $('#cd-err').hidden = false;
+      }
+    });
+  });
+};
+
+RENDER.trennen = () => {
+  const p = partnerName() || 'deinem Partner';
+  if (!partnerJoined()) return go('mehr', null, { replace: true });
+  root.innerHTML = `
+    ${topbar({ title: 'Verbindung trennen', back: ['mehr', '', 'Einstellungen'] })}
+    <section class="panel form">
+      <p>Wenn du die Verbindung mit ${esc(p)} trennst, könnt ihr nicht mehr gemeinsam planen. Das passiert mit euren Daten:</p>
+      <ul class="trenn-list">
+        <li><strong>Vergangene Dates, Erinnerungen, Fotos:</strong> Ihr behaltet beide eine Kopie (Archiv, nur lesbar).</li>
+        <li><strong>Geplante Dates:</strong> bleiben bei der Person, die sie geplant hat.</li>
+        <li><strong>Eigene Ideen und Merkliste:</strong> bleiben bei der Person, die sie erstellt hat.</li>
+        <li><strong>Versteckte Dates und Ausgaben:</strong> bleiben bei dir bzw. ${esc(p)}.</li>
+        <li><strong>Kostenausgleich:</strong> wird mit dem aktuellen Stand abgeschlossen und bleibt lesbar.</li>
+        <li><strong>Jahrestag und Beziehungsstatus:</strong> werden in beiden Konten gelöscht.</li>
+        <li><strong>Geteilte Community-Dates unter eurem Paarnamen:</strong> erscheinen wieder unter dem Vornamen.</li>
+      </ul>
+      <p class="muted small">${esc(p)} bekommt keinen Push, sieht aber beim nächsten Öffnen einen neutralen Hinweis. Ihr könnt euch später wieder verbinden.</p>
+      <div class="field"><label class="label" for="tr-word">Zum Bestätigen „TRENNEN“ eintippen</label><input class="input" id="tr-word" autocapitalize="characters" autocomplete="off"></div>
+      <button type="button" class="btn danger big" id="tr-go" disabled>Endgültig trennen</button>
+    </section>`;
+  bindBack();
+  const w = $('#tr-word');
+  w.addEventListener('input', () => ($('#tr-go').disabled = w.value.trim().toUpperCase() !== 'TRENNEN'));
+  $('#tr-go').addEventListener('click', (e) => withBusy(e.currentTarget, async () => {
+    try {
+      const n = await partnerState.api.disconnect();
+      const c = getConfig();
+      saveConfig({ url: c.url, key: c.key, coupleId: n });
+      store.clearDeviceData();
+      location.replace(location.pathname); // neu laden, zur Startseite
+    } catch (err) {
+      toast(err.message);
+    }
+  }));
+};
 
 /* ================================================================ 1. Start */
 
@@ -3801,6 +4414,14 @@ function inboxItems() {
         <button class="btn sm" data-special="${sp.iso}">Date planen</button>
       </article>`);
   }
+  for (const u of session.reportUpdates ?? []) {
+    items.push(`
+      <article class="inbox-item">
+        <div class="inbox-ico">${icon('check')}</div>
+        <div class="grow"><strong>Danke für deine Meldung</strong><p>${u.outcome === 'keep' ? `Wir haben „${esc(u.title ?? 'das Date')}“ geprüft und keinen Verstoß gefunden.` : `Wir haben „${esc(u.title ?? 'das Date')}“ geprüft und entfernt.`}</p></div>
+        <button class="btn sm ghost" data-report-seen="${u.id}">OK</button>
+      </article>`);
+  }
   if (session.modOpen > 0) {
     items.push(`
       <article class="inbox-item">
@@ -3845,6 +4466,13 @@ RENDER.start = () => {
   const r = rhythmStatus(s.dates, s.settings.datesPerMonth);
   const pct = Math.min(100, Math.round((r.thisMonth / r.goal) * 100));
   // Für Moderator:innen: offene Meldungen einmal pro Sitzung prüfen
+  if (community.api && session.reportUpdates === undefined) {
+    session.reportUpdates = [];
+    community.api.reportUpdates().then((l) => {
+      session.reportUpdates = l;
+      if (l.length && current.name === 'start') render();
+    }).catch(() => {});
+  }
   if (community.api && session.modChecked === undefined) {
     session.modChecked = false;
     community.api.isModerator().then(async (yes) => {
@@ -3858,6 +4486,7 @@ RENDER.start = () => {
   const np = nextPlanner();
   // „Wer plant?“ folgt der Reihe, bis jemand selbst etwas anderes wählt.
   if (!session.plannerTouched && role) f.planner = np === role ? 'me' : 'partner';
+  if (pairLocked()) f.planner = 'me';
 
   const turnMine = np === role;
   const homeHTML = `
@@ -3866,7 +4495,7 @@ RENDER.start = () => {
       <div class="row gap">${syncChip()}${settingsButton()}</div>
     </header>
     <section class="hello">
-      <p class="eyebrow">${hasNames ? `${esc(nameOf('a'))} & ${esc(nameOf('b'))}` : 'Zeit zu zweit'}</p>
+      <p class="eyebrow">${(store.syncInfo().backend === 'supabase' ? partnerJoined() : hasNames) ? `${esc(nameOf('a'))} & ${esc(nameOf('b'))}` : 'Zeit zu zweit'}</p>
       <h1>${role && S().settings[myNameKey(role)]?.trim() ? `${greeting()}, ${esc(nameOf(role))}.` : 'Willkommen bei Datewell.'}</h1>
     </section>
 
@@ -3880,27 +4509,30 @@ RENDER.start = () => {
     <section class="rhythm ${r.due ? 'due' : ''}">
       <div class="row between"><span class="kicker">${MONTHS[today().getMonth()]} · ${r.thisMonth}/${r.goal} Dates</span>${r.due ? '<span class="tag warn">Date fällig</span>' : r.thisMonth >= r.goal ? '<span class="tag ok">Ziel erreicht</span>' : ''}</div>
       <span class="progress"><span style="width:${pct}%"></span></span>
+      ${pairLocked() ? `<p class="rhythm-msg">${r.due ? 'Zeit für ein Date!' : 'Plant euer nächstes Date.'}</p>
+      <div class="row gap rhythm-actions"><button type="button" class="btn primary sm" data-go-neu>${icon('sparkle')}Planen</button></div>` : `
       <p class="rhythm-msg">${turnMine ? (r.due ? `Du bist dran – überrasch ${esc(nameOf(partner))}!` : `Als Nächstes planst du – überrasch ${esc(nameOf(partner))}!`) : `${esc(nameOf(np))} ist dran${r.due ? ' – lass dich überraschen.' : '.'}`}</p>
-      <div class="row gap rhythm-actions">${turnMine ? `<button type="button" class="btn primary sm" data-go-neu>${icon('sparkle')}Planen</button>` : ''}<button type="button" class="linkish small" id="swap-turn">${icon('repeat')}Tauschen</button></div>
+      <div class="row gap rhythm-actions">${turnMine ? `<button type="button" class="btn primary sm" data-go-neu>${icon('sparkle')}Planen</button>` : ''}<button type="button" class="linkish small" id="swap-turn">${icon('repeat')}Tauschen</button></div>`}
     </section>` : ''}
 
     ${S().polls.some((x) => x.kind === 'swipe' && x.status === 'open') ? '' : `
-    <button class="match-teaser" id="start-match">
+    <button class="match-teaser" id="start-match"${lockAttr()} data-pair-lock-text="Beim Date-Match wischt ihr beide auf dem eigenen Handy und seht, worauf ihr gemeinsam Lust habt.">
       <span class="mt-ico">${icon('heart')}</span>
-      <span class="grow"><strong>Date-Match</strong><br><small>Gemeinsam wischen – ihr wischt beide auf eurem eigenen Handy.</small></span>
+      <span class="grow"><strong>Date-Match</strong><br><small>${pairLocked() ? (coupleState() === 'offen' ? `Sobald ${esc(partnerName() || 'dein Partner')} dabei ist` : 'Braucht deinen Partner') : 'Gemeinsam wischen – ihr wischt beide auf eurem eigenen Handy.'}</small></span>
       ${icon('right')}
     </button>`}
 
     ${inbox.length ? `<section class="stack"><h2 class="section-title">Für dich</h2>${inbox.join('')}</section>` : ''}
 
     ${today().getMonth() === 11 || (today().getMonth() === 0 && today().getDate() <= 20) ? `<button class="book-teaser" data-go-book>${icon('book')}<span class="grow"><strong>Euer Jahresrückblick ist da</strong><br><small class="muted">Alle Dates ${today().getMonth() === 0 ? today().getFullYear() - 1 : today().getFullYear()} als Fotobuch</small></span>${icon('right')}</button>` : ''}
-    ${recommendationsHTML()}`;
+    ${recommendationsHTML()}
+    ${role && !L().tipCommunity && S().settings.onboarded?.[role] ? `<div class="banner neutral-row tip">${icon('sparkle')}<span class="grow">Tipp: Unter <strong>Entdecken → Community</strong> findet ihr Ideen von anderen Paaren.</span><button type="button" class="icon-btn small" id="tip-close" aria-label="Ausblenden">${icon('x')}</button></div>` : ''}`;
 
   const formHTML = `
     ${topbar({ title: '', back: ['start', '', 'Start'] })}
     <form class="panel form" id="start-form" novalidate>
       <div class="oclock"><h2><span>It’s date</span> <i>o’clock.</i></h2><p class="muted">Was habt ihr vor?</p></div>
-      <div class="field">
+      <div class="field"${lockAttr()} data-pair-lock-text="Abwechselnd planen, überraschen oder zusammen abstimmen – das geht, sobald ihr verbunden seid.">
         <span class="label">Wer plant?</span>
         ${chips('planner', [
           ['me', role ? 'Ich' : 'Ich', 'user'],
@@ -3947,6 +4579,16 @@ RENDER.start = () => {
   bindBack();
   on('[data-go-neu]', 'click', () => go('neu'));
   on('[data-go-own]', 'click', () => go('eigen'));
+  on('[data-report-seen]', 'click', (_, el) => {
+    community.api.reportSeen(el.dataset.reportSeen).catch(() => {});
+    session.reportUpdates = (session.reportUpdates ?? []).filter((u) => u.id !== el.dataset.reportSeen);
+    render();
+  });
+  $('#tip-close')?.addEventListener('click', () => {
+    L().tipCommunity = true;
+    store.saveLocal();
+    render();
+  });
   on('[data-pair-consent]', 'click', (_, el) => {
     const yes = el.dataset.pairConsent === '1';
     store.update((st) => (st.settings.communityPair = { ...st.settings.communityPair, consent: { ...(st.settings.communityPair?.consent ?? {}), [myRole()]: yes } }));
@@ -4583,8 +5225,8 @@ RENDER.plan = (ideaId) => {
 
     ${fromPoll ? '' : `
     <section class="panel form">
-      <label class="switch">
-        <input type="checkbox" id="p-surprise" ${draft.surprise ? 'checked' : ''}>
+      <label class="switch"${lockAttr()} data-pair-lock-text="Überraschungen plant ihr füreinander – das geht, sobald ihr verbunden seid.">
+        <input type="checkbox" id="p-surprise" ${draft.surprise && !pairLocked() ? 'checked' : ''}>
         <span><strong>Als Überraschung</strong><br><small class="muted">${esc(nameOf(partner))} sieht nur Datum, Uhrzeit und deinen Hinweis.</small></span>
       </label>
       <div class="field" id="hint-field" ${draft.surprise ? '' : 'hidden'}>
@@ -5462,7 +6104,7 @@ RENDER.kalender = () => {
         const theirs = !!dp.survey?.[other(myRole())];
         return `<div class="banner neutral-row">${icon('calendar')}<span class="grow"><strong>Welcher Tag passt euch?</strong><br><small class="muted">${mine && theirs ? 'Beide haben geantwortet – Ergebnis ansehen' : mine ? `Warte auf ${esc(nameOf(other(myRole())))}` : 'Deine Antwort fehlt noch'}</small></span><button class="btn sm ${mine && !theirs ? '' : 'primary'}" data-open-poll="${dp.id}">Öffnen</button></div>`;
       })()}
-      <button class="btn big" id="find-day">${icon('vote')}Gemeinsamen Tag finden</button>
+      <button class="btn big" id="find-day"${lockAttr()} data-pair-lock-text="Ihr gebt beide an, wann ihr Zeit habt, und Datewell findet den passenden Tag.">${icon('vote')}Gemeinsamen Tag finden</button>
     </section>`;
 
   bindGcalBar();
@@ -5653,9 +6295,9 @@ function visibleExpenses() {
 }
 
 /** Saldo aus gemeinsamen Ausgaben: positiv = die Person bekommt Geld. */
-function balances() {
+function balances(archived = false) {
   const bal = { a: 0, b: 0 };
-  for (const e of S().expenses) {
+  for (const e of S().expenses.filter((x) => !!x.archived === archived)) {
     if (e.kind === 'settle') {
       bal[e.paidBy] += e.amount;
       bal[other(e.paidBy)] -= e.amount;
@@ -5714,7 +6356,7 @@ RENDER.kosten = (param) => {
       <div class="field"><label class="label" for="e-date">Zum Date</label>
         <select class="input" id="e-date"><option value="">Ohne Date</option>${upcomingDates.map((d) => `<option value="${d.id}" ${forDate?.id === d.id ? 'selected' : ''}>${esc(fmtShort(d.date))} · ${esc(dateTitle(d))}</option>`).join('')}</select>
       </div>
-      <label class="switch"><input type="checkbox" id="e-private" ${defaultPrivate ? 'checked' : ''}><span><strong>Vor ${esc(nameOf(partner))} verstecken</strong><br><small class="muted">Für Überraschungen und Geschenke. Nur du siehst diese Ausgabe.</small></span></label>
+      <label class="switch"${lockAttr()} data-pair-lock-text="Ausgaben vor deinem Partner verstecken – etwa für Geschenke – geht, sobald ihr verbunden seid."><input type="checkbox" id="e-private" ${defaultPrivate && !pairLocked() ? 'checked' : ''}><span><strong>Vor ${esc(nameOf(partner))} verstecken</strong><br><small class="muted">Für Überraschungen und Geschenke. Nur du siehst diese Ausgabe.</small></span></label>
       <button class="btn primary big" type="submit">${icon('check')}Speichern</button>
     </form>`;
 
@@ -5733,7 +6375,7 @@ RENDER.kosten = (param) => {
       </div>
       ${secretMonth ? `<p class="muted small">${icon('lock')} Davon ${euro(secretMonth)} geheim – ${esc(nameOf(partner))} sieht diese Ausgaben nicht.</p>` : ''}
     </section>
-    <section class="panel balance">
+    <section class="panel balance"${lockAttr()} data-pair-lock-text="Der Kostenausgleich rechnet aus, wer wem etwas schuldet – dafür braucht es euch zwei. Eigene Ausgaben kannst du schon eintragen.">
       <div class="grow">
         <span class="kicker">Ausgleich</span>
         <strong>${Math.abs(mine) < 0.01 ? 'Ihr seid quitt' : mine > 0 ? `${esc(nameOf(partner))} schuldet dir ${euro(mine)}` : `Du schuldest ${esc(nameOf(partner))} ${euro(-mine)}`}</strong>
@@ -5741,6 +6383,14 @@ RENDER.kosten = (param) => {
       </div>
       ${Math.abs(mine) >= 0.01 ? `<button class="btn sm" id="settle">Ausgeglichen</button>` : ''}
     </section>
+    ${(() => {
+      // Nach dem Trennen: abgeschlossener Ausgleich bleibt lesbar
+      if (!S().expenses.some((x) => x.archived)) return '';
+      const ab = balances(true);
+      const v = Math.round((ab[role] ?? 0) * 100) / 100;
+      const who = S().settings.formerName || 'deinem früheren Partner';
+      return `<p class="muted small">${icon('lock')} Abgeschlossen (Zeit mit ${esc(who)}): ${Math.abs(v) < 0.01 ? 'ausgeglichen' : v > 0 ? `offen – ${esc(who)} schuldet dir ${euro(v)}` : `offen – du schuldest ${esc(who)} ${euro(-v)}`}</p>`;
+    })()}
 
     <button type="button" class="btn primary big exp-add" id="exp-open">${icon('plus')}Ausgabe eintragen</button>
 
@@ -6045,7 +6695,7 @@ RENDER.dates = () => {
         <span class="idea-emoji" aria-hidden="true">${glyph(dateEmoji(d))}</span>
         <span class="grow">
           <strong>${esc(dateTitle(d))}</strong>
-          <small class="muted">${relDay(d.date) ?? fmtShort(d.date)} · ${d.start} Uhr · ${esc(plannerLabel(d))}</small>
+          <small class="muted">${relDay(d.date) ?? fmtShort(d.date)} · ${d.start} Uhr · ${esc(plannerLabel(d))}${d.archived ? ' · Archiv' : ''}</small>
         </span>
         ${isPast ? (avg ? `<span class="score">${icon('heart')}${avg.toFixed(1).replace('.', ',')}</span>` : '<small class="muted">bewerten</small>') : d.surprise ? `<span class="tag">${icon(isHiddenFromMe(d) ? 'gift' : 'lock')}${isHiddenFromMe(d) ? 'Überraschung' : 'Geheim'}</span>` : icon('right', 'chev')}
       </button>`;
@@ -6269,7 +6919,7 @@ RENDER.mehr = () => {
     </section>
 
     <section class="panel form">
-      <div class="panel-head">${icon(sync.mode === 'shared' ? 'users' : 'lock')}<h2>Gemeinsam nutzen</h2></div>
+      <div class="panel-head">${icon(sync.mode === 'shared' ? 'users' : 'lock')}<h2>${store.syncInfo().backend === 'supabase' ? 'Partner' : 'Gemeinsam nutzen'}</h2></div>
       ${sharingHTML()}
     </section>
 
@@ -6345,6 +6995,11 @@ RENDER.mehr = () => {
           : L().push?.on && window.Notification?.permission === 'granted'
             ? `<p class="small">${icon('check', 'inline')} Mitteilungen sind auf diesem Handy aktiv.</p><div class="row gap"><button class="btn sm" id="push-test">Test-Mitteilung</button><button class="btn ghost sm" id="push-off">Ausschalten</button></div>`
             : `<button class="btn primary" id="push-on">${icon('bell')}Mitteilungen aktivieren</button>`}
+      ${auth.cfg && myRole() ? `
+      <details class="push-types"><summary>Welche Mitteilungen?</summary>
+        ${PUSH_KINDS.map(([k, l]) => `<label class="switch"><input type="checkbox" data-push-kind="${k}" ${(S().settings.pushOff?.[myRole()] ?? []).includes(k) ? '' : 'checked'}><span>${l}</span></label>`).join('')}
+        <small class="muted">Zwischen 21 und 8 Uhr kommen nur Erinnerungen an geplante Dates, alles andere am Morgen.</small>
+      </details>` : ''}
     </section>
     <section class="panel form">
       <div class="panel-head">${icon('star')}<h2>Weitere Datenquellen</h2></div>
@@ -6359,7 +7014,7 @@ RENDER.mehr = () => {
     <section class="panel form" id="community-settings">
       <div class="panel-head">${icon('users')}<h2>Community</h2></div>
       ${commPrefs().rulesAt ? `<p>Eure geteilten Dates erscheinen ${displayNameFor() ? `als <strong>„${esc(displayNameFor())}“</strong>` : '<strong>ohne Namen</strong>'}.</p>
-      ${chips('cm-mode', [['vorname', esc(firstName(myRole()) || 'Vorname')], ['paar', 'Paarname'], ['anonym', 'Ohne Namen']], commPrefs().mode ?? 'vorname', 'seg')}` : '<p class="muted small">Eigene Dates sind privat. Wenn ihr zum ersten Mal eines teilt, wählt ihr euren Anzeigenamen.</p>'}
+      ${chips('cm-mode', [['vorname', esc(firstName(myRole()) || 'Vorname')], ...(partnerJoined() ? [['paar', 'Paarname']] : []), ['fantasie', esc(commPrefs().alias || 'Fantasiename')]], commPrefs().mode ?? 'vorname', 'seg')}` : '<p class="muted small">Eigene Dates sind privat. Wenn ihr zum ersten Mal eines teilt, wählt ihr euren Anzeigenamen.</p>'}
       ${pairName()?.name ? `<small class="muted">Paarname „${esc(pairName().name)}“: ${pairAgreed() ? 'beide haben zugestimmt' : pairName().consent?.[other(myRole())] === false ? `${esc(nameOf(other(myRole())))} möchte das nicht` : `wartet auf ${esc(nameOf(other(myRole())))}`}</small>
       ${pairName().consent?.[myRole()] ? '<button class="linkish small" type="button" id="cm-revoke">Meine Zustimmung zum Paarnamen zurückziehen</button>' : ''}` : ''}
       <div class="row between"><span>Blockierte Personen: <strong id="cm-blocked">…</strong></span><button class="btn sm ghost" type="button" id="cm-unblock" hidden>Alle wieder anzeigen</button></div>
@@ -6400,6 +7055,15 @@ RENDER.mehr = () => {
     await withBusy(e.currentTarget, disablePush);
     toast('Mitteilungen ausgeschaltet');
     render();
+  });
+  on('[data-push-kind]', 'change', (_, el) => {
+    const r = myRole();
+    store.update((st) => {
+      const off = new Set(st.settings.pushOff?.[r] ?? []);
+      if (el.checked) off.delete(el.dataset.pushKind);
+      else off.add(el.dataset.pushKind);
+      st.settings.pushOff = { ...(st.settings.pushOff ?? {}), [r]: [...off] };
+    });
   });
   $('#push-test')?.addEventListener('click', async (e) => {
     await withBusy(e.currentTarget, async () => {
@@ -6462,6 +7126,7 @@ RENDER.mehr = () => {
     session.obForce = el.dataset.obOpen;
     go('start');
   });
+  on('[data-go]', 'click', (_, el) => go(el.dataset.go));
   bindSharing();
   bindGoogleSettings();
   $('#import').addEventListener('change', async (e) => {
@@ -6486,8 +7151,8 @@ RENDER.mehr = () => {
   $('#export-me')?.addEventListener('click', exportMyData);
   if ($('#community-settings')) {
     bindChips(root, 'cm-mode', (v) => {
-      if (v === 'paar' && !pairName()?.name) {
-        toast('Den Paarnamen wählst du beim nächsten Teilen');
+      if ((v === 'paar' && !pairName()?.name) || (v === 'fantasie' && !commPrefs().alias)) {
+        toast('Den Namen wählst du beim nächsten Teilen');
         return;
       }
       store.update((st) => {
@@ -6534,6 +7199,9 @@ RENDER.mehr = () => {
 /* ================================================================ Start */
 
 (async function boot() {
+  // Einladungslink zuerst lesen – der Router schreibt die Adresse gleich um
+  const invite = readInvite();
+  if (invite) history.replaceState(null, '', location.pathname);
   const initial = location.hash.replace('#', '');
   if (['kalender', 'dates', 'mehr', 'entdecken'].includes(initial)) current = { name: initial, param: null };
   const deep = parseHash(location.hash);
@@ -6552,9 +7220,14 @@ RENDER.mehr = () => {
   } catch {
     /* ohne Ideenliste weiter */
   }
-  const invite = readInvite();
-  if (invite) {
-    history.replaceState(null, '', location.pathname);
+  if (invite?.invite) {
+    setPendingInvite({ code: invite.invite });
+    // Wer lädt ein? (ohne Konto abrufbar, verrät nur den Vornamen)
+    invitationInfo({ url: SUPABASE.url, key: SUPABASE.key }, invite.invite).then((info) => {
+      setPendingInvite({ code: invite.invite, ...info });
+      if (current.name === 'konto') render();
+    }).catch(() => {});
+  } else if (invite) {
     saveConfig({ ...invite, coupleId: null });
   }
   render();

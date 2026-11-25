@@ -398,9 +398,11 @@ export function claimRole(role) {
 export const other = (r) => (r === 'a' ? 'b' : r === 'b' ? 'a' : null);
 
 export function nameOf(role) {
-  const { nameA, nameB } = state.settings;
-  if (role === 'a') return nameA.trim() || 'Person 1';
-  if (role === 'b') return nameB.trim() || 'Person 2';
+  const { nameA, nameB, formerName } = state.settings;
+  const mine = role === myRole();
+  // Nach dem Trennen: im Archiv weiter mit dem früheren Namen
+  if (role === 'a') return (nameA ?? '').trim() || (!mine && formerName) || (mine ? 'Du' : 'Person 1');
+  if (role === 'b') return (nameB ?? '').trim() || (!mine && formerName) || (mine ? 'Du' : 'Person 2');
   return 'Ihr beide';
 }
 

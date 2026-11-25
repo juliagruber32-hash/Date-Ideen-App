@@ -87,7 +87,25 @@ const weekday = (iso) => new Date(`${iso}T12:00:00Z`).toLocaleDateString('de-DE'
  * Welche Mitteilungen sind für dieses Paar jetzt fällig?
  * Gibt [{ key, role, title, body, url }] zurück (role = 'a' | 'b').
  */
-export function dueNotifications({ docs, now, secrets = {}, wx = {} }) {
+// Arten von Mitteilungen – einzeln abschaltbar (Einstellungen → Mitteilungen)
+export const PUSH_TYPES = { new: 'dates', eve: 'dates', soon: 'dates', rain: 'dates', rate: 'dates', idle: 'idle', req: 'wishes', swipe: 'match', match: 'match', joined: 'partner', invremind: 'partner', invexpire: 'partner', pair: 'community' };
+// Ruhezeit 21–8 Uhr gilt nicht für Erinnerungen an geplante Dates
+const QUIET_OK = new Set(['eve', 'soon', 'rain']);
+
+export function dueNotifications({ docs, now, secrets = {}, wx = {}, invites = [] }) {
+  const all = dueRaw({ docs, now, secrets, wx, invites });
+  const settings = docs['shared/settings'] ?? {};
+  const nowMin = minutes(now.time);
+  const quiet = nowMin >= 21 * 60 || nowMin < 8 * 60;
+  return all.filter((n) => {
+    const kind = n.key.split(':')[0];
+    if (quiet && !QUIET_OK.has(kind)) return false; // wird nach 8 Uhr nachgeholt
+    const off = settings.pushOff?.[n.role] ?? [];
+    return !off.includes(PUSH_TYPES[kind] ?? kind);
+  });
+}
+
+function dueRaw({ docs, now, secrets = {}, wx = {}, invites = [] }) {
   const settings = docs['shared/settings'] ?? {};
   const name = (r) => (r === 'a' ? settings.nameA : settings.nameB) || (r === 'a' ? 'Person 1' : 'Person 2');
   const other = (r) => (r === 'a' ? 'b' : 'a');
@@ -177,6 +195,29 @@ export function dueNotifications({ docs, now, secrets = {}, wx = {} }) {
       }
     }
   }
+  // Partner ist beigetreten → Mitteilung an die einladende Person
+  const joinedAt = settings.partnerJoinedAt;
+  if (typeof joinedAt === 'number' && Date.now() - joinedAt < 24 * 3600 * 1000 && (settings.invitee === 'a' || settings.invitee === 'b')) {
+    const inviter = other(settings.invitee);
+    push(`joined:${joinedAt}`, inviter, 'It’s date o’clock 💍', `${name(settings.invitee)} ist jetzt dabei. Plant euer erstes gemeinsames Date.`, '#start');
+  }
+  // Offene Einladung: einmal nach 3 Tagen erinnern, 2 Tage vor Ablauf Bescheid geben
+  const members = settings.members ?? {};
+  for (const inv of invites) {
+    const r = members.a === inv.created_by ? 'a' : members.b === inv.created_by ? 'b' : null;
+    if (!r) continue;
+    const who = inv.partner_name || 'Dein Lieblingsmensch';
+    const age = Date.now() - new Date(inv.created_at).getTime();
+    const left = new Date(inv.expires_at).getTime() - Date.now();
+    if (left > 0 && left < 2 * 864e5) push(`invexpire:${inv.code}`, r, 'Deine Einladung läuft bald ab', `Teil sie noch mal mit ${who} oder erstelle eine neue.`, '#mehr');
+    else if (age > 3 * 864e5 && left > 0) push(`invremind:${inv.code}`, r, `${who} ist noch nicht dabei`, 'Schick die Einladung noch mal – zu zweit macht Datewell mehr Spaß.', '#mehr');
+  }
+  // Paarname für die Community: Partner um Zustimmung bitten
+  const pair = settings.communityPair;
+  if (pair?.name && (pair.proposedBy === 'a' || pair.proposedBy === 'b')) {
+    const r = other(pair.proposedBy);
+    if (pair.consent?.[r] == null) push(`pair:${pair.name}:${r}`, r, 'Neuer Community-Name', `${name(pair.proposedBy)} möchte eure Ideen als „${pair.name}“ teilen.`, '#start');
+  }
   return out;
 }
 
@@ -221,7 +262,8 @@ async function processCouple(coupleId) {
     wx[d.id] = await weatherAt(pl.lat, pl.lon, d.date, d.start, d.end).catch(() => null);
     if (d.surprise && secrets[d.id]?.place) d.place = secrets[d.id].place;
   }
-  const due = dueNotifications({ docs, now, secrets, wx });
+  const invites = await rest(`invitations?couple_id=eq.${q(coupleId)}&used_at=is.null&revoked_at=is.null&select=code,partner_name,created_at,expires_at,created_by`).catch(() => []);
+  const due = dueNotifications({ docs, now, secrets, wx, invites });
   if (!due.length) return 0;
   const keys = due.map((n) => `${coupleId}:${n.key}`);
   const sentRows = await rest(`push_log?key=in.(${keys.map((k) => `"${k.replace(/"/g, '')}"`).join(',')})&select=key`);

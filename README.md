@@ -174,6 +174,19 @@ anbieten – Datewell als Web-App mit E-Mail-Login braucht es nicht.
 Zum Einschalten: im Apple-Developer-Konto eine **Services ID** mit „Sign in with Apple“ anlegen, in Supabase unter
 **Authentication → Sign In / Providers → Apple** eintragen und in [`js/config.js`](js/config.js) `apple: true` setzen.
 
+### 9a. Partner einladen und verbinden (ca. 2 Minuten, Pflicht vor dem Start)
+
+Supabase → **SQL Editor** → **New query** → Inhalt von [`supabase/partner.sql`](supabase/partner.sql) einfügen → **Run**.
+
+Das bringt sichere Einladungscodes (`DW-` + 6 Zeichen, 30 Tage gültig, einmal verwendbar, höchstens 5 Fehlversuche
+pro Stunde), das Verbinden mit Übernahme der eigenen Daten, „Verbindung trennen“ mit den Datenregeln aus der
+Spezifikation und „Konto löschen“, das zuerst trennt. Wichtig: Ohne diese Datei konnte jeder mit dem alten
+Paar-Code beitreten – auch als dritte Person.
+
+Hinweis zur Web-App: Universal Links, „Deferred Deep Links“ (Branch/AppsFlyer), App-Store-Weiterleitung und die
+iOS-Texte für Systemdialoge gibt es erst mit einer nativen App. In der Web-App führt der Link `…/#i/DW-XXXXXX`
+direkt zur Einladung; der Code funktioniert immer als Ersatzweg.
+
 ### 10. Community: Melden, Blockieren, Moderation (ca. 3 Minuten, Pflicht vor dem Start)
 
 Eigene Dates sind privat. Erst wer zum ersten Mal teilt, wählt einen Anzeigenamen (Vorname, Paarname oder ohne

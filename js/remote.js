@@ -23,12 +23,16 @@ export function saveConfig(cfg) {
   }
 }
 
-/** Einladungslink: enthält Adresse, öffentlichen Schlüssel und Paar-Code. */
-export function inviteLink(cfg) {
-  const payload = btoa(JSON.stringify({ u: cfg.url, k: cfg.key, c: cfg.code })).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-  return `${location.origin}${location.pathname}#einladung=${payload}`;
-}
+/** Einladungslink zu einem Einladungscode, z. B. …/#i/DW-4K7R2M */
+export const inviteLinkFor = (code) => `${location.origin}${location.pathname}#i/${encodeURIComponent(code)}`;
+/** Einladungscode vereinheitlichen: Groß-/Kleinschreibung, Leerzeichen und Bindestrich egal. */
+export const normCode = (x) => `DW-${String(x ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').replace(/^DW/, '')}`;
+export const looksLikeCode = (x) => /^DW-[A-Z0-9]{4,8}$/.test(normCode(x));
+
+/** Einladung aus der Adresse lesen: neues Format #i/DW-…, ältere Links #einladung=… */
 export function readInvite(hash = location.hash) {
+  const n = hash.match(/#i[/=]([\w-]+)/);
+  if (n) return { invite: normCode(decodeURIComponent(n[1])) };
   const m = hash.match(/einladung=([\w-]+)/);
   if (!m) return null;
   try {
@@ -37,6 +41,28 @@ export function readInvite(hash = location.hash) {
   } catch {
     return null;
   }
+}
+
+// Texte zu den Fehlern beim Verbinden (wie in der Spezifikation)
+export function inviteErrorText(err, name = '') {
+  const n = name || 'die andere Person';
+  return {
+    unbekannt: 'Diesen Code kennen wir nicht. Prüf ihn noch einmal.',
+    abgelaufen: `Dieser Code ist abgelaufen. Bitte ${n} um einen neuen.`,
+    eigener: 'Das ist dein eigener Code. Schick ihn an deinen Partner.',
+    verbunden: `Du bist schon mit ${n} verbunden. Trenn zuerst die Verbindung unter Einstellungen → Partner.`,
+    ungueltig: 'Diese Einladung ist nicht mehr gültig.',
+    zu_viele: 'Zu viele Versuche. Probier es in einer Stunde noch mal.',
+    netz: 'Gerade keine Verbindung. Wir versuchen es gleich noch mal.',
+  }[err] ?? 'Das hat nicht geklappt. Probier es gleich noch mal.';
+}
+
+/** Infos zu einer Einladung – auch ohne Konto (Vorname der einladenden Person, gültig?). */
+export async function invitationInfo(cfg, code) {
+  const client = await getClient(cfg);
+  const { data, error } = await client.rpc('invitation_info', { p_code: normCode(code) });
+  if (error) throw unavailable();
+  return data;
 }
 
 function loadLib() {
@@ -235,7 +261,26 @@ export async function connectSupabase(cfg) {
 
   // Paar: Einladung > gespeichertes Paar > bestehende Mitgliedschaft > neues Paar
   let coupleId = cfg.coupleId;
-  let code = cfg.code ?? um.invite ?? null;
+  let code = cfg.code ?? null; // älteres Format: Paar-Code im Link
+  const invite = cfg.invite ?? (looksLikeCode(um.invite) ? um.invite : null);
+  if (!invite && !code && um.invite) code = um.invite;
+  let joined = null;
+  let inviteError = null;
+  if (invite) {
+    // Erst das eigene Konto sicherstellen (sonst gäbe es nichts mitzunehmen), dann der Einladung folgen
+    const { data, error } = await client.rpc('accept_invitation', { p_code: normCode(invite) });
+    if (error) {
+      if (/accept_invitation|schema cache|could not find/i.test(error.message)) inviteError = 'Einladungen sind in der Datenbank noch nicht eingerichtet (partner.sql ausführen).';
+      else if (/fetch|network/i.test(error.message)) throw unavailable();
+      else inviteError = error.message;
+    } else if (data?.error) {
+      inviteError = inviteErrorText(data.error, data.name);
+    } else if (data?.couple_id) {
+      coupleId = data.couple_id;
+      if (!data.already) joined = { inviter: data.inviter, role: data.role, oldSettings: data.old_settings, oldRole: data.old_role };
+    }
+    if (um.invite) client.auth.updateUser({ data: { invite: null } }).catch(() => {});
+  }
   if (code) {
     const { data, error } = await client.rpc('join_couple', { invite: code });
     if (error) throw new Error(/nicht gefunden/.test(error.message) ? 'Einladungscode nicht gefunden.' : `Beitritt fehlgeschlagen: ${error.message}`);
@@ -266,9 +311,7 @@ export async function connectSupabase(cfg) {
     if (error) throw new Error(/create_couple|schema cache|could not find the function/i.test(error.message) ? 'Die Datenbank ist noch nicht eingerichtet. Führe setup.sql im SQL Editor aus.' : `Anlegen fehlgeschlagen. Die Datenbank meldet: ${error.message}`);
     coupleId = data.id;
   }
-  const c = await client.from('couples').select('code').eq('id', coupleId).maybeSingle();
-  code = c.data?.code ?? code;
-  const saved = { url: cfg.url, key: cfg.key, coupleId, code };
+  const saved = { url: cfg.url, key: cfg.key, coupleId };
   saveConfig(saved);
 
   /* ---- Dokument-Cache + Live-Updates ---- */
@@ -370,7 +413,7 @@ export async function connectSupabase(cfg) {
     };
   };
 
-  return { db: { doc, collection }, uid, user, cfg: saved, community: communityApi(client, uid), photos: photoApi(client, uid, coupleId) };
+  return { db: { doc, collection }, uid, user, cfg: saved, community: communityApi(client, uid), photos: photoApi(client, uid, coupleId), partner: partnerApi(client), joined, inviteError };
 }
 
 /* ------------------------------------------------------------ Fotos */
@@ -403,6 +446,45 @@ function photoApi(client, uid, coupleId) {
     async remove(photo) {
       const { error } = await client.storage.from(photo.bucket).remove([photo.path]);
       if (error) throw new Error('Löschen fehlgeschlagen');
+    },
+  };
+}
+
+/* ------------------------------------------------------------ Partner einladen, verbinden, trennen */
+
+function partnerApi(client) {
+  const fail = (error) => {
+    if (!error) return;
+    if (/schema cache|could not find the function/i.test(error.message)) throw new Error('Einladungen sind in der Datenbank noch nicht eingerichtet (partner.sql ausführen).');
+    if (/fetch|network/i.test(error.message)) throw new Error(inviteErrorText('netz'));
+    throw new Error(error.message === 'schon_verbunden' ? 'Ihr seid schon verbunden.' : error.message);
+  };
+  return {
+    async create(partnerName) {
+      const { data, error } = await client.rpc('create_invitation', { p_name: partnerName ?? '' });
+      fail(error);
+      return data;
+    },
+    async mine() {
+      const { data, error } = await client.rpc('my_invitation');
+      fail(error);
+      return data ?? null;
+    },
+    async revoke() {
+      const { error } = await client.rpc('revoke_invitation');
+      fail(error);
+    },
+    /** Code annehmen, wenn man schon ein Konto hat. Gibt { ok } oder { error } (Text) zurück. */
+    async accept(code) {
+      const { data, error } = await client.rpc('accept_invitation', { p_code: normCode(code) });
+      fail(error);
+      if (data?.error) return { error: inviteErrorText(data.error, data.name) };
+      return { ok: true, ...data };
+    },
+    async disconnect() {
+      const { data, error } = await client.rpc('disconnect_partner');
+      fail(error);
+      return data;
     },
   };
 }
@@ -475,6 +557,14 @@ function communityApi(client, uid) {
     async unblockAll() {
       const { error } = await client.rpc('unblock_all');
       fail(error);
+    },
+    /** Meine Meldungen, über die entschieden wurde (für die Rückmeldung in der App). */
+    async reportUpdates() {
+      const { data, error } = await client.rpc('my_report_updates');
+      return error ? [] : data ?? [];
+    },
+    async reportSeen(id) {
+      await client.rpc('report_seen', { r: id });
     },
     async isModerator() {
       const { data, error } = await client.rpc('is_moderator');

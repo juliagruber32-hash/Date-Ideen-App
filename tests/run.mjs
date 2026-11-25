@@ -107,6 +107,32 @@ await test('Mitteilungen: Überraschungen bleiben geheim', async () => {
   assert.ok(list.some((n) => n.role === 'a' && n.body.includes('Eislaufen')));
 });
 
+await test('Mitteilungen rund um Einladung, Ruhezeit und Abschalten', async () => {
+  const src = readFileSync(join(root, 'supabase/functions/notify/index.ts'), 'utf8').replace(/^import webpush.*$/m, 'const webpush = {};');
+  const dir = mkdtempSync(join(tmpdir(), 'dw-p-'));
+  writeFileSync(join(dir, 'notify.mjs'), src);
+  globalThis.Deno = { env: { get: () => '' } };
+  const { dueNotifications } = await import(pathToFileURL(join(dir, 'notify.mjs')).href);
+  const settings = { nameA: 'Julia', nameB: 'Maxi', members: { a: 'ua', b: 'ub' }, invitee: 'b', partnerJoinedAt: Date.now() - 3600e3, communityPair: { name: 'Die Abenteurer', proposedBy: 'a', consent: { a: true, b: null } } };
+  const day = { date: '2026-11-25', time: '10:00' };
+  let list = dueNotifications({ docs: { 'shared/settings': settings }, now: day });
+  const joined = list.find((n) => n.key.startsWith('joined'));
+  assert.equal(joined?.role, 'a');
+  assert.match(joined.body, /Maxi ist jetzt dabei/);
+  assert.ok(list.some((n) => n.key.startsWith('pair') && n.role === 'b'), 'Maxi wird um Zustimmung gebeten');
+  // Ruhezeit: nachts nur Date-Erinnerungen
+  assert.equal(dueNotifications({ docs: { 'shared/settings': settings }, now: { date: '2026-11-25', time: '22:30' } }).length, 0);
+  // Einzeln abschaltbar
+  list = dueNotifications({ docs: { 'shared/settings': { ...settings, pushOff: { a: ['partner'] } } }, now: day });
+  assert.ok(!list.some((n) => n.key.startsWith('joined')));
+  // Einladung: Erinnerung nach 3 Tagen, Hinweis vor Ablauf
+  const solo = { nameA: 'Julia', members: { a: 'ua' } };
+  const inv = (createdDaysAgo, expiresInDays) => ({ code: 'DW-ABCDEF', partner_name: 'Maxi', created_by: 'ua', created_at: new Date(Date.now() - createdDaysAgo * 864e5).toISOString(), expires_at: new Date(Date.now() + expiresInDays * 864e5).toISOString() });
+  assert.match(dueNotifications({ docs: { 'shared/settings': solo }, now: day, invites: [inv(4, 26)] })[0].title, /Maxi ist noch nicht dabei/);
+  assert.match(dueNotifications({ docs: { 'shared/settings': solo }, now: day, invites: [inv(29, 1)] })[0].title, /läuft bald ab/);
+  assert.equal(dueNotifications({ docs: { 'shared/settings': solo }, now: day, invites: [inv(1, 29)] }).length, 0);
+});
+
 await test('Rechtliche Seiten sind vorhanden', async () => {
   const legal = await import(pathToFileURL(join(root, 'js/legal.js')).href);
   for (const f of [legal.impressumHTML, legal.datenschutzHTML, legal.agbHTML]) assert.ok(f().length > 500);

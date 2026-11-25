@@ -49,6 +49,7 @@ export function datenschutzHTML() {
 
     <h2>3. Konto und gemeinsame Daten</h2>
     <p>Für ein Konto speichern wir E-Mail-Adresse und Passwort (verschlüsselt). Eure Inhalte – Namen, besondere Tage, Vorlieben, Dates, Kosten, Fotos, Abstimmungen, Listen – speichern wir, damit ihr sie auf allen Geräten gemeinsam nutzen könnt. Rechtsgrundlage ist die Erfüllung des Nutzungsvertrags (Art. 6 Abs. 1 lit. b DSGVO). Die Daten liegen bei unserem Auftragsverarbeiter Supabase Inc. (Region: ${esc(LEGAL.supabaseRegion)}). Mit Supabase besteht ein Vertrag zur Auftragsverarbeitung; Übermittlungen außerhalb der EU sind durch Standardvertragsklauseln abgesichert.</p>
+    <p>Jede Person hat ein eigenes Konto. Lädst du deinen Partner ein, speichern wir dafür einen Einladungscode (30 Tage gültig, einmal verwendbar) und den Vornamen, den du einträgst. Weitere Angaben über deinen Partner, etwa den Geburtstag, trägt dein Partner selbst ein. Trennt ihr die Verbindung, behält jede Person eine Kopie der vergangenen gemeinsamen Dates; Jahrestag und Beziehungsstatus werden gelöscht.</p>
     <p>Geburtstage und Jahrestage gebt ihr freiwillig an; sie dienen nur den Erinnerungen in der App. Bitte tragt keine besonders sensiblen Informationen (z. B. Gesundheitsdaten) in Notizen ein.</p>
 
     <h2>4. Standort und Ortssuche</h2>

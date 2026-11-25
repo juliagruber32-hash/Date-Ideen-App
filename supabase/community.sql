@@ -113,6 +113,11 @@ begin
   insert into community_reports (idea_id, user_id, reason, note, review_id)
        values (i, auth.uid(), left(reason, 60), left(note, 500), review)
   on conflict do nothing;
+  begin
+    update community_reports set title = (select left(idea->>'title', 80) from community_ideas where id = i)
+     where idea_id = i and user_id = auth.uid() and title is null;
+  exception when undefined_column then null;
+  end;
   if block then
     select case when review is null then (select author from community_ideas where id = i)
                 else (select user_id from community_ratings where id = review) end into who;
@@ -193,7 +198,7 @@ begin
     if action in ('hide', 'ban') then update community_ratings set hidden = true where id = review; end if;
     if action = 'keep' then update community_ratings set hidden = false where id = review; end if;
     if action = 'delete' then delete from community_ratings where id = review; end if;
-    update community_reports set done = true where review_id = review;
+    update community_reports set done = true, outcome = action where review_id = review and not done;
   else
     select author into who from community_ideas where id = i;
     if action in ('hide', 'ban') then
@@ -203,7 +208,7 @@ begin
     elsif action = 'delete' then
       delete from community_ideas where id = i;
     end if;
-    update community_reports set done = true where idea_id = i and review_id is null;
+    update community_reports set done = true, outcome = action where idea_id = i and review_id is null and not done;
   end if;
   if action = 'ban' and who is not null then
     insert into community_bans (user_id, reason) values (who, nullif(reason, '')) on conflict (user_id) do update set reason = excluded.reason;
@@ -213,6 +218,24 @@ grant execute on function public.moderate(uuid, uuid, text, text) to authenticat
 grant execute on function public.is_moderator() to authenticated;
 grant execute on function public.is_banned() to authenticated;
 grant execute on function public.user_banned(uuid) to authenticated;
+
+-- ------------------------------------------------------------ Rückmeldung an Meldende
+alter table public.community_reports add column if not exists outcome text;   -- 'keep' | 'hide' | 'delete' | 'ban'
+alter table public.community_reports add column if not exists seen boolean not null default false;
+alter table public.community_reports add column if not exists title text;
+
+create or replace function public.my_report_updates()
+returns table (id uuid, outcome text, title text) language sql stable security definer set search_path = public as $$
+  select r.id, r.outcome, r.title from community_reports r
+   where r.user_id = auth.uid() and r.done and not r.seen and r.outcome is not null
+   order by r.created_at desc limit 5;
+$$;
+create or replace function public.report_seen(r uuid)
+returns void language sql security definer set search_path = public as $$
+  update community_reports set seen = true where id = r and user_id = auth.uid();
+$$;
+grant execute on function public.my_report_updates() to authenticated;
+grant execute on function public.report_seen(uuid) to authenticated;
 
 -- ------------------------------------------------------------ Aufräumen: erledigte Meldungen nach 6 Monaten löschen
 -- (falls pg_cron aktiv ist, z. B. durch notify.sql)
